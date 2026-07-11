@@ -1,0 +1,49 @@
+# Configuração automática do Render (https://render.com)
+# Ao conectar este repositório, o Render lê este arquivo e cria o serviço sozinho.
+# Os valores marcados com "sync: false" você preenche no painel do Render (ficam secretos).
+services:
+  - type: web
+    name: lumen-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # IA (obrigatório)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-4-8
+
+      # Trava da BETA (login exigido) — defina no painel
+      - key: BETA_USER
+        sync: false
+      - key: BETA_PASS
+        sync: false
+
+      # Limite de mensagens por IP
+      - key: CHAT_RATE_MAX
+        value: "40"
+      - key: CHAT_RATE_WINDOW_MIN
+        value: "10"
+
+      # WhatsApp de emergência (opcional)
+      - key: WHATSAPP_PROVIDER
+        value: none
+      - key: GUARDIAN_PHONE
+        value: "5512996531629"
+
+      # E-mail dos relatórios (opcional) — defina no painel
+      - key: REPORT_EMAIL_TO
+        value: rodrigoamerico2019@gmail.com
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false

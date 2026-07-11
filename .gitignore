@@ -1,0 +1,13 @@
+# Segredos — NUNCA subir para o GitHub
+.env
+.env.*
+!.env.example
+
+# Dependências (o Render reinstala sozinho)
+node_modules/
+
+# Logs e lixo
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

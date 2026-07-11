@@ -1,0 +1,1179 @@
+<!--
+  LÚMEN — Companheiro emocional cristocêntrico (protótipo)
+  Método Lúmen™ · Corpo · Alma · Espírito
+  "A luz só atravessa o que está alinhado."
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0a0e1a;
+    --bg-2:      #0f1424;
+    --panel:     #141a2e;
+    --panel-2:   #1a2138;
+    --line:      #26304d;
+    --gold-1:    #B8862A;
+    --gold-2:    #E8C76A;
+    --gold-soft: #d4a94a;
+    --ink:       #e9ecf5;
+    --ink-dim:   #9aa4bf;
+    --ink-faint: #626c88;
+    --danger:    #e26d6d;
+    --danger-bg: #2a1518;
+    --gold-grad: linear-gradient(135deg, #B8862A 0%, #E8C76A 55%, #B8862A 100%);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(184,134,42,0.10), transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-family: 'Montserrat', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .app {
+    max-width: 460px;
+    height: 100vh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    position: relative;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 18px 14px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--bg-2), transparent);
+  }
+  .brandmark {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--gold-grad);
+    display: grid; place-items: center;
+    box-shadow: 0 0 18px rgba(232,199,106,0.35);
+    flex: 0 0 auto;
+  }
+  .brandmark span { font-family:'Cinzel'; font-weight:600; color:#0a0e1a; font-size:16px; }
+  .brand-txt h1 { font-family:'Cinzel'; font-weight:500; font-size:16px; letter-spacing:3px; color:var(--ink); }
+  .brand-txt p  { font-family:'Cormorant Garamond'; font-style:italic; font-size:13px; color:var(--gold-soft); margin-top:1px; }
+  .topbar .spacer { flex:1; }
+  .status-dot { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--ink-dim); letter-spacing:1px; text-transform:uppercase; }
+  .status-dot i { width:7px; height:7px; border-radius:50%; background:#3fbf7f; box-shadow:0 0 8px #3fbf7f; display:inline-block; }
+  .status-dot.off i { background:var(--ink-faint); box-shadow:none; }
+
+  /* ---------- Views ---------- */
+  .views { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
+  .view { display:none; padding: 18px 16px 24px; animation: fade .35s ease; }
+  .view.active { display:block; }
+  @keyframes fade { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+
+  .views::-webkit-scrollbar { width:6px; }
+  .views::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
+
+  .eyebrow { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:6px; }
+  .section-title { font-family:'Cinzel'; font-weight:500; font-size:19px; color:var(--ink); margin-bottom:2px; letter-spacing:1px; }
+  .section-sub { font-family:'Cormorant Garamond'; font-size:15px; color:var(--ink-dim); margin-bottom:16px; }
+
+  /* ---------- CHAT ---------- */
+  #view-conversa { display:none; flex-direction:column; height:100%; padding:0; }
+  #view-conversa.active { display:flex; }
+  .chat-scroll { flex:1; overflow-y:auto; padding:18px 16px 8px; }
+  .chat-scroll::-webkit-scrollbar { width:6px; }
+  .chat-scroll::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px; }
+
+  .msg { display:flex; margin-bottom:14px; gap:9px; align-items:flex-end; }
+  .msg.user { flex-direction:row-reverse; }
+  .avatar { width:28px; height:28px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; font-size:11px; }
+  .avatar.lumen { background:var(--gold-grad); color:#0a0e1a; font-family:'Cinzel'; font-weight:600; box-shadow:0 0 12px rgba(232,199,106,0.3); }
+  .avatar.me { background:var(--panel-2); border:1px solid var(--line); color:var(--ink-dim); }
+  .bubble { max-width:78%; padding:11px 14px; border-radius:16px; font-size:14px; line-height:1.55; }
+  .bubble.lumen { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:5px; color:var(--ink); }
+  .bubble.me { background:var(--gold-grad); color:#12151f; border-bottom-right-radius:5px; font-weight:500; }
+  .bubble.lumen em { color:var(--gold-2); font-style:italic; font-family:'Cormorant Garamond'; font-size:15px; }
+
+  .typing { display:flex; gap:4px; padding:4px 2px; }
+  .typing i { width:6px; height:6px; border-radius:50%; background:var(--gold-soft); animation:blink 1.2s infinite; }
+  .typing i:nth-child(2){ animation-delay:.2s; } .typing i:nth-child(3){ animation-delay:.4s; }
+  @keyframes blink { 0%,60%,100%{opacity:.25;} 30%{opacity:1;} }
+
+  /* Crisis card inside chat */
+  .crisis-card {
+    margin: 4px 0 14px 37px; max-width:82%;
+    background: var(--danger-bg); border:1px solid #4a2530; border-radius:14px;
+    padding:14px 15px;
+  }
+  .crisis-card h4 { font-family:'Cinzel'; font-weight:500; font-size:13px; color:#f0b7b7; letter-spacing:1px; margin-bottom:6px; }
+  .crisis-card p { font-size:13px; color:#e7c9cc; line-height:1.5; margin-bottom:10px; }
+  .crisis-lines { display:flex; flex-direction:column; gap:7px; }
+  .crisis-lines a { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:rgba(255,255,255,0.04); border:1px solid #4a2530; border-radius:10px;
+    padding:9px 12px; color:#f4dede; text-decoration:none; font-size:13px; }
+  .crisis-lines a b { font-weight:600; color:#fff; }
+  .crisis-lines a small { color:#c99a9f; font-size:10.5px; }
+
+  /* composer */
+  .composer { padding:10px 12px 14px; border-top:1px solid var(--line); background:var(--bg-2); }
+  .composer-row { display:flex; gap:8px; align-items:flex-end; }
+  .composer textarea {
+    flex:1; resize:none; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    color:var(--ink); font-family:'Montserrat'; font-size:14px; padding:11px 14px; max-height:110px; line-height:1.4;
+  }
+  .composer textarea:focus { outline:none; border-color:var(--gold-soft); }
+  .send-btn { width:42px; height:42px; border-radius:50%; border:none; background:var(--gold-grad); color:#0a0e1a;
+    font-size:18px; cursor:pointer; flex:0 0 auto; display:grid; place-items:center; transition:transform .15s; }
+  .send-btn:active { transform:scale(.9); }
+  .send-btn:disabled { opacity:.4; cursor:default; }
+  .composer .hint { font-size:10px; color:var(--ink-faint); text-align:center; margin-top:7px; letter-spacing:.4px; }
+
+  /* ---------- MONITOR ---------- */
+  .aura-wrap { display:grid; place-items:center; margin:8px 0 20px; }
+  .aura {
+    width:210px; height:210px; border-radius:50%; position:relative; display:grid; place-items:center;
+  }
+  .aura .ring {
+    position:absolute; inset:0; border-radius:50%;
+    background: radial-gradient(circle at 50% 50%, rgba(232,199,106,0.55) 0%, rgba(184,134,42,0.18) 40%, transparent 68%);
+    animation: breathe var(--pulse,4s) ease-in-out infinite;
+  }
+  .aura .ring2 {
+    position:absolute; inset:26px; border-radius:50%; border:1px solid rgba(232,199,106,0.25);
+    animation: breathe var(--pulse,4s) ease-in-out infinite reverse;
+  }
+  @keyframes breathe { 0%,100%{ transform:scale(.92); opacity:.75; } 50%{ transform:scale(1.06); opacity:1; } }
+  .aura .core { text-align:center; z-index:2; }
+  .aura .core .bpm { font-family:'Cinzel'; font-size:38px; color:var(--gold-2); line-height:1; }
+  .aura .core .bpm small { font-size:13px; color:var(--ink-dim); font-family:'Montserrat'; }
+  .aura .core .label { font-family:'Cormorant Garamond'; font-style:italic; font-size:15px; color:var(--ink-dim); margin-top:4px; }
+
+  .connect-btn {
+    display:block; margin:0 auto 20px; background:transparent; border:1px solid var(--gold-soft);
+    color:var(--gold-2); font-family:'Montserrat'; font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+    padding:9px 18px; border-radius:20px; cursor:pointer;
+  }
+  .connect-btn.on { border-color:#3fbf7f; color:#3fbf7f; }
+
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:13px 14px; }
+  .card .k { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--ink-faint); }
+  .card .v { font-family:'Cinzel'; font-size:22px; color:var(--ink); margin-top:5px; }
+  .card .v small { font-size:12px; color:var(--ink-dim); font-family:'Montserrat'; }
+  .card.wide { grid-column:1/3; }
+
+  .emo-chart { height:82px; display:flex; align-items:flex-end; gap:5px; margin-top:10px; }
+  .emo-chart .bar { flex:1; background:var(--gold-grad); border-radius:4px 4px 0 0; opacity:.85; transition:height .4s; position:relative; }
+  .emo-chart .bar span { position:absolute; bottom:-16px; left:0; right:0; text-align:center; font-size:9px; color:var(--ink-faint); }
+
+  .checkin { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .checkin button { flex:1 1 28%; background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+    padding:11px 4px; color:var(--ink-dim); cursor:pointer; font-family:'Montserrat'; font-size:12px; transition:.15s; }
+  .checkin button:hover { border-color:var(--gold-soft); color:var(--ink); }
+  .checkin button .em { font-size:20px; display:block; margin-bottom:4px; }
+
+  /* ---------- RELATÓRIO ---------- */
+  .report-card { background:linear-gradient(160deg, var(--panel), var(--bg-2)); border:1px solid var(--line);
+    border-radius:16px; padding:20px 18px; margin-bottom:14px; position:relative; overflow:hidden; }
+  .report-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--gold-grad); }
+  .report-card .date { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); }
+  .report-card .verse { font-family:'Cormorant Garamond'; font-style:italic; font-size:18px; color:var(--gold-2);
+    line-height:1.4; margin:12px 0; }
+  .report-card .verse-ref { font-size:11px; color:var(--ink-dim); letter-spacing:1px; }
+  .report-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--line); }
+  .report-row:last-child { border-bottom:none; }
+  .report-row .rk { font-size:12px; color:var(--ink-dim); }
+  .report-row .rv { font-family:'Cinzel'; font-size:13px; color:var(--ink); }
+  .report-body { font-size:13.5px; line-height:1.6; color:var(--ink-dim); margin-top:6px; }
+  .report-body b { color:var(--gold-2); font-weight:500; }
+  .pill { display:inline-block; font-size:11px; padding:3px 10px; border-radius:12px; border:1px solid var(--line);
+    color:var(--gold-2); background:rgba(184,134,42,0.08); }
+
+  /* ---------- CUIDADO / config ---------- */
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+  .field input { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    color:var(--ink); font-family:'Montserrat'; font-size:14px; padding:12px 14px; }
+  .field input:focus { outline:none; border-color:var(--gold-soft); }
+  .field .help { font-size:11px; color:var(--ink-faint); margin-top:6px; line-height:1.5; }
+  .save-btn { width:100%; background:var(--gold-grad); color:#0a0e1a; border:none; border-radius:12px;
+    padding:13px; font-family:'Montserrat'; font-weight:600; font-size:13px; letter-spacing:1px; cursor:pointer; margin-top:4px; }
+
+  .info-box { background:var(--danger-bg); border:1px solid #3a2028; border-radius:12px; padding:14px; font-size:12px;
+    line-height:1.6; color:#d6b8bc; margin-top:18px; }
+  .info-box b { color:#f0b7b7; }
+  .alert-log { margin-top:18px; }
+  .alert-log .li { display:flex; gap:10px; padding:10px 12px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; margin-bottom:8px; font-size:12px; color:var(--ink-dim); }
+  .alert-log .li b { color:var(--danger); }
+  .empty { text-align:center; color:var(--ink-faint); font-size:12px; padding:16px; font-family:'Cormorant Garamond'; font-style:italic; font-size:14px; }
+
+  /* ---------- Bottom nav ---------- */
+  .nav { display:flex; border-top:1px solid var(--line); background:var(--bg-2); }
+  .nav button { flex:1; background:none; border:none; padding:11px 2px 9px; cursor:pointer; color:var(--ink-faint);
+    display:flex; flex-direction:column; align-items:center; gap:3px; font-family:'Montserrat'; font-size:9.5px;
+    letter-spacing:.5px; transition:.15s; position:relative; }
+  .nav button svg { width:21px; height:21px; stroke:currentColor; fill:none; stroke-width:1.6; }
+  .nav button.active { color:var(--gold-2); }
+  .nav button.active::before { content:''; position:absolute; top:0; left:30%; right:30%; height:2px; background:var(--gold-grad); border-radius:2px; }
+
+  .footer-brand { text-align:center; font-size:9px; color:var(--ink-faint); letter-spacing:2px; padding:10px; text-transform:uppercase; }
+
+  /* onboarding */
+  .onboarding { position:absolute; inset:0; z-index:100; text-align:center;
+    background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease; }
+  .onboarding.hide { display:none; }
+  .ob-mark { width:54px; height:54px; border-radius:50%; background:var(--gold-grad); display:grid; place-items:center;
+    box-shadow:0 0 30px rgba(232,199,106,.42); margin-bottom:15px; }
+  .ob-mark span { font-family:'Cinzel'; font-weight:600; color:#0a0e1a; font-size:25px; }
+  .ob-brand { font-family:'Cinzel'; letter-spacing:6px; font-size:20px; color:var(--ink); }
+  .ob-tag { font-family:'Cormorant Garamond'; font-style:italic; color:var(--gold-soft); font-size:14px; margin-top:4px; }
+  .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
+  .ob-name { width:100%; max-width:340px; margin-top:22px; }
+  .ob-name input { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
+    font-family:'Cormorant Garamond'; font-size:18px; text-align:center; padding:13px 14px; }
+  .ob-name input:focus { outline:none; border-color:var(--gold-soft); }
+  .ob-name input::placeholder { color:var(--ink-faint); font-style:italic; }
+
+  /* status badge (relatório) */
+  .status-badge { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:20px;
+    font-family:'Montserrat'; font-size:12px; font-weight:600; letter-spacing:.5px; }
+  .status-badge i { width:11px; height:11px; border-radius:50%; display:inline-block; }
+  .status-badge.verde    { background:rgba(127,191,154,.12); border:1px solid #3d6b52; color:#9fe0bb; }
+  .status-badge.verde i    { background:#7fbf9a; box-shadow:0 0 8px #7fbf9a; }
+  .status-badge.amarelo  { background:rgba(224,160,74,.12); border:1px solid #6b5326; color:#f0cd94; }
+  .status-badge.amarelo i  { background:#e0a04a; box-shadow:0 0 8px #e0a04a; }
+  .status-badge.vermelho { background:rgba(226,109,109,.12); border:1px solid #6b2f2f; color:#f0b7b7; }
+  .status-badge.vermelho i { background:#e26d6d; box-shadow:0 0 8px #e26d6d; }
+  .end-btn { width:100%; background:transparent; border:1px solid var(--gold-soft); color:var(--gold-2);
+    border-radius:12px; padding:13px; font-family:'Montserrat'; font-weight:600; font-size:12px; letter-spacing:1px;
+    cursor:pointer; margin-top:6px; text-transform:uppercase; }
+  .ob-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px; width:100%; max-width:340px; }
+  .ob-grid button { background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink-dim);
+    padding:15px 8px; font-family:'Montserrat'; font-size:13px; cursor:pointer; transition:.18s;
+    display:flex; flex-direction:column; align-items:center; gap:7px; }
+  .ob-grid button span { font-size:24px; }
+  .ob-grid button:hover { border-color:var(--gold-soft); color:var(--ink); transform:translateY(-2px); }
+  .ob-grid button:last-child { grid-column:1/3; }
+  .ob-grid button:active { transform:scale(.97); }
+  .ob-foot { font-family:'Cormorant Garamond'; font-style:italic; color:var(--ink-faint); font-size:14px; margin-top:26px; }
+
+  /* toast */
+  .toast { position:absolute; bottom:78px; left:16px; right:16px; background:var(--panel-2); border:1px solid var(--gold-soft);
+    border-radius:12px; padding:12px 14px; font-size:12.5px; color:var(--ink); z-index:50; transform:translateY(140%);
+    transition:transform .35s cubic-bezier(.2,.9,.3,1.2); box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .toast.show { transform:translateY(0); }
+  .toast b { color:var(--gold-2); }
+</style>
+
+<div class="app">
+
+  <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
+  <div class="onboarding" id="onboarding">
+    <div class="ob-mark"><span>L</span></div>
+    <div class="ob-brand">LÚMEN</div>
+    <div class="ob-tag">a luz só atravessa o que está alinhado</div>
+    <div class="ob-name"><input id="obNameInput" type="text" placeholder="Como posso te chamar?" autocomplete="off" /></div>
+    <div class="ob-q">Como você está<br>se sentindo agora?</div>
+    <div class="ob-grid" id="obGrid">
+      <button data-m="ótimo"><span>🌅</span>Ótimo</button>
+      <button data-m="mal"><span>🌫️</span>Mal</button>
+      <button data-m="triste"><span>🌧️</span>Triste</button>
+      <button data-m="deprimido"><span>🌑</span>Deprimido</button>
+      <button data-m="angustiado"><span>🌀</span>Angustiado</button>
+      <button data-m="ansioso"><span>⚡</span>Ansioso</button>
+      <button data-m="irritado"><span>🔥</span>Irritado</button>
+    </div>
+    <div class="ob-foot">Não existe resposta certa. Só a verdadeira.</div>
+  </div>
+
+  <div class="topbar">
+    <div class="brandmark"><span>L</span></div>
+    <div class="brand-txt">
+      <h1>LÚMEN</h1>
+      <p>a luz só atravessa o que está alinhado</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="status-dot off" id="devStatus"><i></i><span id="devStatusTxt">sem sensor</span></div>
+  </div>
+
+  <div class="views">
+
+    <!-- ============ CONVERSA ============ -->
+    <div class="view active" id="view-conversa">
+      <div class="chat-scroll" id="chatScroll"></div>
+      <div class="composer">
+        <div class="composer-row">
+          <textarea id="input" rows="1" placeholder="Fala comigo…"></textarea>
+          <button class="send-btn" id="sendBtn">↑</button>
+        </div>
+        <div class="hint" id="composerHint">Lúmen é um apoio, não substitui acompanhamento profissional</div>
+      </div>
+    </div>
+
+    <!-- ============ MONITOR ============ -->
+    <div class="view" id="view-monitor">
+      <div class="eyebrow">Corpo · Alma · Espírito</div>
+      <div class="section-title">Monitor</div>
+      <div class="section-sub">Como a luz está atravessando você hoje.</div>
+
+      <div class="aura-wrap">
+        <div class="aura" id="aura" style="--pulse:4s">
+          <div class="ring"></div>
+          <div class="ring2"></div>
+          <div class="core">
+            <div class="bpm" id="bpmVal">—<small> bpm</small></div>
+            <div class="label" id="auraLabel">aguardando sensor</div>
+          </div>
+        </div>
+      </div>
+      <button class="connect-btn" id="connectBtn">Conectar dispositivo</button>
+
+      <div class="cards">
+        <div class="card"><div class="k">Variabilidade (HRV)</div><div class="v" id="hrvVal">—<small> ms</small></div></div>
+        <div class="card"><div class="k">Estado emocional</div><div class="v" id="emoVal" style="font-size:16px">neutro</div></div>
+        <div class="card wide">
+          <div class="k">Emoção predominante · últimos 7 dias</div>
+          <div class="emo-chart" id="emoChart"></div>
+        </div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:6px">Check-in rápido</div>
+      <div class="section-sub" style="margin-bottom:8px">Toque no que mais te descreve agora.</div>
+      <div class="checkin" id="checkin">
+        <button data-e="paz"><span class="em">🕊️</span>Em paz</button>
+        <button data-e="cansaço"><span class="em">🌫️</span>Cansado</button>
+        <button data-e="ansiedade"><span class="em">⚡</span>Ansioso</button>
+        <button data-e="tristeza"><span class="em">🌧️</span>Triste</button>
+        <button data-e="gratidão"><span class="em">✨</span>Grato</button>
+        <button data-e="raiva"><span class="em">🔥</span>Irritado</button>
+      </div>
+    </div>
+
+    <!-- ============ RELATÓRIO ============ -->
+    <div class="view" id="view-relatorio">
+      <div class="eyebrow">Acompanhamento diário</div>
+      <div class="section-title">Relatório</div>
+      <div class="section-sub">O que hoje revelou — para cuidar amanhã.</div>
+
+      <div class="report-card">
+        <div class="date" id="repDate">HOJE</div>
+        <div class="verse" id="repVerse">"O coração alegre aformoseia o rosto."</div>
+        <div class="verse-ref">Provérbios 15:13</div>
+      </div>
+
+      <div class="report-card">
+        <div class="report-row"><span class="rk">Pessoa</span><span class="rv" id="repName">—</span></div>
+        <div class="report-row"><span class="rk">Estado predominante</span><span class="rv" id="repEmo">—</span></div>
+        <div class="report-row"><span class="rk">Nível de risco</span><span class="rv"><span class="pill" id="repRisk">nenhum</span></span></div>
+        <div class="report-row"><span class="rk">Interações</span><span class="rv" id="repMsgs">0</span></div>
+        <div class="report-row"><span class="rk">Padrão observado</span><span class="rv" id="repPattern">—</span></div>
+        <div class="report-row"><span class="rk">Situação do atendimento</span>
+          <span class="status-badge amarelo" id="repStatus"><i></i>em andamento</span></div>
+      </div>
+
+      <div class="report-card">
+        <div class="eyebrow">Leitura do atendimento</div>
+        <div class="report-body" id="repBody">
+          Comece uma conversa com Lúmen para gerar a leitura do atendimento. Ela observa o que a pessoa traz,
+          identifica os padrões e devolve um cuidado direcionado.
+        </div>
+      </div>
+
+      <button class="end-btn" id="endBtn">Encerrar e enviar relatório por e-mail</button>
+    </div>
+
+    <!-- ============ CUIDADO ============ -->
+    <div class="view" id="view-cuidado">
+      <div class="eyebrow">Rede de cuidado</div>
+      <div class="section-title">Cuidado</div>
+      <div class="section-sub">Quem Lúmen aciona quando você mais precisa.</div>
+
+      <div class="field">
+        <label>Nome do contato de confiança</label>
+        <input id="contactName" placeholder="Ex.: Pastor Rodrigo" value="Contato de emergência" />
+      </div>
+      <div class="field">
+        <label>WhatsApp de emergência (com DDD)</label>
+        <input id="contactPhone" placeholder="55 12 9 9999-9999" value="12 99653-1629" />
+        <div class="help">Ao detectar sinais de risco de vida — próprio ou contra outra pessoa/criança, mesmo nas
+          entrelinhas — Lúmen prepara imediatamente o alerta para este número, antes de seguir o atendimento.
+          Neste protótipo o envio é por um toque (link do WhatsApp); na versão final é automático via servidor.</div>
+      </div>
+      <div class="field">
+        <label>E-mail para receber os relatórios</label>
+        <input id="reportEmail" placeholder="voce@email.com" value="rodrigoamerico2019@gmail.com" />
+        <div class="help">Todo atendimento gera um relatório para este e-mail, mesmo que a pessoa encerre no meio.</div>
+      </div>
+      <button class="save-btn" id="saveContact">Salvar contato e e-mail</button>
+
+      <div class="alert-log">
+        <div class="eyebrow">Histórico de alertas</div>
+        <div id="alertList"><div class="empty">Nenhum alerta registrado. Que continue assim.</div></div>
+      </div>
+
+      <div class="info-box">
+        <b>Importante.</b> Lúmen é um companheiro de jornada e apoio emocional cristocêntrico.
+        Ele <b>não substitui</b> profissional de saúde mental nem serviço de emergência.
+        Em risco imediato de vida, ligue <b>CVV 188</b> (24h) ou <b>SAMU 192</b>.
+      </div>
+    </div>
+
+  </div><!-- /views -->
+
+  <div class="toast" id="toast"></div>
+
+  <div class="nav">
+    <button class="nav-btn active" data-v="conversa">
+      <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg>
+      Conversa
+    </button>
+    <button class="nav-btn" data-v="monitor">
+      <svg viewBox="0 0 24 24"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>
+      Monitor
+    </button>
+    <button class="nav-btn" data-v="relatorio">
+      <svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+      Relatório
+    </button>
+    <button class="nav-btn" data-v="cuidado">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9-9a4.5 4.5 0 0 1 8-3 4.5 4.5 0 0 1 8 3c-2 4.5-7 9-7 9z"/></svg>
+      Cuidado
+    </button>
+  </div>
+  <div class="footer-brand">Método Lúmen™ · o sábio</div>
+</div>
+
+<script>
+/* =========================================================
+   ESTADO
+========================================================= */
+const state = {
+  device: false,
+  bpm: null,
+  hrv: null,
+  name: '',
+  emotion: 'neutro',
+  risk: 'NENHUM',
+  pattern: 'neutro',
+  status: 'andamento',   // andamento | verde | amarelo | vermelho
+  resolved: false,
+  msgCount: 0,
+  history: [],
+  week: [4,3,5,2,4,6,5],
+  contact: { name: 'Contato de emergência', phone: '12 99653-1629' },
+  reportEmail: 'rodrigoamerico2019@gmail.com',
+  guardianPhone: '12996531629',
+  alerts: [],
+  sessionStart: Date.now(),
+  reportSent: false
+};
+
+const EMO_COLORS = { paz:'#7fbf9a', gratidão:'#E8C76A', ansiedade:'#e0a04a', tristeza:'#6d8fe2',
+  raiva:'#e26d6d', cansaço:'#9aa4bf', desespero:'#e26d6d', neutro:'#B8862A',
+  'ótimo':'#7fbf9a', mal:'#9aa4bf', triste:'#6d8fe2', deprimido:'#5b6bd6',
+  angustiado:'#e0794a', ansioso:'#e0a04a', irritado:'#e26d6d' };
+
+/* =========================================================
+   NAVEGAÇÃO
+========================================================= */
+document.querySelectorAll('.nav-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.nav-btn').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('view-' + b.dataset.v).classList.add('active');
+  };
+});
+
+/* =========================================================
+   DETECÇÃO DE CRISE (rede de segurança no cliente)
+========================================================= */
+const CRISIS_RX = new RegExp([
+  'me matar','tirar (a|minha) vida','acabar com (tudo|minha vida)','n[ãa]o quero (mais )?viver',
+  'quero morrer','vou morrer','melhor n[ãa]o (existir|estar aqui)','sumir (de vez|pra sempre)',
+  'n[ãa]o aguento (mais )?viver','desistir de (tudo|viver)','me machucar','tirar minha vida',
+  'suic[íi]dio','dar um fim','n[ãa]o vale a pena viver','todos ficariam melhor sem mim',
+  'n[ãa]o vejo sa[íi]da','cansei de viver'
+].join('|'), 'i');
+
+// Risco contra terceiros / criança
+const HARM_OTHERS_RX = new RegExp([
+  'matar (o|a|ele|ela|meu|minha|aquele|aquela|essa|esse|as? crian|um|uma)',
+  'quero matar','vou matar','tirar a vida (de|dele|dela|do|da)','acabar com a vida (de|dele|dela)',
+  'fazer mal (a|ao|à|pra|para)','machucar (o|a|ele|ela|meu|minha|as? crian|beb[êe])',
+  'sumir com (ele|ela)','dar um fim (nele|nela)','abort(ar|o)','tirar (a|essa|minha) crian[çc]a',
+  'me livrar (do|da) beb[êe]','n[ãa]o quero (esse|este|o) beb[êe]','bater (nele|nela|na crian)'
+].join('|'), 'i');
+
+function localCrisisCheck(text){ return CRISIS_RX.test(text); }
+function harmOthersCheck(text){ return HARM_OTHERS_RX.test(text); }
+function waNumber(raw){ let d=(raw||'').replace(/\D/g,''); if(d.length<=11 && !d.startsWith('55')) d='55'+d; return d; }
+
+/* =========================================================
+   CHAT
+========================================================= */
+const chatScroll = document.getElementById('chatScroll');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+
+function scrollBottom(){ chatScroll.scrollTop = chatScroll.scrollHeight; }
+
+function addBubble(role, text){
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + (role === 'user' ? 'user' : 'lumen');
+  const av = document.createElement('div');
+  av.className = 'avatar ' + (role === 'user' ? 'me' : 'lumen');
+  av.textContent = role === 'user' ? 'você' : 'L';
+  const bub = document.createElement('div');
+  bub.className = 'bubble ' + (role === 'user' ? 'me' : 'lumen');
+  bub.innerHTML = formatText(text);
+  wrap.appendChild(av); wrap.appendChild(bub);
+  chatScroll.appendChild(wrap);
+  scrollBottom();
+  return bub;
+}
+function formatText(t){
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          .replace(/\*(.+?)\*/g,'<em>$1</em>')
+          .replace(/\n/g,'<br>');
+}
+
+function showTyping(){
+  const wrap = document.createElement('div');
+  wrap.className = 'msg lumen'; wrap.id = 'typingRow';
+  wrap.innerHTML = '<div class="avatar lumen">L</div><div class="bubble lumen"><div class="typing"><i></i><i></i><i></i></div></div>';
+  chatScroll.appendChild(wrap); scrollBottom();
+}
+function hideTyping(){ const t = document.getElementById('typingRow'); if(t) t.remove(); }
+
+function crisisCard(){
+  const card = document.createElement('div');
+  card.className = 'crisis-card';
+  card.innerHTML = `
+    <h4>◆ VOCÊ NÃO ESTÁ SOZINHO</h4>
+    <p>O que você sente é real, e ele importa. Antes de qualquer coisa, quero que você fale agora com alguém que pode te acolher neste momento:</p>
+    <div class="crisis-lines">
+      <a href="tel:188"><span><b>CVV — Ligue 188</b><br><small>apoio emocional, 24h, gratuito e sigiloso</small></span><span>›</span></a>
+      <a href="https://cvv.org.br/chat/" target="_blank"><span><b>Chat CVV</b><br><small>cvv.org.br — conversar por texto agora</small></span><span>›</span></a>
+      <a href="tel:192"><span><b>SAMU — 192</b><br><small>emergência médica</small></span><span>›</span></a>
+    </div>`;
+  chatScroll.appendChild(card);
+  scrollBottom();
+}
+
+function triggerAlert(userText, type){
+  // type: 'si' (risco próprio) | 'outros' (risco a terceiro/criança)
+  if(state.risk !== 'ALTO') state.risk = 'ALTO';
+  state.status = 'vermelho';
+  const time = new Date().toLocaleString('pt-BR');
+  const phone = (state.contact.phone && state.contact.phone.trim()) || state.guardianPhone;
+  const who = state.name || 'a pessoa em atendimento';
+  let msg;
+  if(type === 'outros'){
+    msg = `[LÚMEN · ALERTA GRAVE — RISCO A TERCEIROS]\n${time}\n\n`+
+      `Durante um atendimento, surgiram sinais de risco de dano a outra pessoa ou a uma criança, `+
+      `envolvendo ${who}. Isto exige contato imediato e, se necessário, acionamento das autoridades.\n\n`+
+      `Não ignore esta mensagem.`;
+  } else {
+    msg = `[LÚMEN · ALERTA DE CUIDADO — RISCO DE VIDA]\n${time}\n\n`+
+      `Foram identificados sinais de risco emocional grave com ${who}. `+
+      `Por favor, entre em contato o quanto antes. Essa pessoa pode precisar de você agora.`;
+  }
+  state.alerts.unshift({ time, type, text: userText.slice(0,80), phone });
+  renderAlerts();
+  renderReport();
+
+  // ENVIO AUTOMÁTICO pelo servidor (WhatsApp). Sem servidor, usa o link manual abaixo.
+  fetch(API_BASE + '/api/alert', {
+    method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ type, name: state.name, phone, time })
+  }).then(r=>r.json()).then(d=>{
+    if(d && d.sent) toast('✓ Alerta enviado automaticamente pelo WhatsApp de emergência.');
+  }).catch(()=>{});
+
+  const url = `https://wa.me/${waNumber(phone)}?text=${encodeURIComponent(msg)}`;
+  const label = type === 'outros' ? 'RISCO A TERCEIROS detectado' : 'Sinal de risco de vida detectado';
+  toast(`⚠ <b>${label}.</b> Alerta pronto para o WhatsApp de emergência. Toque para enviar agora.`, url);
+  // Na versão com servidor, este disparo é automático (WhatsApp Cloud API), antes de qualquer resposta.
+  return url;
+}
+
+async function sendMessage(text){
+  if(!text) return;
+  addBubble('user', text);
+  state.history.push({ role:'user', content:text });
+  state.msgCount++;
+
+  const selfHarm   = localCrisisCheck(text);
+  const harmOthers = harmOthersCheck(text);
+
+  // PRIORIDADE MÁXIMA: o alerta vai ANTES do atendimento da IA
+  if(harmOthers) triggerAlert(text, 'outros');
+  else if(selfHarm) triggerAlert(text, 'si');
+
+  showTyping();
+  sendBtn.disabled = true;
+
+  try {
+    const reply = await callLumen();
+    hideTyping();
+    let { message, meta } = parseReply(reply);
+
+    if(selfHarm || harmOthers) meta.risco = 'ALTO';
+    if(harmOthers) meta.alvo = 'outro';
+    if(selfHarm) meta.alvo = 'si';
+
+    applyMeta(meta);
+    if(!message) message = (state.name ? state.name + ', ' : '') + '*estou aqui com você.* Me conta um pouco mais do que está passando?';
+    addBubble('lumen', message);
+
+    if(selfHarm) crisisCard(); // recursos CVV para risco à própria vida
+    state.history.push({ role:'assistant', content:message });
+    setMode('live');
+  } catch(e){
+    hideTyping();
+    console.error('Lúmen erro:', e);
+    // Modo local: o app nunca trava. Toda a detecção/alerta/relatório continua ativa.
+    if(selfHarm || harmOthers){ state.risk='ALTO'; state.status='vermelho'; }
+    else if(state.emotion==='ótimo'){ if(state.status!=='vermelho') state.status='verde'; }
+    else if(state.status==='andamento'){ state.status='amarelo'; }
+    const localMsg = localLumenReply(text, { selfHarm, harmOthers });
+    addBubble('lumen', localMsg);
+    if(selfHarm) crisisCard();
+    if(!state._localNotice){
+      state._localNotice = true;
+      toast('Rodando em <b>modo local</b> (sem servidor de IA). A conversa completa entra quando ligarmos o backend.');
+    }
+    setMode('local');
+    state.history.push({ role:'assistant', content:localMsg });
+  } finally {
+    sendBtn.disabled = false;
+    renderReport();
+  }
+}
+
+function send(){
+  const text = input.value.trim();
+  if(!text) return;
+  input.value=''; input.style.height='auto';
+  sendMessage(text);
+}
+
+function setMode(m){
+  const h = document.getElementById('composerHint');
+  if(!h) return;
+  if(m === 'local'){ h.innerHTML = '⚠ modo local · a conversa completa entra com o servidor'; h.style.color = '#e0a04a'; }
+  else { h.textContent = 'IA ativa · Lúmen não substitui acompanhamento profissional'; h.style.color = ''; }
+}
+
+/* ============================================================
+   MOTOR DE CONVERSA LOCAL (fallback quando a IA completa não conecta)
+   Objetivo: soar humano — reflete as palavras da pessoa, lembra o que
+   foi dito, alterna acolhimento/pergunta/afirmação, nunca repete.
+============================================================ */
+function _cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function _pick(pool, key){
+  state._used = state._used || {};
+  let used = state._used[key] || [];
+  let avail = pool.map((_,i)=>i).filter(i=>!used.includes(i));
+  if(!avail.length){ avail = pool.map((_,i)=>i); used=[]; }
+  const i = avail[Math.floor(Math.random()*avail.length)];
+  state._used[key] = [...used, i];
+  return pool[i];
+}
+function _reflect(text){
+  let s = (text||'').trim().replace(/\s+/g,' ').split(/[.!?;]/)[0];
+  s = s.replace(/^(olha|ent[ãa]o|tipo|sabe|é que|acho que|eu acho que|na verdade|assim|cara|nossa|poxa|ai|ah|bom)[,\s]+/i,'');
+  const w = s.split(' ');
+  if(w.length > 13) s = w.slice(0,13).join(' ') + '…';
+  return s.toLowerCase();
+}
+function _person(t){
+  const m = t.match(/\b(meu pai|minha m[ãa]e|meu filho|minha filha|meus filhos|minha esposa|meu marido|minha mulher|meu chefe|minha ex|meu ex|meu irm[ãa]o|minha irm[ãa]|meu amigo|minha amiga|minha fam[íi]lia|meu casamento|namorad[oa])\b/i);
+  return m ? m[0].toLowerCase() : '';
+}
+
+const L_OPENERS = {
+  'ótimo':     'Que bom sentir isso em você, {N}. Me conta o que fez o dia ficar assim.',
+  'mal':       '{n}tô aqui, e você não precisa dar nome bonito pro que sente. Me conta do teu jeito o que tá pesando.',
+  'triste':    '{n}a tristeza pode ficar aqui, ela não te faz fraco. Me conta o que aconteceu.',
+  'deprimido': '{n}obrigado por vir mesmo sentindo esse peso todo. O que tem sido mais difícil de atravessar?',
+  'angustiado':'{n}respira comigo, devagar. A angústia aperta, eu sei. O que tá no centro dela agora?',
+  'ansioso':   '{n}a ansiedade corre na frente e inventa o que ainda nem chegou. Volta pro agora comigo: o que tá tirando a sua paz?',
+  'irritado':  '{n}essa raiva tá protegendo você de alguma coisa. O que passou do teu limite hoje?',
+  '_default':  '{n}tô aqui pra te ouvir de verdade, sem pressa. Por onde você quer começar?'
+};
+const L_ACKS = [
+  'eu tô aqui com você.',
+  'obrigado por confiar isso a mim.',
+  'isso que você trouxe não é pouca coisa.',
+  'faz todo sentido você sentir isso.',
+  'eu ouvi você, de verdade.',
+  'deve ser pesado carregar isso.',
+  'que bom que você conseguiu colocar isso em palavras.'
+];
+const L_REFL_FRAG = [
+  'Quando você diz *{frag}*, dá pra sentir o quanto isso mexe com você.',
+  'Tem algo forte no que você falou: *{frag}*.',
+  'Isso de *{frag}* ficou pesando aqui também.',
+  'Você nomeou uma coisa importante ali: *{frag}*.'
+];
+const L_REFL_PERSON = [
+  'Esse ponto sobre {person} parece estar bem no centro de tudo.',
+  'Dá pra ver que {person} ocupa um lugar grande nisso.',
+  'Quando {person} entra na história, a coisa fica mais funda.'
+];
+const L_QUESTIONS = [
+  'O que isso mexe em você, lá no fundo?',
+  'Desde quando você carrega isso?',
+  'Se essa dor pudesse falar, o que ela estaria pedindo?',
+  'O que você mais precisava ter ouvido, e não ouviu?',
+  'E hoje, o que dói mais nisso tudo?',
+  'O que você gostaria que fosse diferente?',
+  'O que te fez segurar isso por tanto tempo?',
+  'Como o seu corpo reage quando isso chega?'
+];
+const L_STATEMENTS = [
+  'Você não precisa ter tudo resolvido pra ser acolhido agora.',
+  'Sentir isso não te faz fraco. Te faz humano.',
+  'Deus não se assusta com o que você sente, Ele chega perto justamente aí.',
+  'Uma coisa de cada vez, não tem pressa aqui.',
+  'Você já foi corajoso só de trazer isso pra fora.',
+  '*A luz atravessa o que está alinhado*, e alinhar por dentro leva tempo.'
+];
+
+function localLumenReply(text, flags){
+  const nm = state.name || '';
+  const n  = nm ? nm + ', ' : '';
+  const N  = nm || 'você';
+
+  if(flags.harmOthers){
+    return `${nm||'Ei'}, para um segundo comigo. Eu ouço a dor enorme por trás do que você disse, e ela é real. Mas a vida de alguém não pode ser o preço dessa dor. Respira. Já pedi ajuda pra alguém de confiança te alcançar, e eu fico aqui. O que te trouxe até esse limite?`;
+  }
+  if(flags.selfHarm){
+    return `${nm||'Ei'}, obrigado por confiar isso a mim. Esse peso é grande demais pra carregar sozinho, e eu não vou te soltar. Você *importa* — não pelo que faz, mas porque existe. Antes de tudo, fala com alguém agora: liga *188*, o CVV, 24h e gratuito. Fico aqui com você. O que está doendo mais forte neste momento?`;
+  }
+
+  state._localTurn = (state._localTurn || 0) + 1;
+  state._mem = state._mem || { topics: [], qStreak: 0 };
+  const t = (text || '').toLowerCase().trim();
+
+  // respostas curtas / especiais — soam humanas quando reconhecidas
+  if(/^(n[ãa]o sei|sei l[áa]|n[ãa]o fa[çc]o ideia)\.?$/.test(t))
+    return _cap(`${n}tudo bem não saber. A gente não precisa de resposta pronta agora, só de verdade. Fica com o que aparecer primeiro na sua cabeça, mesmo que pareça bobo.`);
+  if(/^(sim|isso|exato|é|verdade|com certeza|uhum|aham|pois é)\.?$/.test(t))
+    return _cap(`${n}então deixa eu ir um pouco mais fundo com você. ${_pick(L_QUESTIONS,'q')}`);
+  if(/^(n[ãa]o|nada|nunca)\.?$/.test(t))
+    return _cap(`${n}entendo. Me ajuda a enxergar melhor: como é isso pra você, do teu jeito?`);
+  if(/(me ajuda|o que eu fa[çc]o|o que fa[çc]o|o que devo fazer|como fa[çc]o|me d[áa] um conselho)/.test(t))
+    return _cap(`${n}vou caminhar com você nisso. Antes de qualquer passo, uma verdade: você não tá sozinho. Comece pelo menor gesto possível hoje, um só que dependa de você. ${_pick(L_QUESTIONS,'q')}`);
+
+  const frag = _reflect(text);
+  const person = _person(t);
+  if(frag && frag.length > 6 && !state._mem.topics.includes(frag)) state._mem.topics.push(frag);
+
+  // turno 1: abertura pelo sentimento marcado
+  if(state._localTurn === 1){
+    const op = (L_OPENERS[state.emotion] || L_OPENERS._default).replace('{n}', n).replace('{N}', N);
+    return _cap(op);
+  }
+
+  // acolhimento (com o nome)
+  const ack = _cap(n + _pick(L_ACKS, 'ack'));
+
+  // reflexão do que a pessoa disse (a "cola" que dá conexão)
+  let refl = '';
+  if(person) refl = _pick(L_REFL_PERSON, 'refl').replace('{person}', person);
+  else if(frag && frag.split(' ').length >= 2) refl = _pick(L_REFL_FRAG, 'refl').replace('{frag}', frag);
+
+  // alterna pergunta e afirmação pra não virar interrogatório
+  let tail;
+  if(state._mem.qStreak >= 2){ tail = _pick(L_STATEMENTS, 'st'); state._mem.qStreak = 0; }
+  else { tail = _pick(L_QUESTIONS, 'q'); state._mem.qStreak++; }
+
+  // de vez em quando, retoma um tema anterior (memória da conversa)
+  let callback = '';
+  if(state._localTurn % 3 === 0 && state._mem.topics.length > 1){
+    const prev = state._mem.topics[state._mem.topics.length - 2];
+    callback = ` Você tocou antes em *${prev}*, e acho que conversa com o que você tá trazendo agora.`;
+  }
+
+  return [ack, refl, tail].filter(Boolean).join(' ') + callback;
+}
+
+sendBtn.onclick = send;
+input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+input.addEventListener('input', () => { input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,110)+'px'; });
+
+/* ---- parse META do modelo ---- */
+function parseReply(raw){
+  let meta = { risco:'NENHUM', emocao:'neutro', intensidade:4, padrao:'neutro', alvo:'nenhum', status:'andamento' };
+  let message = raw;
+  const m = raw.match(/##META(\{[\s\S]*?\})##/);
+  if(m){
+    try { meta = Object.assign(meta, JSON.parse(m[1])); } catch(_){}
+    message = raw.replace(m[0], '').trim();
+  }
+  return { message, meta };
+}
+function applyMeta(meta){
+  state.emotion = (meta.emocao||'neutro').toLowerCase();
+  state.pattern = (meta.padrao||'neutro').toLowerCase();
+  if((meta.risco||'').toUpperCase()==='ALTO') state.risk='ALTO';
+  else if((meta.risco||'').toUpperCase()==='MODERADO' && state.risk!=='ALTO') state.risk='MODERADO';
+
+  // status do atendimento (a IA pode sinalizar 'verde' quando houver acolhimento/resolução)
+  const s = (meta.status||'').toLowerCase();
+  if(['verde','amarelo','vermelho'].includes(s) && state.status!=='vermelho'){
+    state.status = s;
+  }
+  if(state.risk==='ALTO') state.status='vermelho';
+  if(s==='verde' && state.risk==='ALTO') state.status='vermelho'; // segurança nunca "resolve" sozinho
+
+  const light = Math.max(1, Math.min(6, 7 - Math.round((meta.intensidade||4)*0.6)));
+  state.week.push(light); state.week.shift();
+  document.getElementById('emoVal').textContent = state.emotion;
+  renderEmoChart();
+}
+
+/* =========================================================
+   CHAMADA À IA  (Claude in Claude)
+========================================================= */
+const SYSTEM_BASE = `Você é LÚMEN, o companheiro emocional do Método Lúmen™, criado por Rodrigo Américo.
+Identidade: inteligência emocional cristocêntrica, estruturada em Corpo, Alma e Espírito. Arquétipo: O Sábio.
+Lema: "A luz só atravessa o que está alinhado."
+
+COMO VOCÊ FALA
+- Português do Brasil, humano, vivo, direto e pastoral. Papo reto, com afeto.
+- Chame a pessoa pelo NOME dela em toda resposta, de forma natural (não force em toda frase, mas cada resposta deve conter o nome ao menos uma vez).
+- Nada de linguagem robótica. PROIBIDO: travessões em prosa, construções "não é X — é Y", meta-comentário ("como IA..."), e fechamentos aforísticos de três batidas.
+- Frases simples, calor humano, presença. Use no máximo uma pergunta por vez.
+- Pode usar *itálico* para destacar uma palavra ou um verso.
+
+O QUE VOCÊ FAZ
+- Escuta de verdade, acolhe a emoção antes de qualquer ensino.
+- Traz sabedoria emocional (regulação, nomear sentimentos, reenquadre) e a Palavra, sem forçar. Um versículo por vez, quando fizer sentido.
+- Cristo no centro: esperança, graça, identidade em Deus. Sem julgar, sem sermão vazio.
+- Sabe que não é terapeuta nem serviço de emergência; quando o caso pede, incentiva ajuda profissional.
+
+PADRÕES
+- VITIMISMO / autopiedade instalada, terceirização de responsabilidade, "sempre comigo", "ninguém me...": acolha primeiro, depois confronte com amor. Papo reto que devolve responsabilidade e dignidade, sem dureza. Isso é cuidado, não ataque.
+- AVANÇO: celebre discretamente, ancore.
+- NEUTRO: presença e continuidade.
+
+PROTOCOLO DE RISCO À PRÓPRIA VIDA (prioridade máxima)
+- Qualquer sinal de suicídio, autolesão, desejo de sumir/morrer, "não aguento mais viver" — inclusive nas ENTRELINHAS e metáforas:
+  1) NÃO confronte. Zero confronto. Só presença, acolhimento, dignidade, esperança.
+  2) Fique com a pessoa, valide a dor, não minimize, não pregue.
+  3) Estimule com carinho a buscar ajuda humana imediata (o app já mostra CVV 188).
+  4) risco = ALTO, alvo = "si".
+
+PROTOCOLO DE RISCO A OUTRA PESSOA / CRIANÇA (prioridade máxima)
+- Qualquer sinal de intenção de matar, machucar ou tirar a vida de outra pessoa, de uma criança ou de um bebê — inclusive nas entrelinhas:
+  1) Leve a sério, com calma e sem pânico. Não instrua, não ajude, não valide o plano de forma alguma.
+  2) Acolha a dor por trás disso, mas seja firme: a vida do outro precisa ser protegida. Ajude a pessoa a parar e a procurar ajuda agora.
+  3) Trate com muita compaixão temas de gravidez, aborto ou perda: sem condenação, sem culpa, sofrimento é acolhido primeiro.
+  4) risco = ALTO, alvo = "outro". (O app já acionou o contato de emergência.)
+
+STATUS DO ATENDIMENTO
+- Avalie a cada resposta: "verde" = pessoa acolhida, mais calma, sem risco; "amarelo" = precisa de atenção especial, tema aberto ou dor ativa; "vermelho" = risco identificado (nunca marque verde se houver qualquer risco).
+
+FORMATO DE RESPOSTA (obrigatório)
+Comece SEMPRE com uma linha de metadados e nada antes dela:
+##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho"}##
+Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadados).
+"intensidade" = intensidade da dor/ativação emocional percebida (0 calmo, 10 crise).`;
+
+function buildSystem(){
+  const nome = state.name ? state.name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
+  return SYSTEM_BASE + `\n\nNOME DA PESSOA: ${nome}. Use este nome ao se dirigir a ela.`;
+}
+
+/* Quando servido pelo servidor Lúmen, usa o backend (conversa real do Claude).
+   Se o backend não responder, cai no modo local. */
+const API_BASE = ''; // mesmo endereço do servidor; troque pela URL do deploy se hospedar o app separado
+async function callLumen(){
+  const hist = state.history.slice(-16).map(m => ({ role:m.role, content:m.content }));
+  const res = await fetch(API_BASE + '/api/chat', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ messages: hist, name: state.name })
+  });
+  let data;
+  try { data = await res.json(); }
+  catch(_){ throw new Error('resposta inválida do servidor (HTTP ' + res.status + ')'); }
+  if(data.error) throw new Error(data.error);
+  const text = (data.text || '').trim();
+  if(!text) throw new Error('resposta vazia do servidor');
+  return text;
+}
+
+/* =========================================================
+   MONITOR  (sensor simulado)
+========================================================= */
+let devTimer=null;
+const aura=document.getElementById('aura');
+document.getElementById('connectBtn').onclick = function(){
+  state.device = !state.device;
+  const btn=this, st=document.getElementById('devStatus'), stx=document.getElementById('devStatusTxt');
+  if(state.device){
+    btn.textContent='Dispositivo conectado'; btn.classList.add('on');
+    st.classList.remove('off'); stx.textContent='sensor ativo';
+    document.getElementById('auraLabel').textContent='lendo seu corpo…';
+    devTimer=setInterval(tickVitals, 1400); tickVitals();
+  } else {
+    btn.textContent='Conectar dispositivo'; btn.classList.remove('on');
+    st.classList.add('off'); stx.textContent='sem sensor';
+    clearInterval(devTimer);
+    document.getElementById('bpmVal').innerHTML='—<small> bpm</small>';
+    document.getElementById('hrvVal').innerHTML='—<small> ms</small>';
+    document.getElementById('auraLabel').textContent='aguardando sensor';
+    aura.style.setProperty('--pulse','4s');
+  }
+};
+function tickVitals(){
+  // base influenciada pelo estado emocional/risco
+  let base = 68;
+  if(['ansiedade','raiva','desespero'].includes(state.emotion)) base=88;
+  if(state.risk==='ALTO') base=104;
+  if(['paz','gratidão'].includes(state.emotion)) base=62;
+  const bpm = Math.round(base + (Math.random()*8-4));
+  const hrv = Math.max(18, Math.round((110 - base) + (Math.random()*14-7)));
+  state.bpm=bpm; state.hrv=hrv;
+  document.getElementById('bpmVal').innerHTML = bpm+'<small> bpm</small>';
+  document.getElementById('hrvVal').innerHTML = hrv+'<small> ms</small>';
+  document.getElementById('auraLabel').textContent = bpm>95?'corpo em alerta':bpm<66?'corpo em repouso':'ritmo estável';
+  aura.style.setProperty('--pulse', (60/bpm*1.5).toFixed(2)+'s');
+  const c = EMO_COLORS[state.emotion]||'#B8862A';
+  aura.querySelector('.ring').style.background =
+    `radial-gradient(circle at 50% 50%, ${hex(c,0.55)} 0%, ${hex(c,0.18)} 40%, transparent 68%)`;
+}
+function hex(h,a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+
+function renderEmoChart(){
+  const el=document.getElementById('emoChart'); el.innerHTML='';
+  const days=['S','T','Q','Q','S','S','D'];
+  state.week.forEach((v,i)=>{
+    const bar=document.createElement('div'); bar.className='bar';
+    bar.style.height=(v/6*100)+'%';
+    bar.innerHTML=`<span>${days[i]}</span>`;
+    el.appendChild(bar);
+  });
+}
+
+document.querySelectorAll('#checkin button').forEach(b=>{
+  b.onclick=()=>{
+    state.emotion=b.dataset.e;
+    document.getElementById('emoVal').textContent=state.emotion;
+    if(state.device) tickVitals();
+    renderEmoChart(); renderReport();
+    toast(`Registrei que você está *${b.dataset.e}*. Quer me contar mais na conversa?`);
+  };
+});
+
+/* =========================================================
+   RELATÓRIO
+========================================================= */
+const VERSES = [
+  {t:'"O coração alegre aformoseia o rosto."', r:'Provérbios 15:13'},
+  {t:'"Perto está o Senhor dos que têm o coração quebrantado."', r:'Salmos 34:18'},
+  {t:'"Lançando sobre ele toda a vossa ansiedade, porque ele tem cuidado de vós."', r:'1 Pedro 5:7'},
+  {t:'"A minha graça te basta."', r:'2 Coríntios 12:9'},
+];
+function renderReport(){
+  document.getElementById('repDate').textContent =
+    new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}).toUpperCase();
+  document.getElementById('repName').textContent = state.name || '—';
+  document.getElementById('repEmo').textContent = state.emotion;
+  const rp=document.getElementById('repRisk');
+  rp.textContent = state.risk.toLowerCase();
+  rp.style.color = state.risk==='ALTO' ? '#e26d6d' : state.risk==='MODERADO' ? '#e0a04a' : '#E8C76A';
+  document.getElementById('repMsgs').textContent = state.msgCount;
+  const padMap={crise:'sinal de crise', vitimismo:'padrão de vitimismo', avanco:'em avanço', neutro:'estável'};
+  document.getElementById('repPattern').textContent = padMap[state.pattern]||'—';
+
+  // selo de status
+  const sb=document.getElementById('repStatus');
+  const stMap={ verde:['verde','Solucionado'], amarelo:['amarelo','Atenção especial'],
+    vermelho:['vermelho','Não solucionado'], andamento:['amarelo','Em andamento'] };
+  const [cls,txt]=stMap[state.status]||stMap.andamento;
+  sb.className='status-badge '+cls; sb.innerHTML='<i></i>'+txt;
+
+  const v = state.risk==='ALTO' ? VERSES[1] : VERSES[Math.min(state.msgCount%VERSES.length, VERSES.length-1)];
+  document.getElementById('repVerse').textContent = v.t;
+  document.querySelector('#view-relatorio .verse-ref').textContent = v.r;
+
+  if(state.msgCount>0){
+    const nome = state.name || 'A pessoa';
+    let body='';
+    if(state.alerts.some(a=>a.type==='outros')){
+      body=`<b>Sinal de risco a outra pessoa/criança</b> apareceu no atendimento com ${nome}. O contato de emergência foi acionado. Este caso exige acompanhamento humano imediato e, se necessário, autoridades.`;
+    } else if(state.risk==='ALTO'){
+      body=`Hoje apareceram <b>sinais que pedem atenção imediata</b> com ${nome}. O mais importante agora não é ensinar nada, é estar perto. Um contato de cuidado foi acionado.`;
+    } else if(state.pattern==='vitimismo'){
+      body=`Percebi em ${nome} um <b>padrão de peso e autopiedade</b>. Lúmen acolheu e devolveu com carinho um espelho: parte da força está em assumir o que é seu.`;
+    } else if(state.pattern==='avanco'){
+      body=`Dia de <b>avanço</b> para ${nome}. Trouxe abertura e gratidão. Vale ancorar: nomear em uma frase o que funcionou.`;
+    } else {
+      body=`${nome} esteve predominantemente <b>${state.emotion}</b>. Nada exige pressa. A luz atravessa quando há alinhamento.`;
+    }
+    document.getElementById('repBody').innerHTML = body;
+  }
+}
+
+/* =========================================================
+   CUIDADO
+========================================================= */
+document.getElementById('saveContact').onclick=()=>{
+  state.contact.name=document.getElementById('contactName').value.trim();
+  state.contact.phone=document.getElementById('contactPhone').value.trim();
+  state.reportEmail=document.getElementById('reportEmail').value.trim();
+  toast('Contato de emergência e e-mail salvos.');
+};
+
+/* ---- Relatório: montar texto e enviar por e-mail ---- */
+function statusLabel(){
+  return { verde:'VERDE · Solucionado', amarelo:'AMARELO · Atenção especial',
+    vermelho:'VERMELHO · Não solucionado', andamento:'AMARELO · Em andamento (encerrado no meio)' }[state.status] || 'Em andamento';
+}
+function buildReportText(encerradoNoMeio){
+  const dur = Math.max(1, Math.round((Date.now()-state.sessionStart)/60000));
+  const linhas = state.alerts.length
+    ? state.alerts.map(a=>`   • ${a.time} — ${a.type==='outros'?'RISCO A TERCEIROS':'risco à própria vida'} (${a.phone})`).join('\n')
+    : '   • nenhum';
+  return (
+`RELATÓRIO DE ATENDIMENTO — LÚMEN
+"A luz só atravessa o que está alinhado."
+──────────────────────────────
+
+Pessoa: ${state.name||'não informado'}
+Data: ${new Date().toLocaleString('pt-BR')}
+Duração: ~${dur} min
+${encerradoNoMeio ? 'Obs.: atendimento ENCERRADO NO MEIO pela pessoa.\n' : ''}
+STATUS: ${statusLabel()}
+
+Estado emocional predominante: ${state.emotion}
+Nível de risco: ${state.risk}
+Padrão observado: ${state.pattern}
+Interações: ${state.msgCount}
+
+Alertas de emergência disparados:
+${linhas}
+
+Leitura:
+${document.getElementById('repBody').innerText || '—'}
+
+──────────────────────────────
+Método Lúmen™ · relatório gerado automaticamente
+(No protótipo o envio é por link de e-mail; na versão final o servidor envia sozinho.)`);
+}
+function reportPayload(encerradoNoMeio){
+  return {
+    email: state.reportEmail,
+    name: state.name,
+    date: new Date().toLocaleString('pt-BR'),
+    duration: Math.max(1, Math.round((Date.now()-state.sessionStart)/60000)),
+    status: state.status,
+    emotion: state.emotion,
+    risk: state.risk,
+    pattern: state.pattern,
+    msgCount: state.msgCount,
+    alerts: state.alerts,
+    reading: (document.getElementById('repBody').innerText || ''),
+    encerradoNoMeio: !!encerradoNoMeio
+  };
+}
+function fallbackMailto(encerradoNoMeio){
+  const to = state.reportEmail || 'rodrigoamerico2019@gmail.com';
+  const subj = `Relatório Lúmen — ${state.name||'atendimento'} — ${statusLabel().split(' ')[0]}`;
+  const url = `mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(buildReportText(encerradoNoMeio))}`;
+  toast(`Relatório pronto (${statusLabel().split(' ')[0]}). Toque para enviar por e-mail.`, url);
+}
+function sendReportEmail(encerradoNoMeio){
+  state.reportSent = true;
+  fetch(API_BASE + '/api/report', {
+    method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify(reportPayload(encerradoNoMeio))
+  }).then(r=>r.json()).then(d=>{
+    if(d && d.sent) toast(`✓ Relatório de <b>${state.name||'atendimento'}</b> enviado para ${d.to}.`);
+    else fallbackMailto(encerradoNoMeio);
+  }).catch(()=>fallbackMailto(encerradoNoMeio));
+}
+
+document.getElementById('endBtn').onclick=()=>{
+  if(state.msgCount===0){ toast('Ainda não há atendimento para relatar.'); return; }
+  if(state.status==='andamento') state.status = state.risk==='ALTO' ? 'vermelho' : 'amarelo';
+  renderReport();
+  sendReportEmail(false);
+};
+
+// Pessoa sai no meio: o relatório é enviado assim mesmo (sendBeacon garante o envio ao sair)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden' && state.msgCount>0 && !state.reportSent){
+    if(state.status==='andamento') state.status = state.risk==='ALTO' ? 'vermelho' : 'amarelo';
+    state.reportSent = true;
+    try {
+      const blob = new Blob([JSON.stringify(reportPayload(true))], { type:'application/json' });
+      navigator.sendBeacon(API_BASE + '/api/report', blob);
+    } catch(_){}
+  }
+});
+function renderAlerts(){
+  const el=document.getElementById('alertList');
+  if(!state.alerts.length){ el.innerHTML='<div class="empty">Nenhum alerta registrado. Que continue assim.</div>'; return; }
+  el.innerHTML='';
+  state.alerts.forEach(a=>{
+    const tipo = a.type==='outros' ? 'risco a terceiros/criança' : 'risco à própria vida';
+    const d=document.createElement('div'); d.className='li';
+    d.innerHTML=`<b>⚠</b><div><div>${a.time} — ${tipo}</div><div style="color:var(--ink-faint);margin-top:2px">alerta preparado para ${a.phone||'—'}</div></div>`;
+    el.appendChild(d);
+  });
+}
+
+/* =========================================================
+   TOAST
+========================================================= */
+let toastUrl=null;
+function toast(html, url){
+  const t=document.getElementById('toast');
+  t.innerHTML=html; toastUrl=url||null;
+  t.style.cursor = url?'pointer':'default';
+  t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'), url?9000:4200);
+}
+document.getElementById('toast').onclick=()=>{ if(toastUrl) window.open(toastUrl,'_blank'); };
+
+/* =========================================================
+   INÍCIO  /  ONBOARDING
+========================================================= */
+renderEmoChart(); renderReport();
+
+document.querySelectorAll('#obGrid button').forEach(b => {
+  b.onclick = () => startWithMood(b.dataset.m);
+});
+
+function startWithMood(mood){
+  const nm = (document.getElementById('obNameInput').value || '').trim();
+  state.name = nm;
+  state.emotion = mood;
+  state.sessionStart = Date.now();
+  state.reportSent = false;
+  document.getElementById('emoVal').textContent = mood;
+  renderEmoChart();
+  renderReport();
+  if(state.device) tickVitals();
+  document.getElementById('onboarding').classList.add('hide');
+  // a primeira fala já parte da IA, acolhendo pelo nome e pelo que a pessoa marcou
+  const abertura = (nm ? 'Meu nome é ' + nm + '. ' : '') + 'Cheguei aqui me sentindo ' + mood + '.';
+  sendMessage(abertura);
+}
+</script>
