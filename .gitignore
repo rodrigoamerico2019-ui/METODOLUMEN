@@ -11,3 +11,6 @@ node_modules/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# Material bruto (obras/livros) — fica local, nao vai pro GitHub
+material/
