@@ -11,6 +11,19 @@ import cors from 'cors';
 import nodemailer from 'nodemailer';
 import rateLimit from 'express-rate-limit';
 import basicAuth from 'express-basic-auth';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+// --- Base de conhecimento do Método Lúmen (destilada das obras do Rodrigo) ---
+// Carregada uma vez na subida e injetada no sistema com prompt caching (barato por conversa).
+const __dir = dirname(fileURLToPath(import.meta.url));
+let KNOWLEDGE = '';
+try {
+  KNOWLEDGE = readFileSync(join(__dir, 'knowledge', 'base-lumen.md'), 'utf8').trim();
+} catch {
+  console.warn('  Aviso: knowledge/base-lumen.md não encontrado — Lúmen roda sem a base do Método.');
+}
 
 const app = express();
 // atrás do proxy da hospedagem (Render/Railway) — necessário p/ o rate limit ver o IP real
@@ -99,9 +112,17 @@ Comece SEMPRE com uma linha de metadados e nada antes dela:
 ##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho"}##
 Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadados).`;
 
+// Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
+// com cache_control para o prompt caching baratear cada conversa. Só o nome muda por pessoa.
 function buildSystem(name) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
-  return SYSTEM_BASE + `\n\nNOME DA PESSOA: ${nome}. Use este nome ao se dirigir a ela.`;
+  const conhecimento = KNOWLEDGE
+    ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
+    : '';
+  return [
+    { type: 'text', text: SYSTEM_BASE + conhecimento, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `NOME DA PESSOA: ${nome}. Use este nome ao se dirigir a ela.` }
+  ];
 }
 
 // ---------------------------------------------------------
