@@ -231,6 +231,33 @@
     background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease; }
   .onboarding.hide { display:none; }
+
+  /* porta de entrada (login/cadastro) */
+  .authgate { position:absolute; inset:0; z-index:120; text-align:center;
+    background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease;
+    overflow-y:auto; }
+  .authgate.hide { display:none; }
+  .ag-tabs { display:flex; gap:8px; margin:10px 0 18px; }
+  .ag-tabs button { background:transparent; border:1px solid var(--line); color:var(--ink-dim);
+    font-family:'Montserrat'; font-size:13px; letter-spacing:1px; padding:9px 22px; border-radius:999px; cursor:pointer; }
+  .ag-tabs button.on { background:var(--gold-grad); color:#100d08; border-color:transparent; font-weight:600; }
+  .ag-form { width:100%; max-width:340px; display:flex; flex-direction:column; gap:10px; }
+  .ag-form.hide { display:none; }
+  .ag-form input[type=text], .ag-form input[type=email], .ag-form input[type=password] {
+    width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
+    font-family:'Montserrat'; font-size:14px; padding:13px 15px; }
+  .ag-form input:focus { outline:none; border-color:var(--gold-soft); }
+  .ag-form input::placeholder { color:var(--ink-faint); font-style:italic; }
+  .ag-consent { display:flex; gap:9px; align-items:flex-start; text-align:left; font-size:11px;
+    color:var(--ink-dim); line-height:1.5; padding:2px 2px; }
+  .ag-consent input { margin-top:2px; accent-color:#d4a94a; }
+  .ag-btn { width:100%; background:var(--gold-grad); color:#100d08; border:none; border-radius:12px;
+    padding:13px; font-family:'Montserrat'; font-weight:600; font-size:13px; letter-spacing:1px; cursor:pointer; margin-top:2px; }
+  .ag-btn:disabled { opacity:.6; cursor:wait; }
+  .ag-err { margin-top:14px; max-width:340px; font-size:12.5px; color:#e0a04a; line-height:1.5; }
+  .ag-err.hide { display:none; }
+  .ag-foot { margin-top:22px; font-size:10.5px; letter-spacing:.6px; color:var(--ink-faint); }
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
@@ -272,6 +299,34 @@
 </style>
 
 <div class="app">
+
+  <!-- ============ PORTA DE ENTRADA / LOGIN (restrito a pacientes e mentorados) ============ -->
+  <div class="authgate hide" id="authgate">
+    <img class="ob-logo" src="logo.png" alt="Método Lúmen" />
+    <div class="ag-tabs">
+      <button id="agTabLogin" class="on">Entrar</button>
+      <button id="agTabReg">Criar conta</button>
+    </div>
+
+    <form class="ag-form" id="agLoginForm" autocomplete="on">
+      <input type="email" id="agLoginEmail" placeholder="Seu e-mail" autocomplete="email" required />
+      <input type="password" id="agLoginPass" placeholder="Sua senha" autocomplete="current-password" required />
+      <button type="submit" class="ag-btn" id="agLoginBtn">Entrar</button>
+    </form>
+
+    <form class="ag-form hide" id="agRegForm" autocomplete="on">
+      <input type="text" id="agRegName" placeholder="Seu nome" autocomplete="name" required />
+      <input type="email" id="agRegEmail" placeholder="Seu e-mail" autocomplete="email" required />
+      <input type="password" id="agRegPass" placeholder="Crie uma senha (mín. 6)" autocomplete="new-password" required />
+      <input type="text" id="agRegInvite" placeholder="Código de convite (ex.: LUMEN-XXXXXX)" style="text-transform:uppercase" required />
+      <label class="ag-consent"><input type="checkbox" id="agRegConsent" />
+        Aceito que minhas conversas fiquem guardadas com segurança para o meu acompanhamento no Método Lúmen. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
+      <button type="submit" class="ag-btn" id="agRegBtn">Criar minha conta</button>
+    </form>
+
+    <div class="ag-err hide" id="agErr"></div>
+    <div class="ag-foot">Acesso exclusivo para pacientes e mentorados do Método Lúmen™</div>
+  </div>
 
   <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
   <div class="onboarding" id="onboarding">
@@ -896,13 +951,28 @@ function buildSystem(){
 /* Quando servido pelo servidor Lúmen, usa o backend (conversa real do Claude).
    Se o backend não responder, cai no modo local. */
 const API_BASE = ''; // mesmo endereço do servidor; troque pela URL do deploy se hospedar o app separado
+
+/* --- sessão do paciente (token JWT guardado no aparelho) --- */
+const AUTH = {
+  get token(){ return localStorage.getItem('lumen_token') || ''; },
+  set token(v){ v ? localStorage.setItem('lumen_token', v) : localStorage.removeItem('lumen_token'); },
+  get name(){ return localStorage.getItem('lumen_name') || ''; },
+  set name(v){ v ? localStorage.setItem('lumen_name', v) : localStorage.removeItem('lumen_name'); }
+};
+function authHeaders(){
+  const h = { 'Content-Type':'application/json' };
+  if(AUTH.token) h['Authorization'] = 'Bearer ' + AUTH.token;
+  return h;
+}
+
 async function callLumen(){
   const hist = state.history.slice(-16).map(m => ({ role:m.role, content:m.content }));
   const res = await fetch(API_BASE + '/api/chat', {
     method:'POST',
-    headers:{ 'Content-Type':'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ messages: hist, name: state.name })
   });
+  if(res.status === 401){ showAuthGate(); throw new Error('login necessário'); }
   let data;
   try { data = await res.json(); }
   catch(_){ throw new Error('resposta inválida do servidor (HTTP ' + res.status + ')'); }
@@ -1148,9 +1218,80 @@ function toast(html, url){
 document.getElementById('toast').onclick=()=>{ if(toastUrl) window.open(toastUrl,'_blank'); };
 
 /* =========================================================
-   INÍCIO  /  ONBOARDING
+   PORTA DE ENTRADA (login/cadastro) + INÍCIO / ONBOARDING
 ========================================================= */
 renderEmoChart(); renderReport();
+
+const agEl = document.getElementById('authgate');
+function showAuthGate(){ agEl.classList.remove('hide'); }
+function hideAuthGate(){ agEl.classList.add('hide'); }
+function agError(msg){ const e=document.getElementById('agErr'); e.textContent=msg||''; e.classList.toggle('hide', !msg); }
+
+document.getElementById('agTabLogin').onclick = () => {
+  document.getElementById('agTabLogin').classList.add('on'); document.getElementById('agTabReg').classList.remove('on');
+  document.getElementById('agLoginForm').classList.remove('hide'); document.getElementById('agRegForm').classList.add('hide'); agError('');
+};
+document.getElementById('agTabReg').onclick = () => {
+  document.getElementById('agTabReg').classList.add('on'); document.getElementById('agTabLogin').classList.remove('on');
+  document.getElementById('agRegForm').classList.remove('hide'); document.getElementById('agLoginForm').classList.add('hide'); agError('');
+};
+
+async function agSubmit(url, body, btn){
+  agError(''); btn.disabled = true;
+  try {
+    const res = await fetch(API_BASE + url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json().catch(()=>({ error:'Falha de conexão. Tente de novo.' }));
+    if(data.error) throw new Error(data.error);
+    AUTH.token = data.token; AUTH.name = data.name || '';
+    hideAuthGate(); afterLogin();
+  } catch(e){ agError(e.message || 'Não foi possível entrar.'); }
+  finally { btn.disabled = false; }
+}
+document.getElementById('agLoginForm').onsubmit = ev => { ev.preventDefault();
+  agSubmit('/api/auth/login', {
+    email: document.getElementById('agLoginEmail').value,
+    password: document.getElementById('agLoginPass').value
+  }, document.getElementById('agLoginBtn'));
+};
+document.getElementById('agRegForm').onsubmit = ev => { ev.preventDefault();
+  agSubmit('/api/auth/register', {
+    name: document.getElementById('agRegName').value,
+    email: document.getElementById('agRegEmail').value,
+    password: document.getElementById('agRegPass').value,
+    invite: document.getElementById('agRegInvite').value,
+    consent: document.getElementById('agRegConsent').checked
+  }, document.getElementById('agRegBtn'));
+};
+
+/* depois de logado: nome vem da conta + retoma o histórico salvo */
+function afterLogin(){
+  if(AUTH.name){
+    state.name = AUTH.name;
+    const inp = document.getElementById('obNameInput');
+    inp.value = AUTH.name; inp.readOnly = true; inp.style.opacity = .8;
+  }
+  fetch(API_BASE + '/api/auth/history', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : { history: [] })
+    .then(d => {
+      const h = (d.history || []);
+      if(h.length){
+        // a Lúmen lembra a conversa anterior (o histórico alimenta a IA)
+        state.history = h.map(m => ({ role: m.role, content: m.content }));
+      }
+    }).catch(()=>{});
+}
+
+/* na abertura: se o servidor tem contas, exige login; senão segue como antes */
+(async function boot(){
+  try {
+    const h = await fetch(API_BASE + '/api/health').then(r=>r.json());
+    if(!h.contas) return;               // sem banco: modo aberto (desenvolvimento)
+    if(!AUTH.token) return showAuthGate();
+    const me = await fetch(API_BASE + '/api/auth/me', { headers: authHeaders() }).then(r=>r.json()).catch(()=>({}));
+    if(me && me.ok){ AUTH.name = me.name || AUTH.name; afterLogin(); }
+    else { AUTH.token=''; showAuthGate(); }
+  } catch(_){ /* servidor fora: app segue no modo local */ }
+})();
 
 document.querySelectorAll('#obGrid button').forEach(b => {
   b.onclick = () => startWithMood(b.dataset.m);

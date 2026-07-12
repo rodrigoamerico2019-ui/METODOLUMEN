@@ -14,6 +14,7 @@ import basicAuth from 'express-basic-auth';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers } from './db.js';
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -44,19 +45,66 @@ app.get('/api/health', (req, res) => res.json({
   ok: true,
   ia: !!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.startsWith('coloque'),
   whatsapp: (process.env.WHATSAPP_PROVIDER || 'none'),
-  email: !!process.env.SMTP_HOST
+  email: !!process.env.SMTP_HOST,
+  contas: dbReady
 }));
 
-// --- Trava da BETA (senha de acesso) ---
-// Se BETA_USER e BETA_PASS estiverem no .env, o navegador pede login antes de abrir o app.
-// Compartilhe usuário/senha só com quem vai testar. Sem essas variáveis, o app fica aberto.
-if (process.env.BETA_USER && process.env.BETA_PASS) {
+// ---------------------------------------------------------
+//  CONTAS — cadastro (com código de convite), login e sessão
+//  Ficam ANTES da trava BETA para o app conseguir logar.
+// ---------------------------------------------------------
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Muitas tentativas. Aguarde alguns minutos.' } });
+
+app.post('/api/auth/register', authLimiter, async (req, res) => {
+  try { res.json(await register(req.body || {})); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  try { res.json(await login(req.body || {})); }
+  catch (e) { res.status(401).json({ error: String(e.message || e) }); }
+});
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ ok: true, name: req.user?.name || '', role: req.user?.role || 'paciente' });
+});
+// histórico recente do próprio paciente (para retomar a conversa entre sessões)
+app.get('/api/auth/history', requireAuth, async (req, res) => {
+  try { res.json({ history: await recentHistory(req.user?.uid, 30) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  MENTOR — gerar convites e ver pacientes (protegido por ADMIN_KEY)
+//  Uso pelo navegador: /api/admin/invite?key=SUA_ADMIN_KEY&note=Maria&uses=1
+// ---------------------------------------------------------
+function requireAdmin(req, res, next) {
+  if (process.env.ADMIN_KEY && req.query.key === process.env.ADMIN_KEY) return next();
+  res.status(403).json({ error: 'chave de administrador inválida' });
+}
+app.get('/api/admin/invite', requireAdmin, async (req, res) => {
+  try {
+    const code = await createInvite(req.query.note || '', Math.max(1, Number(req.query.uses || 1)));
+    res.json({ ok: true, code, note: req.query.note || '', usos: Number(req.query.uses || 1) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try { res.json({ pacientes: await listUsers() }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// --- Trava da BETA (senha única) ---
+// Só vale enquanto NÃO há banco de contas. Com contas ativas (dbReady), a proteção
+// passa a ser o login individual por paciente — e a trava única sai de cena
+// (os dois usam o mesmo cabeçalho Authorization e conflitariam).
+if (!dbReady && process.env.BETA_USER && process.env.BETA_PASS) {
   app.use(basicAuth({
     users: { [process.env.BETA_USER]: process.env.BETA_PASS },
     challenge: true,
     realm: 'Lumen BETA'
   }));
-  console.log('  Trava da BETA: ATIVA (login exigido)');
+  console.log('  Trava da BETA: ATIVA (senha única — sem banco de contas)');
+} else if (dbReady) {
+  console.log('  Proteção: login individual por paciente (trava BETA dispensada)');
 }
 
 app.use(express.static('public'));
@@ -142,12 +190,21 @@ function buildSystem(name) {
 // ---------------------------------------------------------
 //  /api/chat  — conversa com o Claude
 // ---------------------------------------------------------
-app.post('/api/chat', chatLimiter, async (req, res) => {
+// extrai o ##META{...}## da resposta para gravar no histórico do paciente
+function parseMeta(text) {
+  const m = String(text || '').match(/##META(\{[\s\S]*?\})##/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch { return null; }
+}
+
+app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
   try {
     const { messages = [], name = '' } = req.body || {};
     if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('coloque')) {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY não configurada no .env' });
     }
+    // com login, o nome oficial vem da conta (não do que o front mandar)
+    const nome = (req.user && req.user.name) || name;
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -158,13 +215,22 @@ app.post('/api/chat', chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(name),
+        system: buildSystem(nome),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });
     const data = await r.json();
     if (data.error) return res.status(502).json({ error: data.error.message || 'erro da API' });
     const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+
+    // grava a troca no histórico do paciente (última msg do usuário + resposta com META)
+    const uid = req.user && req.user.uid;
+    if (uid) {
+      const lastUser = [...messages].reverse().find(m => m.role === 'user');
+      if (lastUser) saveMessage(uid, 'user', String(lastUser.content || ''), null).catch(e => console.error('save user:', e.message));
+      saveMessage(uid, 'assistant', text, parseMeta(text)).catch(e => console.error('save assistant:', e.message));
+    }
+
     res.json({ text });
   } catch (e) {
     console.error('chat:', e);
@@ -315,8 +381,11 @@ app.get('/api/health', (req, res) => res.json({
   email: !!process.env.SMTP_HOST
 }));
 
+initDb().catch(e => console.error('  Banco: falha ao iniciar —', e.message));
+
 app.listen(PORT, () => {
   console.log(`\n  LÚMEN no ar em http://localhost:${PORT}`);
   console.log(`  IA: ${process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.startsWith('coloque') ? 'configurada' : 'FALTA a ANTHROPIC_API_KEY'}`);
+  console.log(`  Contas: ${dbReady ? 'banco conectado (login exigido)' : 'SEM banco — modo aberto'}`);
   console.log(`  WhatsApp: ${process.env.WHATSAPP_PROVIDER || 'none'} | E-mail: ${process.env.SMTP_HOST ? 'configurado' : 'não configurado'}\n`);
 });
