@@ -37,6 +37,16 @@ app.use(express.json({ limit: '1mb' }));
 // aceita relatório enviado via navigator.sendBeacon (Blob application/json)
 app.use(express.text({ type: ['text/plain'], limit: '1mb' }));
 
+// --- /api/health PÚBLICO (antes da trava) ---
+// Só expõe indicadores true/false (nenhum segredo). Fica fora da senha para
+// permitir monitorar o estado da IA/e-mail sem login.
+app.get('/api/health', (req, res) => res.json({
+  ok: true,
+  ia: !!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.startsWith('coloque'),
+  whatsapp: (process.env.WHATSAPP_PROVIDER || 'none'),
+  email: !!process.env.SMTP_HOST
+}));
+
 // --- Trava da BETA (senha de acesso) ---
 // Se BETA_USER e BETA_PASS estiverem no .env, o navegador pede login antes de abrir o app.
 // Compartilhe usuário/senha só com quem vai testar. Sem essas variáveis, o app fica aberto.
