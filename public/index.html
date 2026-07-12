@@ -9,17 +9,17 @@
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
 
   :root {
-    --bg:        #0a0e1a;
-    --bg-2:      #0f1424;
-    --panel:     #141a2e;
-    --panel-2:   #1a2138;
-    --line:      #26304d;
+    --bg:        #000000;
+    --bg-2:      #0a0908;
+    --panel:     #131210;
+    --panel-2:   #1c1a16;
+    --line:      #2e2a22;
     --gold-1:    #B8862A;
     --gold-2:    #E8C76A;
     --gold-soft: #d4a94a;
-    --ink:       #e9ecf5;
-    --ink-dim:   #9aa4bf;
-    --ink-faint: #626c88;
+    --ink:       #efe9dd;
+    --ink-dim:   #a89f8d;
+    --ink-faint: #6d6656;
     --danger:    #e26d6d;
     --danger-bg: #2a1518;
     --gold-grad: linear-gradient(135deg, #B8862A 0%, #E8C76A 55%, #B8862A 100%);
@@ -63,7 +63,7 @@
     box-shadow: 0 0 18px rgba(232,199,106,0.35);
     flex: 0 0 auto;
   }
-  .brandmark span { font-family:'Cinzel'; font-weight:600; color:#0a0e1a; font-size:16px; }
+  .brandmark span { font-family:'Cinzel'; font-weight:600; color:#100d08; font-size:16px; }
   .brand-txt h1 { font-family:'Cinzel'; font-weight:500; font-size:16px; letter-spacing:3px; color:var(--ink); }
   .brand-txt p  { font-family:'Cormorant Garamond'; font-style:italic; font-size:13px; color:var(--gold-soft); margin-top:1px; }
   .topbar .spacer { flex:1; }
@@ -94,11 +94,11 @@
   .msg { display:flex; margin-bottom:14px; gap:9px; align-items:flex-end; }
   .msg.user { flex-direction:row-reverse; }
   .avatar { width:28px; height:28px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; font-size:11px; }
-  .avatar.lumen { background:var(--gold-grad); color:#0a0e1a; font-family:'Cinzel'; font-weight:600; box-shadow:0 0 12px rgba(232,199,106,0.3); }
+  .avatar.lumen { background:var(--gold-grad); color:#100d08; font-family:'Cinzel'; font-weight:600; box-shadow:0 0 12px rgba(232,199,106,0.3); }
   .avatar.me { background:var(--panel-2); border:1px solid var(--line); color:var(--ink-dim); }
   .bubble { max-width:78%; padding:11px 14px; border-radius:16px; font-size:14px; line-height:1.55; }
   .bubble.lumen { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:5px; color:var(--ink); }
-  .bubble.me { background:var(--gold-grad); color:#12151f; border-bottom-right-radius:5px; font-weight:500; }
+  .bubble.me { background:var(--gold-grad); color:#17130c; border-bottom-right-radius:5px; font-weight:500; }
   .bubble.lumen em { color:var(--gold-2); font-style:italic; font-family:'Cormorant Garamond'; font-size:15px; }
 
   .typing { display:flex; gap:4px; padding:4px 2px; }
@@ -129,7 +129,7 @@
     color:var(--ink); font-family:'Montserrat'; font-size:14px; padding:11px 14px; max-height:110px; line-height:1.4;
   }
   .composer textarea:focus { outline:none; border-color:var(--gold-soft); }
-  .send-btn { width:42px; height:42px; border-radius:50%; border:none; background:var(--gold-grad); color:#0a0e1a;
+  .send-btn { width:42px; height:42px; border-radius:50%; border:none; background:var(--gold-grad); color:#100d08;
     font-size:18px; cursor:pointer; flex:0 0 auto; display:grid; place-items:center; transition:transform .15s; }
   .send-btn:active { transform:scale(.9); }
   .send-btn:disabled { opacity:.4; cursor:default; }
@@ -203,7 +203,7 @@
     color:var(--ink); font-family:'Montserrat'; font-size:14px; padding:12px 14px; }
   .field input:focus { outline:none; border-color:var(--gold-soft); }
   .field .help { font-size:11px; color:var(--ink-faint); margin-top:6px; line-height:1.5; }
-  .save-btn { width:100%; background:var(--gold-grad); color:#0a0e1a; border:none; border-radius:12px;
+  .save-btn { width:100%; background:var(--gold-grad); color:#100d08; border:none; border-radius:12px;
     padding:13px; font-family:'Montserrat'; font-weight:600; font-size:13px; letter-spacing:1px; cursor:pointer; margin-top:4px; }
 
   .info-box { background:var(--danger-bg); border:1px solid #3a2028; border-radius:12px; padding:14px; font-size:12px;
