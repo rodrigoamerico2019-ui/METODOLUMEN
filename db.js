@@ -137,8 +137,64 @@ export async function listUsers() {
   const r = await pool.query(`
     SELECT u.id, u.name, u.email, u.created_at, u.last_seen_at,
            count(m.id) FILTER (WHERE m.role='user') AS mensagens,
-           max(m.created_at) AS ultima_conversa
+           max(m.created_at) AS ultima_conversa,
+           (SELECT meta FROM messages m2 WHERE m2.user_id=u.id AND m2.meta IS NOT NULL
+             ORDER BY m2.id DESC LIMIT 1) AS ultimo_meta
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
     GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`);
   return r.rows;
+}
+
+// =========================================================
+//  PRONTUÁRIO EVOLUTIVO + DADOS DOS PAINÉIS
+// =========================================================
+export async function getProntuario(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT prontuario, updated_at FROM profiles WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+
+export async function setProntuario(userId, texto) {
+  if (!pool || !userId) return;
+  await pool.query(`INSERT INTO profiles (user_id, prontuario, updated_at) VALUES ($1,$2,now())
+    ON CONFLICT (user_id) DO UPDATE SET prontuario=$2, updated_at=now()`, [userId, texto]);
+}
+
+// mensagens ainda não incorporadas ao prontuário (desde a última atualização)
+export async function messagesSinceProfile(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT m.role, m.content, m.meta, m.created_at
+    FROM messages m LEFT JOIN profiles p ON p.user_id = m.user_id
+    WHERE m.user_id=$1 AND (p.updated_at IS NULL OR m.created_at > p.updated_at)
+    ORDER BY m.id`, [userId]);
+  return r.rows;
+}
+
+// agregados por dia para os gráficos: emoção dominante, intensidade média,
+// pior status, e a tríade corpo/alma/espírito média
+export async function patientDaily(userId, days = 60) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+           count(*) AS conversas,
+           round(avg((meta->>'intensidade')::numeric),1) AS intensidade,
+           round(avg((meta->>'corpo')::numeric),1)    AS corpo,
+           round(avg((meta->>'alma')::numeric),1)     AS alma,
+           round(avg((meta->>'espirito')::numeric),1) AS espirito,
+           mode() WITHIN GROUP (ORDER BY meta->>'emocao') AS emocao,
+           CASE WHEN bool_or(meta->>'status'='vermelho') THEN 'vermelho'
+                WHEN bool_or(meta->>'status'='amarelo')  THEN 'amarelo'
+                ELSE 'verde' END AS status
+    FROM messages
+    WHERE user_id=$1 AND role='assistant' AND meta IS NOT NULL
+      AND created_at > now() - ($2 || ' days')::interval
+    GROUP BY 1 ORDER BY 1`, [userId, days]);
+  return r.rows;
+}
+
+export async function getUserBasic(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT id, name, email, created_at, last_seen_at FROM users WHERE id=$1', [userId]);
+  return r.rows[0] || null;
 }

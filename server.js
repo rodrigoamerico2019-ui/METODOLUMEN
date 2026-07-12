@@ -14,7 +14,8 @@ import basicAuth from 'express-basic-auth';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers } from './db.js';
+import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers,
+         getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic } from './db.js';
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -69,9 +70,52 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 });
 // histórico recente do próprio paciente (para retomar a conversa entre sessões)
 app.get('/api/auth/history', requireAuth, async (req, res) => {
-  try { res.json({ history: await recentHistory(req.user?.uid, 30) }); }
+  try {
+    res.json({ history: await recentHistory(req.user?.uid, 30) });
+    // início de sessão é o momento certo de consolidar a jornada anterior
+    updateProntuario(req.user?.uid).catch(e => console.error('prontuario:', e.message));
+  }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+
+// ---------------------------------------------------------
+//  PRONTUÁRIO EVOLUTIVO — a Lúmen consolida a jornada do paciente
+//  Roda no início de cada sessão, com modelo econômico (Haiku).
+// ---------------------------------------------------------
+const emAtualizacao = new Set();
+async function updateProntuario(uid) {
+  if (!uid || !dbReady || emAtualizacao.has(uid)) return;
+  const novas = await messagesSinceProfile(uid);
+  if (novas.length < 4) return; // pouca coisa nova; espera acumular
+  emAtualizacao.add(uid);
+  try {
+    const atual = (await getProntuario(uid))?.prontuario || '(prontuário ainda vazio — primeira consolidação)';
+    const trechos = novas.map(m => {
+      const meta = m.meta ? ` [${m.meta.emocao || ''}/${m.meta.status || ''}]` : '';
+      return `${new Date(m.created_at).toLocaleDateString('pt-BR')} ${m.role === 'user' ? 'PACIENTE' : 'LÚMEN'}${meta}: ${String(m.content).replace(/##META\{[\s\S]*?\}##\s*/, '').slice(0, 500)}`;
+    }).join('\n');
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 900,
+        system: `Você mantém o PRONTUÁRIO EVOLUTIVO de um paciente do Método Lúmen (acompanhamento emocional cristão). Atualize o prontuário incorporando as conversas novas ao que já existia. Formato (máx ~500 palavras, direto, sem floreio):
+JORNADA: síntese da caminhada até aqui (temas centrais, feridas em trabalho, contexto de vida relevante).
+CORPO: como o corpo tem aparecido (sono, cansaço, cuidado físico).
+ALMA: estado emocional predominante, padrões (vitimismo/avanço/crise), gatilhos conhecidos.
+ESPÍRITO: a relação com Deus que transparece (fé, distância, práticas).
+VITÓRIAS E GRATIDÕES: avanços conquistados e motivos de gratidão que a pessoa relatou (com datas aproximadas) — para a Lúmen celebrar e ancorar ensino.
+ATENÇÃO: riscos, sinais de alerta, o que não esquecer na próxima conversa.
+Preserve o que segue válido do prontuário anterior, corrija o que evoluiu, descarte o que ficou obsoleto.`,
+        messages: [{ role: 'user', content: `PRONTUÁRIO ATUAL:\n${atual}\n\nCONVERSAS NOVAS DESDE A ÚLTIMA CONSOLIDAÇÃO:\n${trechos}\n\nEscreva o prontuário atualizado completo.` }]
+      })
+    });
+    const data = await r.json();
+    const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (texto) { await setProntuario(uid, texto); console.log(`  Prontuário consolidado (paciente ${uid}, ${novas.length} msgs novas).`); }
+  } finally { emAtualizacao.delete(uid); }
+}
 
 // ---------------------------------------------------------
 //  MENTOR — gerar convites e ver pacientes (protegido por ADMIN_KEY)
@@ -93,6 +137,17 @@ app.get('/api/admin/invite', requireAdmin, async (req, res) => {
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try { res.json({ pacientes: await listUsers() }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// detalhe de um paciente: dados, prontuário e a série diária para os gráficos
+app.get('/api/admin/patient', requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.query.id);
+    const [basico, pront, diario] = await Promise.all([
+      getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60))
+    ]);
+    if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
+    res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null, diario });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // --- Trava da BETA (senha única) ---
@@ -174,20 +229,32 @@ STATUS DO ATENDIMENTO
 
 FORMATO DE RESPOSTA (obrigatório)
 Comece SEMPRE com uma linha de metadados e nada antes dela:
-##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho"}##
+##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho","corpo":0-10,"alma":0-10,"espirito":0-10}##
+Sobre a tríade (avaliação silenciosa do Método, pelo que a conversa revela até aqui):
+- "corpo" = como o corpo dela parece estar (sono, cansaço, tensão, cuidado físico). 0 = muito mal, 10 = bem cuidado/vivo.
+- "alma" = o estado emocional/mental (regulação, feridas ativas, ruminação). 0 = alma em colapso, 10 = alma em paz.
+- "espirito" = a conexão com Deus que transparece (fé viva, distância, esperança). 0 = desconexão profunda, 10 = comunhão viva.
+Se a conversa ainda não revelou nada sobre uma dimensão, estime com prudência pelo tom geral (tende ao meio, 5).
 Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadados).`;
 
 // Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
-// com cache_control para o prompt caching baratear cada conversa. Só o nome muda por pessoa.
-function buildSystem(name) {
+// com cache_control para o prompt caching baratear cada conversa. Nome e prontuário
+// mudam por pessoa e ficam fora do cache.
+function buildSystem(name, prontuario) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
   const conhecimento = KNOWLEDGE
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
     : '';
-  return [
+  const blocos = [
     { type: 'text', text: SYSTEM_BASE + conhecimento, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `NOME DA PESSOA: ${nome}. Use este nome ao se dirigir a ela.` }
   ];
+  if (prontuario) blocos.push({ type: 'text', text:
+`PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
+${prontuario}
+
+Como usar: você LEMBRA dessa caminhada. Retome fios com naturalidade ("como ficou aquilo do..."), celebre os avanços e as vitórias registradas, ensine gratidão ancorada no que ela já viveu, e honre o que está em ATENÇÃO. Nunca leia o prontuário em voz alta nem cite que ele existe — é sua memória, não um documento.` });
+  return blocos;
 }
 
 // ---------------------------------------------------------
@@ -208,6 +275,11 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     }
     // com login, o nome oficial vem da conta (não do que o front mandar)
     const nome = (req.user && req.user.name) || name;
+    // memória viva: o prontuário evolutivo entra no sistema desta conversa
+    let prontuario = null;
+    if (req.user && req.user.uid) {
+      prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
+    }
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -218,7 +290,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(nome),
+        system: buildSystem(nome, prontuario),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });

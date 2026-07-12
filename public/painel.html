@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Painel do Mentor · Método Lúmen™</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital@0;1&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --bg:#000; --bg2:#0a0908; --panel:#131210; --panel2:#1c1a16; --line:#2e2a22;
+    --gold1:#B8862A; --gold2:#E8C76A; --golds:#d4a94a; --ink:#efe9dd; --dim:#a89f8d; --faint:#6d6656;
+    --verde:#3fbf7f; --amarelo:#e0a04a; --vermelho:#e26d6d;
+    --grad:linear-gradient(135deg,#B8862A 0%,#E8C76A 55%,#B8862A 100%); }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1000px 500px at 50% -10%,rgba(184,134,42,.10),transparent 60%),var(--bg);
+    color:var(--ink);font-family:'Montserrat',sans-serif;min-height:100vh;padding:20px 14px 60px}
+  .wrap{max-width:1060px;margin:0 auto}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  header img{width:64px;filter:drop-shadow(0 0 16px rgba(232,199,106,.25))}
+  header h1{font-family:'Cinzel';font-weight:500;font-size:19px;letter-spacing:2px}
+  header p{font-family:'Cormorant Garamond';font-style:italic;color:var(--golds);font-size:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+  .keybox{max-width:420px;margin:8vh auto;text-align:center}
+  .keybox input{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:12px;color:var(--ink);
+    padding:13px 15px;font-size:14px;margin:14px 0 10px}
+  .keybox input:focus{outline:none;border-color:var(--golds)}
+  .btn{background:var(--grad);color:#100d08;border:none;border-radius:12px;padding:12px 26px;
+    font-weight:600;font-size:13px;letter-spacing:1px;cursor:pointer}
+  .muted{color:var(--faint);font-size:11.5px;line-height:1.5}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--golds);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:11px 10px;border-bottom:1px solid rgba(46,42,34,.5)}
+  tr.pac{cursor:pointer} tr.pac:hover td{background:rgba(232,199,106,.05)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle}
+  .dot.verde{background:var(--verde);box-shadow:0 0 8px var(--verde)}
+  .dot.amarelo{background:var(--amarelo);box-shadow:0 0 8px var(--amarelo)}
+  .dot.vermelho{background:var(--vermelho);box-shadow:0 0 10px var(--vermelho)}
+  .dot.cinza{background:var(--faint)}
+  .risco{color:var(--vermelho);font-weight:600}
+  .back{background:none;border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:7px 18px;cursor:pointer;font-size:12px;margin-bottom:14px}
+  h2{font-family:'Cinzel';font-weight:500;font-size:16px;letter-spacing:1px;margin-bottom:4px}
+  .sub{font-family:'Cormorant Garamond';font-style:italic;color:var(--dim);font-size:14px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .legend{display:flex;gap:16px;font-size:11px;color:var(--dim);margin-top:8px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .pront{white-space:pre-wrap;font-size:13px;line-height:1.65;color:var(--ink)}
+  .pront-empty{color:var(--faint);font-style:italic}
+  .hide{display:none}
+  .stat{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin:0 8px 8px 0;font-size:12px;color:var(--dim)}
+  .stat b{color:var(--ink);font-size:15px;display:block}
+  svg text{font-family:'Montserrat';}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="logo.png" alt="Método Lúmen" />
+    <div><h1>PAINEL DO MENTOR</h1><p>a luz só atravessa o que está alinhado</p></div>
+  </header>
+
+  <!-- entrada da chave -->
+  <div class="card keybox" id="keybox">
+    <h2>Acesso restrito</h2>
+    <p class="sub">Somente o mentor do Método Lúmen™</p>
+    <input type="password" id="keyInput" placeholder="Sua chave de mentor (ADMIN_KEY)" />
+    <button class="btn" onclick="entrar()">Entrar no painel</button>
+    <p class="muted" id="keyErr" style="margin-top:10px"></p>
+  </div>
+
+  <!-- lista de pacientes -->
+  <div id="lista" class="hide">
+    <div class="card">
+      <h2>Pacientes e mentorados</h2>
+      <p class="sub" id="listaSub">carregando…</p>
+      <table id="tbl"><thead><tr>
+        <th>Estado</th><th>Nome</th><th>Última conversa</th><th>Interações</th><th>No método desde</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="muted">Clique num paciente para abrir a jornada completa. Estado = último atendimento (verde acolhido · amarelo atenção · vermelho risco).</p>
+  </div>
+
+  <!-- detalhe do paciente -->
+  <div id="detalhe" class="hide">
+    <button class="back" onclick="voltar()">← todos os pacientes</button>
+    <div class="card">
+      <h2 id="dNome"></h2>
+      <p class="sub" id="dSub"></p>
+      <div id="dStats"></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Corpo · Alma · Espírito</h2>
+        <p class="sub">como a pessoa tem caminhado nas três dimensões (0 a 10, por dia)</p>
+        <div id="chartTriade"></div>
+        <div class="legend">
+          <span><i style="background:#7fb069"></i>Corpo</span>
+          <span><i style="background:#E8C76A"></i>Alma</span>
+          <span><i style="background:#7ab8d9"></i>Espírito</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Intensidade emocional</h2>
+        <p class="sub">a “temperatura” de cada dia, com o estado do atendimento</p>
+        <div id="chartIntensidade"></div>
+        <div class="legend">
+          <span><span class="dot verde"></span>acolhido</span>
+          <span><span class="dot amarelo"></span>atenção</span>
+          <span><span class="dot vermelho"></span>risco</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Prontuário evolutivo</h2>
+      <p class="sub" id="dProntEm"></p>
+      <div class="pront" id="dPront"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let KEY = sessionStorage.getItem('lumen_admin_key') || '';
+
+function entrar(){
+  KEY = $('keyInput').value.trim();
+  if(!KEY) return;
+  sessionStorage.setItem('lumen_admin_key', KEY);
+  carregarLista();
+}
+function voltar(){ $('detalhe').classList.add('hide'); $('lista').classList.remove('hide'); }
+
+async function api(path){
+  const r = await fetch(path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY));
+  const j = await r.json();
+  if(j.error) throw new Error(j.error);
+  return j;
+}
+
+async function carregarLista(){
+  try{
+    const d = await api('/api/admin/users');
+    $('keybox').classList.add('hide'); $('lista').classList.remove('hide');
+    const tb = $('tbl').querySelector('tbody'); tb.innerHTML='';
+    const fmt = s => s ? new Date(s).toLocaleDateString('pt-BR') : '—';
+    const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
+    d.pacientes.forEach(p=>{
+      const st = p.ultimo_meta?.status || 'cinza';
+      const risco = p.ultimo_meta?.risco === 'ALTO';
+      const tr = document.createElement('tr'); tr.className='pac';
+      tr.innerHTML = `<td><span class="dot ${st}"></span>${risco?'<span class="risco">RISCO</span>':''}</td>
+        <td><b>${p.name}</b><br><span class="muted">${p.email}</span></td>
+        <td>${fmtH(p.ultima_conversa)}</td><td>${p.mensagens}</td><td>${fmt(p.created_at)}</td>`;
+      tr.onclick = ()=>abrirPaciente(p.id);
+      tb.appendChild(tr);
+    });
+    $('listaSub').textContent = d.pacientes.length + ' pessoa(s) em acompanhamento';
+  }catch(e){
+    sessionStorage.removeItem('lumen_admin_key');
+    $('keyErr').textContent = 'Chave inválida ou erro: ' + e.message;
+    $('keybox').classList.remove('hide');
+  }
+}
+
+async function abrirPaciente(id){
+  const d = await api('/api/admin/patient?id='+id);
+  $('lista').classList.add('hide'); $('detalhe').classList.remove('hide');
+  $('dNome').textContent = d.paciente.name;
+  $('dSub').textContent = d.paciente.email + ' · no método desde ' + new Date(d.paciente.created_at).toLocaleDateString('pt-BR');
+  const dias = d.diario.length;
+  const ultimo = d.diario[dias-1];
+  $('dStats').innerHTML =
+    `<span class="stat"><b>${dias}</b>dias com conversa (60d)</span>` +
+    (ultimo ? `<span class="stat"><b>${ultimo.emocao||'—'}</b>última emoção dominante</span>
+      <span class="stat"><b style="color:${cor(ultimo.status)}">${ultimo.status}</b>último estado</span>` : '');
+  $('chartTriade').innerHTML = chartLinhas(d.diario);
+  $('chartIntensidade').innerHTML = chartBarras(d.diario);
+  $('dPront').textContent = d.prontuario || '';
+  $('dPront').className = 'pront' + (d.prontuario ? '' : ' pront-empty');
+  if(!d.prontuario) $('dPront').textContent = 'O prontuário será consolidado automaticamente conforme as conversas acontecem (na entrada de cada nova sessão).';
+  $('dProntEm').textContent = d.prontuario_em ? 'consolidado pela Lúmen em ' + new Date(d.prontuario_em).toLocaleString('pt-BR') : 'aguardando as primeiras conversas';
+}
+
+function cor(s){ return s==='verde'?'#3fbf7f':s==='amarelo'?'#e0a04a':s==='vermelho'?'#e26d6d':'#6d6656'; }
+const W=460,H=190,P=28;
+
+function esc(v,min,max,a,b){ return a+( (v-min)/(max-min||1) )*(b-a); }
+function dia(s){ const d=new Date(s+'T12:00:00'); return (d.getDate()+'').padStart(2,'0')+'/'+((d.getMonth()+1)+'').padStart(2,'0'); }
+
+function chartLinhas(rows){
+  if(!rows.length) return '<p class="muted">Sem dados ainda — os gráficos nascem das conversas.</p>';
+  const xs = rows.map((_,i)=>esc(i,0,rows.length-1,P,W-P));
+  const linha = (campo,corL)=>{
+    const pts = rows.map((r,i)=>{
+      const v = r[campo]==null?5:Number(r[campo]);
+      return xs[i]+','+esc(v,0,10,H-P,P);
+    }).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${corL}" stroke-width="2.2" stroke-linejoin="round"/>` +
+      rows.map((r,i)=>`<circle cx="${xs[i]}" cy="${esc(r[campo]==null?5:Number(r[campo]),0,10,H-P,P)}" r="3" fill="${corL}"/>`).join('');
+  };
+  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H-P,P)}" stroke="#2e2a22" stroke-dasharray="3 4"/>
+    <text x="6" y="${esc(v,0,10,H-P,P)+4}" font-size="9" fill="#6d6656">${v}</text>`).join('');
+  const labels = rows.map((r,i)=> (rows.length<=10 || i%Math.ceil(rows.length/8)===0)
+    ? `<text x="${xs[i]}" y="${H-6}" font-size="8.5" fill="#6d6656" text-anchor="middle">${dia(r.dia)}</text>` : '').join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${grade}${labels}
+    ${linha('corpo','#7fb069')}${linha('alma','#E8C76A')}${linha('espirito','#7ab8d9')}</svg>`;
+}
+
+function chartBarras(rows){
+  if(!rows.length) return '<p class="muted">Sem dados ainda.</p>';
+  const bw = Math.min(26, (W-2*P)/rows.length*0.7);
+  const bars = rows.map((r,i)=>{
+    const x = esc(i,0,Math.max(rows.length-1,1),P,W-P);
+    const v = r.intensidade==null?0:Number(r.intensidade);
+    const y = esc(v,0,10,H-P,P);
+    return `<rect x="${x-bw/2}" y="${y}" width="${bw}" height="${H-P-y}" rx="3" fill="${cor(r.status)}" opacity=".85">
+      <title>${dia(r.dia)} — ${r.emocao||''} (${v}/10), ${r.conversas} conversa(s)</title></rect>
+      <text x="${x}" y="${y-5}" font-size="8.5" fill="#a89f8d" text-anchor="middle">${r.emocao? r.emocao.slice(0,9):''}</text>`;
+  }).join('');
+  const labels = rows.map((r,i)=> (rows.length<=10 || i%Math.ceil(rows.length/8)===0)
+    ? `<text x="${esc(i,0,Math.max(rows.length-1,1),P,W-P)}" y="${H-6}" font-size="8.5" fill="#6d6656" text-anchor="middle">${dia(r.dia)}</text>` : '').join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${bars}${labels}</svg>`;
+}
+
+if(KEY) carregarLista();
+</script>
+</body>
+</html>
