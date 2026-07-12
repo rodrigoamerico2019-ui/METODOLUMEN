@@ -15,7 +15,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers,
-         getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic } from './db.js';
+         getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
+         todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages } from './db.js';
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -138,16 +139,37 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try { res.json({ pacientes: await listUsers() }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
-// detalhe de um paciente: dados, prontuário e a série diária para os gráficos
+// detalhe de um paciente: cadastro, prontuário, séries e esferas
 app.get('/api/admin/patient', requireAdmin, async (req, res) => {
   try {
     const id = Number(req.query.id);
-    const [basico, pront, diario] = await Promise.all([
-      getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60))
+    const [basico, pront, diario, esferas, checkins, sessoes] = await Promise.all([
+      getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
+      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
-    res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null, diario });
+    res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
+               diario, esferas, checkins, sessoes });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// transcrição de um dia de atendimento (consulta do mentor)
+app.get('/api/admin/transcript', requireAdmin, async (req, res) => {
+  try {
+    const msgs = await transcriptOfDay(Number(req.query.id), String(req.query.day || ''));
+    res.json({ transcript: msgs });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  CHECK-IN DIÁRIO do paciente (o filtro de consciência)
+// ---------------------------------------------------------
+app.get('/api/checkin', requireAuth, async (req, res) => {
+  try { res.json({ hoje: await todayCheckin(req.user?.uid) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/checkin', requireAuth, async (req, res) => {
+  try { res.json({ ok: true, checkin: await saveCheckin(req.user?.uid, req.body || {}) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // --- Trava da BETA (senha única) ---
@@ -431,7 +453,8 @@ async function handleReport(body, res) {
   const t = mailer();
   const to = body.email || process.env.REPORT_EMAIL_TO;
   const status = (body.status || '').toUpperCase();
-  const subject = `Relatório Lúmen — ${body.name || 'atendimento'} — ${status || 'atendimento'}`;
+  const aviso = body.encerradoNoMeio ? '⚠ SAIU NO MEIO — ' : '';
+  const subject = `${aviso}Relatório Lúmen — ${body.name || 'atendimento'} — ${status || 'atendimento'}`;
   const text = body.text || formatReport(body);
   if (!t) { console.log('[E-mail não configurado] Relatório para', to, '\n', text); if (res) res.json({ sent: false, note: 'SMTP não configurado' }); return; }
   await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text });

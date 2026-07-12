@@ -50,21 +50,40 @@ export async function initDb() {
       prontuario TEXT DEFAULT '',
       updated_at TIMESTAMPTZ DEFAULT now()
     );
+    -- dados cadastrais do acompanhamento
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS marital_status TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+    -- check-in diário (o "filtro" de consciência: como estou hoje em corpo/alma/espírito)
+    CREATE TABLE IF NOT EXISTS checkins (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      emocao TEXT,
+      corpo INT, alma INT, espirito INT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE (user_id, day)
+    );
   `);
-  console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles).');
+  console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env';
 const norm = e => String(e || '').trim().toLowerCase();
 
 // --- cadastro com código de convite + consentimento LGPD ---
-export async function register({ name, email, password, invite, consent }) {
+export async function register({ name, email, password, invite, consent, birth, marital, city, address }) {
   if (!pool) throw new Error('banco não configurado');
   name = String(name || '').trim(); email = norm(email);
   if (!name || name.length < 2) throw new Error('Informe seu nome.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
   if (!password || password.length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
   if (!consent) throw new Error('É preciso aceitar o termo de consentimento para usar a Lúmen.');
+  const nasc = String(birth || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nasc)) throw new Error('Informe sua data de nascimento.');
+  if (!String(marital || '').trim()) throw new Error('Informe seu estado civil.');
+  if (!String(city || '').trim()) throw new Error('Informe sua cidade.');
   const code = String(invite || '').trim().toUpperCase();
   const inv = await pool.query('SELECT * FROM invite_codes WHERE code=$1', [code]);
   if (!inv.rows[0]) throw new Error('Código de convite inválido.');
@@ -73,9 +92,9 @@ export async function register({ name, email, password, invite, consent }) {
   if (dup.rows[0]) throw new Error('Já existe uma conta com este e-mail. Use "Entrar".');
   const hash = await bcrypt.hash(password, 10);
   const u = await pool.query(
-    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at)
-     VALUES ($1,$2,$3,$4,now(),now()) RETURNING id,name,email,role`,
-    [email, name, hash, code]
+    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address)
+     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8) RETURNING id,name,email,role`,
+    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim()]
   );
   await pool.query('UPDATE invite_codes SET used_count=used_count+1 WHERE code=$1', [code]);
   await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [u.rows[0].id]);
@@ -195,6 +214,76 @@ export async function patientDaily(userId, days = 60) {
 
 export async function getUserBasic(userId) {
   if (!pool || !userId) return null;
-  const r = await pool.query('SELECT id, name, email, created_at, last_seen_at FROM users WHERE id=$1', [userId]);
+  const r = await pool.query(`
+    SELECT id, name, email, created_at, last_seen_at,
+           birth_date, marital_status, city, address,
+           date_part('year', age(birth_date))::int AS idade
+    FROM users WHERE id=$1`, [userId]);
+  return r.rows[0] || null;
+}
+
+// =========================================================
+//  CHECK-IN DIÁRIO (o filtro de consciência)
+// =========================================================
+export async function todayCheckin(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query(`SELECT * FROM checkins WHERE user_id=$1
+    AND day = (now() AT TIME ZONE 'America/Sao_Paulo')::date`, [userId]);
+  return r.rows[0] || null;
+}
+
+export async function saveCheckin(userId, { emocao, corpo, alma, espirito }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const n = v => Math.max(0, Math.min(10, Number(v ?? 5)));
+  const r = await pool.query(`
+    INSERT INTO checkins (user_id, day, emocao, corpo, alma, espirito)
+    VALUES ($1, (now() AT TIME ZONE 'America/Sao_Paulo')::date, $2, $3, $4, $5)
+    ON CONFLICT (user_id, day) DO UPDATE SET emocao=$2, corpo=$3, alma=$4, espirito=$5, created_at=now()
+    RETURNING *`, [userId, String(emocao || '').slice(0, 40), n(corpo), n(alma), n(espirito)]);
+  return r.rows[0];
+}
+
+export async function checkinSeries(userId, days = 60) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`SELECT day::text AS dia, emocao, corpo, alma, espirito
+    FROM checkins WHERE user_id=$1 AND day > (now() AT TIME ZONE 'America/Sao_Paulo')::date - $2::int
+    ORDER BY day`, [userId, days]);
+  return r.rows;
+}
+
+// =========================================================
+//  TRANSCRIÇÕES — as sessões para consulta do mentor
+// =========================================================
+export async function sessionDays(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
+           count(*) FILTER (WHERE role='user') AS perguntas,
+           min(created_at) AS inicio, max(created_at) AS fim
+    FROM messages WHERE user_id=$1 GROUP BY 1 ORDER BY 1 DESC`, [userId]);
+  return r.rows;
+}
+
+export async function transcriptOfDay(userId, day) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT role, content, meta, created_at
+    FROM messages
+    WHERE user_id=$1 AND (created_at AT TIME ZONE 'America/Sao_Paulo')::date = $2::date
+    ORDER BY id`, [userId, day]);
+  return r.rows;
+}
+
+// médias da tríade nos últimos N dias (para as esferas do painel)
+export async function triadAverages(userId, days = 7) {
+  if (!pool || !userId) return null;
+  const r = await pool.query(`
+    SELECT round(avg((meta->>'corpo')::numeric),1)    AS corpo,
+           round(avg((meta->>'alma')::numeric),1)     AS alma,
+           round(avg((meta->>'espirito')::numeric),1) AS espirito,
+           count(*) AS amostras
+    FROM messages
+    WHERE user_id=$1 AND role='assistant' AND meta ? 'corpo'
+      AND created_at > now() - ($2 || ' days')::interval`, [userId, days]);
   return r.rows[0] || null;
 }

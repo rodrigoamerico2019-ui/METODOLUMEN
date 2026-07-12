@@ -51,6 +51,29 @@
   .stat{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin:0 8px 8px 0;font-size:12px;color:var(--dim)}
   .stat b{color:var(--ink);font-size:15px;display:block}
   svg text{font-family:'Montserrat';}
+  .cadastro{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:12.5px;color:var(--dim);margin:2px 0 14px}
+  .cadastro b{color:var(--ink);font-weight:500}
+  .esferas{display:flex;justify-content:center;padding:6px 0 2px}
+  .esf{cursor:pointer}
+  .esf circle.aro{fill:rgba(232,199,106,.04);stroke:#6d5a33;stroke-width:1.6;transition:all .25s ease}
+  .esf:hover circle.aro{fill:rgba(232,199,106,.16);stroke:url(#gradOuro);stroke-width:2.6;
+    filter:drop-shadow(0 0 14px rgba(232,199,106,.65))}
+  .esf .pct{opacity:0;transition:opacity .25s ease;font-weight:600}
+  .esf:hover .pct{opacity:1}
+  .esf:hover .nomeEsf{fill:#E8C76A}
+  .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:8px 16px;margin:0 8px 8px 0;font-size:12.5px;color:var(--ink);cursor:pointer}
+  .sess-day:hover{border-color:var(--golds);color:var(--gold2)}
+  .sess-day small{color:var(--faint)}
+  .transcript{margin-top:14px;border-top:1px solid var(--line);padding-top:14px;max-height:420px;overflow-y:auto}
+  .tmsg{margin-bottom:12px;font-size:13px;line-height:1.55}
+  .tmsg .quem{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px}
+  .tmsg.user .quem{color:var(--dim)} .tmsg.lumen .quem{color:var(--golds)}
+  .tmsg .balao{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 13px;white-space:pre-wrap}
+  .tmsg.lumen .balao{border-color:#3d3627}
+  .t-meta{font-size:10.5px;color:var(--faint);margin-top:3px}
+  .dl{float:right;background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer}
+  .dl:hover{color:var(--gold2);border-color:var(--golds)}
 </style>
 </head>
 <body>
@@ -87,7 +110,13 @@
     <div class="card">
       <h2 id="dNome"></h2>
       <p class="sub" id="dSub"></p>
+      <div id="dCadastro" class="cadastro"></div>
       <div id="dStats"></div>
+    </div>
+    <div class="card">
+      <h2>As Esferas — onde a luz encontra resistência</h2>
+      <p class="sub">média dos últimos 7 dias de caminhada · passe o mouse sobre cada esfera</p>
+      <div id="esferas" class="esferas"></div>
     </div>
     <div class="grid">
       <div class="card">
@@ -115,6 +144,12 @@
       <h2>Prontuário evolutivo</h2>
       <p class="sub" id="dProntEm"></p>
       <div class="pront" id="dPront"></div>
+    </div>
+    <div class="card">
+      <h2>Sessões — o registro dos atendimentos</h2>
+      <p class="sub">clique num dia para ler a conversa completa</p>
+      <div id="dSessoes"></div>
+      <div id="dTranscript" class="transcript hide"></div>
     </div>
   </div>
 </div>
@@ -163,23 +198,112 @@ async function carregarLista(){
   }
 }
 
+let pacienteAtual = null;
 async function abrirPaciente(id){
   const d = await api('/api/admin/patient?id='+id);
+  pacienteAtual = d.paciente;
   $('lista').classList.add('hide'); $('detalhe').classList.remove('hide');
   $('dNome').textContent = d.paciente.name;
   $('dSub').textContent = d.paciente.email + ' · no método desde ' + new Date(d.paciente.created_at).toLocaleDateString('pt-BR');
+
+  // dados cadastrais (idade, nascimento, estado civil, cidade, endereço)
+  const p = d.paciente;
+  const nasc = p.birth_date ? new Date(p.birth_date).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : null;
+  $('dCadastro').innerHTML = [
+    p.idade != null ? `Idade <b>${p.idade} anos</b>` : null,
+    nasc ? `Nascimento <b>${nasc}</b>` : null,
+    p.marital_status ? `Estado civil <b>${p.marital_status}</b>` : null,
+    p.city ? `Cidade <b>${p.city}</b>` : null,
+    p.address ? `Endereço <b>${p.address}</b>` : null
+  ].filter(Boolean).join(' · ') || '<span class="muted">cadastro anterior aos novos campos</span>';
+
   const dias = d.diario.length;
   const ultimo = d.diario[dias-1];
+  const chkHoje = d.checkins[d.checkins.length-1];
   $('dStats').innerHTML =
     `<span class="stat"><b>${dias}</b>dias com conversa (60d)</span>` +
     (ultimo ? `<span class="stat"><b>${ultimo.emocao||'—'}</b>última emoção dominante</span>
-      <span class="stat"><b style="color:${cor(ultimo.status)}">${ultimo.status}</b>último estado</span>` : '');
+      <span class="stat"><b style="color:${cor(ultimo.status)}">${ultimo.status}</b>último estado</span>` : '') +
+    (chkHoje ? `<span class="stat"><b>${dia(chkHoje.dia)} · ${chkHoje.emocao||'—'}</b>último check-in (auto): corpo ${chkHoje.corpo} · alma ${chkHoje.alma} · espírito ${chkHoje.espirito}</span>` : '');
+
+  desenharEsferas(d.esferas);
   $('chartTriade').innerHTML = chartLinhas(d.diario);
   $('chartIntensidade').innerHTML = chartBarras(d.diario);
   $('dPront').textContent = d.prontuario || '';
   $('dPront').className = 'pront' + (d.prontuario ? '' : ' pront-empty');
   if(!d.prontuario) $('dPront').textContent = 'O prontuário será consolidado automaticamente conforme as conversas acontecem (na entrada de cada nova sessão).';
   $('dProntEm').textContent = d.prontuario_em ? 'consolidado pela Lúmen em ' + new Date(d.prontuario_em).toLocaleString('pt-BR') : 'aguardando as primeiras conversas';
+
+  // sessões (dias de atendimento)
+  $('dTranscript').classList.add('hide'); $('dTranscript').innerHTML='';
+  $('dSessoes').innerHTML = d.sessoes.length
+    ? d.sessoes.map(s=>`<span class="sess-day" onclick="abrirSessao('${s.dia}')">${dia(s.dia)} <small>· ${s.perguntas} pergunta(s)</small></span>`).join('')
+    : '<span class="muted">ainda não houve conversas</span>';
+}
+
+/* ===== AS ESFERAS (a identidade do Método: três círculos que a luz atravessa) ===== */
+function desenharEsferas(e){
+  const vals = { corpo: e?.corpo, alma: e?.alma, espirito: e?.espirito };
+  const temDados = e && e.amostras > 0;
+  const cx = [90, 230, 370], nomes = ['CORPO','ALMA','ESPÍRITO'], chaves=['corpo','alma','espirito'];
+  const eixoY = 92, R = 62;
+  let svg = `<svg viewBox="0 0 460 210" style="width:100%;max-width:560px">
+    <defs>
+      <linearGradient id="gradOuro" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#B8862A"/><stop offset="55%" stop-color="#E8C76A"/><stop offset="100%" stop-color="#B8862A"/>
+      </linearGradient>
+    </defs>
+    <line x1="30" y1="${eixoY}" x2="430" y2="${eixoY}" stroke="#3a3223" stroke-width="1" stroke-dasharray="2 5"/>`;
+  chaves.forEach((k,i)=>{
+    const v = vals[k]==null ? null : Number(vals[k]);
+    const pct = v==null ? '—' : Math.round(v*10)+'%';
+    const preenchAng = v==null ? 0 : (v/10);
+    // arco de preenchimento: quanto da esfera está "iluminada"
+    const circ = 2*Math.PI*R;
+    svg += `<g class="esf">
+      <circle class="aro" cx="${cx[i]}" cy="${eixoY}" r="${R}"/>
+      <circle cx="${cx[i]}" cy="${eixoY}" r="${R}" fill="none" stroke="url(#gradOuro)" stroke-width="3.5"
+        stroke-dasharray="${(circ*preenchAng).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+        transform="rotate(-90 ${cx[i]} ${eixoY})" opacity=".9"/>
+      <text class="pct" x="${cx[i]}" y="${eixoY+7}" text-anchor="middle" font-size="21" fill="#E8C76A">${pct}</text>
+      <text class="nomeEsf" x="${cx[i]}" y="${eixoY+R+24}" text-anchor="middle" font-size="11.5" letter-spacing="3" fill="#a89f8d">${nomes[i]}</text>
+      <title>${nomes[i]}: ${v==null?'sem dados ainda':v+'/10 na última semana'}</title>
+    </g>`;
+  });
+  svg += '</svg>';
+  $('esferas').innerHTML = temDados ? svg : svg + '<p class="muted" style="text-align:center">As esferas ganham vida conforme as conversas acontecem.</p>';
+}
+
+/* ===== TRANSCRIÇÃO DE UMA SESSÃO ===== */
+async function abrirSessao(diaISO){
+  const d = await api('/api/admin/transcript?id='+pacienteAtual.id+'&day='+diaISO);
+  const box = $('dTranscript'); box.classList.remove('hide');
+  const linhas = d.transcript.map(m=>{
+    const hora = new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const texto = m.content.replace(/##META\{[\s\S]*?\}##\s*/,'');
+    const metaTxt = m.meta ? `<div class="t-meta">emoção: ${m.meta.emocao||'—'} · intensidade ${m.meta.intensidade??'—'}/10 · estado ${m.meta.status||'—'}${m.meta.corpo!=null?` · corpo ${m.meta.corpo} alma ${m.meta.alma} espírito ${m.meta.espirito}`:''}</div>` : '';
+    return `<div class="tmsg ${m.role==='user'?'user':'lumen'}">
+      <div class="quem">${m.role==='user'?pacienteAtual.name.split(' ')[0]:'Lúmen'} · ${hora}</div>
+      <div class="balao">${texto.replace(/</g,'&lt;')}</div>${metaTxt}</div>`;
+  }).join('');
+  box.innerHTML = `<button class="dl" onclick="baixarSessao('${diaISO}')">⬇ baixar .txt</button>
+    <h2 style="margin-bottom:10px">Sessão de ${dia(diaISO)}</h2>` + (linhas || '<p class="muted">vazia</p>');
+  box._raw = d.transcript; box._dia = diaISO;
+  box.scrollIntoView({behavior:'smooth'});
+}
+
+function baixarSessao(diaISO){
+  const box = $('dTranscript');
+  const txt = (box._raw||[]).map(m=>{
+    const hora = new Date(m.created_at).toLocaleTimeString('pt-BR');
+    const texto = m.content.replace(/##META\{[\s\S]*?\}##\s*/,'');
+    return `[${hora}] ${m.role==='user'?pacienteAtual.name:'LÚMEN'}:\n${texto}\n`;
+  }).join('\n');
+  const blob = new Blob([`SESSÃO ${dia(diaISO)} — ${pacienteAtual.name}\nMétodo Lúmen™ · registro de atendimento\n${'='.repeat(50)}\n\n${txt}`],{type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `sessao-${diaISO}-${pacienteAtual.name.replace(/\s+/g,'_')}.txt`;
+  a.click();
 }
 
 function cor(s){ return s==='verde'?'#3fbf7f':s==='amarelo'?'#e0a04a':s==='vermelho'?'#e26d6d':'#6d6656'; }

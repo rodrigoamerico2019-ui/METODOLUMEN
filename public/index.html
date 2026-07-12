@@ -244,11 +244,15 @@
   .ag-tabs button.on { background:var(--gold-grad); color:#100d08; border-color:transparent; font-weight:600; }
   .ag-form { width:100%; max-width:340px; display:flex; flex-direction:column; gap:10px; }
   .ag-form.hide { display:none; }
-  .ag-form input[type=text], .ag-form input[type=email], .ag-form input[type=password] {
+  .ag-form input[type=text], .ag-form input[type=email], .ag-form input[type=password],
+  .ag-form input[type=date], .ag-form select {
     width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
-    font-family:'Montserrat'; font-size:14px; padding:13px 15px; }
-  .ag-form input:focus { outline:none; border-color:var(--gold-soft); }
+    font-family:'Montserrat'; font-size:14px; padding:13px 15px; -webkit-appearance:none; appearance:none; }
+  .ag-form input:focus, .ag-form select:focus { outline:none; border-color:var(--gold-soft); }
   .ag-form input::placeholder { color:var(--ink-faint); font-style:italic; }
+  .ag-form select:invalid { color:var(--ink-faint); font-style:italic; }
+  .ag-form input[type=date] { color-scheme:dark; }
+  .ag-lbl { font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-faint); text-align:left; margin:2px 2px -4px; }
   .ag-consent { display:flex; gap:9px; align-items:flex-start; text-align:left; font-size:11px;
     color:var(--ink-dim); line-height:1.5; padding:2px 2px; }
   .ag-consent input { margin-top:2px; accent-color:#d4a94a; }
@@ -261,6 +265,14 @@
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
+  .ob-triade { width:100%; max-width:360px; margin:0 auto 20px; display:flex; flex-direction:column; gap:13px; }
+  .ob-tr { text-align:left; }
+  .ob-tr label { display:block; font-size:12.5px; color:var(--ink); margin-bottom:5px; }
+  .ob-tr label small { color:var(--ink-faint); font-size:10.5px; }
+  .ob-tr { display:block; }
+  .ob-tr input[type=range] { width:calc(100% - 34px); accent-color:#d4a94a; vertical-align:middle; }
+  .ob-tr b { display:inline-block; width:26px; text-align:right; color:var(--gold-2); font-size:14px; vertical-align:middle; }
+  .ob-foot em { display:block; margin-top:6px; font-style:italic; color:var(--gold-soft); font-size:11px; }
   .ob-name { width:100%; max-width:340px; margin-top:22px; }
   .ob-name input { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
     font-family:'Cormorant Garamond'; font-size:18px; text-align:center; padding:13px 14px; }
@@ -315,12 +327,21 @@
     </form>
 
     <form class="ag-form hide" id="agRegForm" autocomplete="on">
-      <input type="text" id="agRegName" placeholder="Seu nome" autocomplete="name" required />
+      <input type="text" id="agRegName" placeholder="Seu nome completo" autocomplete="name" required />
       <input type="email" id="agRegEmail" placeholder="Seu e-mail" autocomplete="email" required />
       <input type="password" id="agRegPass" placeholder="Crie uma senha (mín. 6)" autocomplete="new-password" required />
+      <label class="ag-lbl">Data de nascimento</label>
+      <input type="date" id="agRegBirth" required />
+      <select id="agRegMarital" required>
+        <option value="" disabled selected>Estado civil</option>
+        <option>Solteiro(a)</option><option>Casado(a)</option><option>União estável</option>
+        <option>Divorciado(a)</option><option>Viúvo(a)</option>
+      </select>
+      <input type="text" id="agRegCity" placeholder="Cidade / UF" required />
+      <input type="text" id="agRegAddress" placeholder="Endereço (rua, nº, bairro)" />
       <input type="text" id="agRegInvite" placeholder="Código de convite (ex.: LUMEN-XXXXXX)" style="text-transform:uppercase" required />
       <label class="ag-consent"><input type="checkbox" id="agRegConsent" />
-        Aceito que minhas conversas fiquem guardadas com segurança para o meu acompanhamento no Método Lúmen. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
+        Aceito que minhas conversas e meu acompanhamento fiquem guardados com segurança para a minha evolução no Método Lúmen, acessíveis ao meu mentor. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
       <button type="submit" class="ag-btn" id="agRegBtn">Criar minha conta</button>
     </form>
 
@@ -332,7 +353,15 @@
   <div class="onboarding" id="onboarding">
     <img class="ob-logo" src="logo.png" alt="Método Lúmen — por Rodrigo Américo — a luz só atravessa o que está alinhado" />
     <div class="ob-name"><input id="obNameInput" type="text" placeholder="Como posso te chamar?" autocomplete="off" /></div>
-    <div class="ob-q">Como você está<br>se sentindo agora?</div>
+    <div class="ob-q">Seu check-in de hoje.<br>Como você está?</div>
+    <div class="ob-triade" id="obTriade">
+      <div class="ob-tr"><label>🫀 Corpo <small>(sono, energia, cuidado físico)</small></label>
+        <input type="range" id="trCorpo" min="0" max="10" value="5" /><b id="trCorpoV">5</b></div>
+      <div class="ob-tr"><label>💭 Alma <small>(emoções, mente, paz interior)</small></label>
+        <input type="range" id="trAlma" min="0" max="10" value="5" /><b id="trAlmaV">5</b></div>
+      <div class="ob-tr"><label>🕊️ Espírito <small>(conexão com Deus, fé, esperança)</small></label>
+        <input type="range" id="trEspirito" min="0" max="10" value="5" /><b id="trEspiritoV">5</b></div>
+    </div>
     <div class="ob-grid" id="obGrid">
       <button data-m="ótimo"><span>🌅</span>Ótimo</button>
       <button data-m="mal"><span>🌫️</span>Mal</button>
@@ -342,7 +371,7 @@
       <button data-m="ansioso"><span>⚡</span>Ansioso</button>
       <button data-m="irritado"><span>🔥</span>Irritado</button>
     </div>
-    <div class="ob-foot">Não existe resposta certa. Só a verdadeira.</div>
+    <div class="ob-foot">Não existe resposta certa. Só a verdadeira.<br><em>Seu check-in diário faz parte da sua evolução — a consciência é o primeiro alinhamento.</em></div>
   </div>
 
   <div class="topbar">
@@ -1258,12 +1287,16 @@ document.getElementById('agRegForm').onsubmit = ev => { ev.preventDefault();
     name: document.getElementById('agRegName').value,
     email: document.getElementById('agRegEmail').value,
     password: document.getElementById('agRegPass').value,
+    birth: document.getElementById('agRegBirth').value,
+    marital: document.getElementById('agRegMarital').value,
+    city: document.getElementById('agRegCity').value,
+    address: document.getElementById('agRegAddress').value,
     invite: document.getElementById('agRegInvite').value,
     consent: document.getElementById('agRegConsent').checked
   }, document.getElementById('agRegBtn'));
 };
 
-/* depois de logado: nome vem da conta + retoma o histórico salvo */
+/* depois de logado: nome vem da conta + retoma o histórico + confere o check-in do dia */
 function afterLogin(){
   if(AUTH.name){
     state.name = AUTH.name;
@@ -1279,7 +1312,18 @@ function afterLogin(){
         state.history = h.map(m => ({ role: m.role, content: m.content }));
       }
     }).catch(()=>{});
+  // se o check-in de hoje já foi feito, não repete o filtro: vai direto pra conversa
+  fetch(API_BASE + '/api/checkin', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : { hoje: null })
+    .then(d => { if(d.hoje) skipToChat(d.hoje); })
+    .catch(()=>{});
 }
+
+/* mostra o valor dos controles da tríade enquanto arrasta */
+['Corpo','Alma','Espirito'].forEach(k => {
+  const el = document.getElementById('tr'+k);
+  if(el) el.oninput = () => document.getElementById('tr'+k+'V').textContent = el.value;
+});
 
 /* na abertura: se o servidor tem contas, exige login; senão segue como antes */
 (async function boot(){
@@ -1308,8 +1352,31 @@ function startWithMood(mood){
   renderReport();
   if(state.device) tickVitals();
   document.getElementById('onboarding').classList.add('hide');
-  // a primeira fala já parte da IA, acolhendo pelo nome e pelo que a pessoa marcou
-  const abertura = (nm ? 'Meu nome é ' + nm + '. ' : '') + 'Cheguei aqui me sentindo ' + mood + '.';
+
+  // registra o check-in diário (o filtro faz parte da evolução)
+  const tri = {
+    emocao: mood,
+    corpo: Number(document.getElementById('trCorpo').value),
+    alma: Number(document.getElementById('trAlma').value),
+    espirito: Number(document.getElementById('trEspirito').value)
+  };
+  if(AUTH.token) fetch(API_BASE + '/api/checkin', { method:'POST', headers: authHeaders(), body: JSON.stringify(tri) }).catch(()=>{});
+
+  // a primeira fala já parte da IA, acolhendo pelo nome, pelo humor e pela tríade de hoje
+  const abertura = (nm ? 'Meu nome é ' + nm + '. ' : '') + 'Cheguei aqui me sentindo ' + mood +
+    '. No meu check-in de hoje: corpo ' + tri.corpo + '/10, alma ' + tri.alma + '/10, espírito ' + tri.espirito + '/10.';
   sendMessage(abertura);
+}
+
+/* volta no mesmo dia: check-in já feito, vai direto para a conversa */
+function skipToChat(chk){
+  state.name = AUTH.name || state.name;
+  state.emotion = (chk && chk.emocao) || state.emotion;
+  state.sessionStart = Date.now();
+  state.reportSent = false;
+  document.getElementById('emoVal').textContent = state.emotion || '—';
+  renderEmoChart(); renderReport();
+  document.getElementById('onboarding').classList.add('hide');
+  addBubble('lumen', (state.name ? state.name.split(' ')[0] + ', que' : 'Que') + ' bom te ver de novo hoje. *Tô aqui.* Continua de onde a gente parou — o que você trouxe?');
 }
 </script>
