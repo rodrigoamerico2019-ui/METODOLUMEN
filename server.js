@@ -78,7 +78,10 @@ app.get('/api/auth/history', requireAuth, async (req, res) => {
 //  Uso pelo navegador: /api/admin/invite?key=SUA_ADMIN_KEY&note=Maria&uses=1
 // ---------------------------------------------------------
 function requireAdmin(req, res, next) {
-  if (process.env.ADMIN_KEY && req.query.key === process.env.ADMIN_KEY) return next();
+  // tolerante a espaços/quebras de linha acidentais ao colar a chave no painel
+  const esperado = String(process.env.ADMIN_KEY || '').trim();
+  const recebido = String(req.query.key || '').trim();
+  if (esperado && recebido === esperado) return next();
   res.status(403).json({ error: 'chave de administrador inválida' });
 }
 app.get('/api/admin/invite', requireAdmin, async (req, res) => {
