@@ -231,11 +231,8 @@
     background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease; }
   .onboarding.hide { display:none; }
-  .ob-mark { width:54px; height:54px; border-radius:50%; background:var(--gold-grad); display:grid; place-items:center;
-    box-shadow:0 0 30px rgba(232,199,106,.42); margin-bottom:15px; }
-  .ob-mark span { font-family:'Cinzel'; font-weight:600; color:#0a0e1a; font-size:25px; }
-  .ob-brand { font-family:'Cinzel'; letter-spacing:6px; font-size:20px; color:var(--ink); }
-  .ob-tag { font-family:'Cormorant Garamond'; font-style:italic; color:var(--gold-soft); font-size:14px; margin-top:4px; }
+  .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
+    filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
   .ob-name { width:100%; max-width:340px; margin-top:22px; }
   .ob-name input { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
@@ -278,9 +275,7 @@
 
   <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
   <div class="onboarding" id="onboarding">
-    <div class="ob-mark"><span>L</span></div>
-    <div class="ob-brand">LÚMEN</div>
-    <div class="ob-tag">a luz só atravessa o que está alinhado</div>
+    <img class="ob-logo" src="logo.png" alt="Método Lúmen — por Rodrigo Américo — a luz só atravessa o que está alinhado" />
     <div class="ob-name"><input id="obNameInput" type="text" placeholder="Como posso te chamar?" autocomplete="off" /></div>
     <div class="ob-q">Como você está<br>se sentindo agora?</div>
     <div class="ob-grid" id="obGrid">
