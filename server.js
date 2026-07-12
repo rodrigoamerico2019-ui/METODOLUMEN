@@ -11,18 +11,22 @@ import cors from 'cors';
 import nodemailer from 'nodemailer';
 import rateLimit from 'express-rate-limit';
 import basicAuth from 'express-basic-auth';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// --- Base de conhecimento do Método Lúmen (destilada das obras do Rodrigo) ---
-// Carregada uma vez na subida e injetada no sistema com prompt caching (barato por conversa).
+// --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
+// Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
+// no sistema com prompt caching (fica profundo e barato por conversa).
 const __dir = dirname(fileURLToPath(import.meta.url));
 let KNOWLEDGE = '';
 try {
-  KNOWLEDGE = readFileSync(join(__dir, 'knowledge', 'base-lumen.md'), 'utf8').trim();
+  const dir = join(__dir, 'knowledge');
+  const files = readdirSync(dir).filter(f => f.endsWith('.md')).sort();
+  KNOWLEDGE = files.map(f => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n\n').trim();
+  console.log(`  Base de conhecimento: ${files.length} arquivo(s) — ${KNOWLEDGE.length} caracteres.`);
 } catch {
-  console.warn('  Aviso: knowledge/base-lumen.md não encontrado — Lúmen roda sem a base do Método.');
+  console.warn('  Aviso: pasta knowledge/ não encontrada — Lúmen roda sem a base do Método.');
 }
 
 const app = express();
