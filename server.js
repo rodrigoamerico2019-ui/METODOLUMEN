@@ -228,6 +228,15 @@ if (!dbReady && process.env.BETA_USER && process.env.BETA_PASS) {
   console.log('  Proteção: login individual por paciente (trava BETA dispensada)');
 }
 
+// Roteamento por marca: o domínio TriLumen abre direto o dashboard do mentor;
+// os demais (metodolumen / onrender) abrem o app do paciente.
+app.use((req, res, next) => {
+  if (req.path === '/' && String(req.hostname || '').includes('trilumen')) {
+    return res.redirect('/painel.html');
+  }
+  next();
+});
+
 app.use(express.static('public'));
 
 // --- Limite de mensagens (protege seus créditos do Opus) ---
