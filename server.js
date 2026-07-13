@@ -76,7 +76,9 @@ app.get('/api/health', (req, res) => res.json({
   ia: !!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.startsWith('coloque'),
   whatsapp: (process.env.WHATSAPP_PROVIDER || 'none'),
   email: !!process.env.SMTP_HOST,
-  contas: dbReady
+  contas: dbReady,
+  push: PUSH_ON,
+  lembretes: PUSH_ON && String(process.env.REMINDERS || 'on') === 'on'
 }));
 
 // ---------------------------------------------------------
