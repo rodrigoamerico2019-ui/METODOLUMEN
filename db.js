@@ -95,6 +95,14 @@ export async function initDb() {
       kind TEXT NOT NULL,
       PRIMARY KEY (user_id, day, kind)
     );
+    -- SABEDORIA COLETIVA (anônima): o que muitas jornadas ensinam sobre a cura.
+    -- Linha única. Nunca guarda nome nem dado identificável de ninguém.
+    CREATE TABLE IF NOT EXISTS collective_wisdom (
+      id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      texto TEXT DEFAULT '',
+      amostras INT DEFAULT 0,
+      updated_at TIMESTAMPTZ
+    );
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -367,6 +375,51 @@ export async function markReminderSent(userId, kind) {
   if (!pool) return;
   await pool.query(`INSERT INTO reminders_sent (user_id, day, kind)
     VALUES ($1,(now() AT TIME ZONE 'America/Sao_Paulo')::date,$2) ON CONFLICT DO NOTHING`, [userId, kind]);
+}
+
+// =========================================================
+//  SABEDORIA COLETIVA (aprendizado anônimo entre jornadas)
+//  Só agregados/temas. NUNCA nomes ou dados identificáveis.
+// =========================================================
+export async function getCollectiveWisdom() {
+  if (!pool) return null;
+  const r = await pool.query('SELECT texto, amostras, updated_at FROM collective_wisdom WHERE id=1');
+  return r.rows[0] || null;
+}
+
+export async function setCollectiveWisdom(texto, amostras) {
+  if (!pool) return;
+  await pool.query(`INSERT INTO collective_wisdom (id, texto, amostras, updated_at)
+    VALUES (1,$1,$2,now()) ON CONFLICT (id) DO UPDATE SET texto=$1, amostras=$2, updated_at=now()`,
+    [String(texto || '').slice(0, 6000), amostras || 0]);
+}
+
+// vitórias de TODAS as pessoas, achatadas e SEM vínculo a ninguém (anônimo)
+export async function anonVictories(limit = 120) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT (v->>'texto') AS texto
+    FROM profiles, jsonb_array_elements(COALESCE(vitorias,'[]'::jsonb)) AS v
+    WHERE v->>'texto' IS NOT NULL
+    ORDER BY random() LIMIT $1`, [limit]);
+  return r.rows.map(x => x.texto).filter(Boolean);
+}
+
+// sinais agregados de melhora (anônimo): quantas jornadas foram de amarelo/vermelho -> verde
+export async function healingAggregate(days = 90) {
+  if (!pool) return null;
+  const r = await pool.query(`
+    WITH por_pessoa AS (
+      SELECT user_id,
+        min(created_at) FILTER (WHERE meta->>'status' IN ('amarelo','vermelho')) AS inicio_dificil,
+        max(created_at) FILTER (WHERE meta->>'status'='verde') AS chegou_verde
+      FROM messages
+      WHERE role='assistant' AND meta IS NOT NULL AND created_at > now() - ($1||' days')::interval
+      GROUP BY user_id)
+    SELECT count(*)::int AS jornadas,
+           count(*) FILTER (WHERE chegou_verde > inicio_dificil)::int AS melhoraram
+    FROM por_pessoa`, [days]);
+  return r.rows[0] || null;
 }
 
 // =========================================================

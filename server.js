@@ -20,7 +20,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor,
          overviewStats, globalDaily, emotionsPredominant,
          savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead,
-         usersForReminders, reminderSent, markReminderSent } from './db.js';
+         usersForReminders, reminderSent, markReminderSent,
+         getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate } from './db.js';
 import webpush from 'web-push';
 
 // --- Notificações push (PWA) ---
@@ -88,7 +89,8 @@ app.get('/api/health', (req, res) => res.json({
   email: !!process.env.SMTP_HOST,
   contas: dbReady,
   push: PUSH_ON,
-  lembretes: PUSH_ON && String(process.env.REMINDERS || 'on') === 'on'
+  lembretes: PUSH_ON && String(process.env.REMINDERS || 'on') === 'on',
+  coletivo: COLETIVO_ON && !!COLETIVO
 }));
 
 // ---------------------------------------------------------
@@ -224,6 +226,15 @@ app.post('/api/admin/message', requireAdmin, async (req, res) => {
     res.json({ ok: true, push_enviados: enviados });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// sabedoria coletiva anônima (transparência para o mentor conferir)
+app.get('/api/admin/collective', requireAdmin, async (req, res) => {
+  try {
+    if (req.query.refresh === '1') { await updateColetivo(); }
+    const c = await getCollectiveWisdom();
+    res.json({ ativo: COLETIVO_ON, texto: c?.texto || '', amostras: c?.amostras || 0, atualizado_em: c?.updated_at || null });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 // visão geral da plataforma (dashboard TriLumen)
 app.get('/api/admin/overview', requireAdmin, async (req, res) => {
   try {
@@ -397,6 +408,12 @@ function buildSystem(name, prontuario) {
     { type: 'text', text: SYSTEM_BASE + conhecimento, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `NOME DA PESSOA: ${nome}. Use este nome ao se dirigir a ela.` }
   ];
+  // Aprendizado coletivo ANÔNIMO — intuição de "o que costuma curar", nunca dado de outra pessoa.
+  if (COLETIVO) blocos.push({ type: 'text', text:
+`APRENDIZADO COLETIVO (sabedoria anônima, destilada de muitas jornadas — NÃO é dado de ninguém):
+${COLETIVO}
+
+Como usar: isto é só intuição pastoral sobre o que tende a ajudar as pessoas a curar. Deixe informar a sua sensibilidade, com naturalidade. REGRA ABSOLUTA DE PRIVACIDADE: nunca cite, revele ou traga a história, o nome ou a situação de OUTRA pessoa. A pessoa com quem você fala só existe ela — a memória dela é sagrada e separada de todas as outras.` });
   if (prontuario) blocos.push({ type: 'text', text:
 `PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
 ${prontuario}
@@ -658,6 +675,51 @@ async function rodarLembretes() {
 }
 setInterval(rodarLembretes, 10 * 60 * 1000); // verifica a cada 10 minutos
 setTimeout(rodarLembretes, 20 * 1000);       // e uma vez logo após subir
+
+// ---------------------------------------------------------
+//  APRENDIZADO COLETIVO (anônimo) — a IA aprende com todas as jornadas
+//  sem nunca cruzar dados identificáveis de uma pessoa no diálogo de outra.
+//  Roda 1x/dia (regenera se >20h). Guardado em memória p/ injetar no prompt.
+// ---------------------------------------------------------
+let COLETIVO = '';
+const COLETIVO_ON = String(process.env.COLETIVO || 'on') === 'on';
+let atualizandoColetivo = false;
+
+async function updateColetivo() {
+  if (!COLETIVO_ON || !dbReady || !process.env.ANTHROPIC_API_KEY || atualizandoColetivo) return;
+  const atual = await getCollectiveWisdom().catch(() => null);
+  if (atual?.updated_at && (Date.now() - new Date(atual.updated_at).getTime()) < 20 * 3600 * 1000) {
+    COLETIVO = atual.texto || ''; return; // ainda fresco
+  }
+  atualizandoColetivo = true;
+  try {
+    const [emocoes, vitorias, cura] = await Promise.all([
+      emotionsPredominant(60), anonVictories(120), healingAggregate(90)
+    ]);
+    const amostras = vitorias.length;
+    if (amostras < 8) { COLETIVO = atual?.texto || ''; return; } // pouca base ainda
+    const material =
+      `EMOÇÕES MAIS FREQUENTES (anônimo): ${emocoes.map(e => `${e.emocao} (${e.n})`).join(', ')}\n` +
+      `JORNADAS QUE CAMINHARAM PARA A PAZ: ${cura?.melhoraram || 0} de ${cura?.jornadas || 0}\n` +
+      `VITÓRIAS E GRATIDÕES RELATADAS (anônimas, embaralhadas):\n- ${vitorias.join('\n- ')}`;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        system: `Você destila a SABEDORIA COLETIVA do Método Lúmen a partir de vitórias e padrões ANÔNIMOS de muitas pessoas. Produza um texto curto (máx ~350 palavras) que capture, de forma TEMÁTICA e GERAL, o que tende a ajudar as pessoas a curar e avançar — como intuição pastoral, nunca como dado de indivíduo. Regras absolutas: NUNCA cite nomes, iniciais, cidades ou qualquer identificador; NUNCA conte a história de uma pessoa específica; fale sempre em padrões ("muitas pessoas encontram alívio quando...", "costuma ajudar..."). Seções: O QUE TENDE A CURAR (práticas/movimentos recorrentes nas vitórias) · CAMINHOS DE AVANÇO (o que precede a paz) · SEMENTES DE GRATIDÃO (temas comuns de gratidão). Escreva no espírito cristocêntrico do Método.`,
+        messages: [{ role: 'user', content: material }]
+      })
+    });
+    const data = await r.json();
+    const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (texto) { await setCollectiveWisdom(texto, amostras); COLETIVO = texto; console.log(`  Sabedoria coletiva atualizada (${amostras} vitórias anônimas).`); }
+  } catch (e) { console.error('coletivo:', e.message); }
+  finally { atualizandoColetivo = false; }
+}
+setInterval(updateColetivo, 6 * 3600 * 1000);   // reavalia a cada 6h (só regenera se >20h)
+setTimeout(updateColetivo, 35 * 1000);          // e uma vez após subir
 
 initDb().catch(e => console.error('  Banco: falha ao iniciar —', e.message));
 
