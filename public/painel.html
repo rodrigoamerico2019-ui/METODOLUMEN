@@ -132,6 +132,35 @@
   .notas:focus{outline:none;border-color:var(--gold)}
   .vit-item{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 13px;margin-bottom:7px;font-size:12.5px}
   .vit-item small{color:var(--gold2);margin-right:8px}
+  /* Central de Prioridades */
+  .prio-resumo{font-size:13px;color:var(--dim);margin-bottom:16px}
+  .prio-resumo b{color:var(--ink)}
+  .prio-card{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);
+    border-left-width:4px;border-radius:14px;padding:14px 16px;margin-bottom:11px;flex-wrap:wrap}
+  .prio-card.seguranca{border-left-color:var(--vermelho);background:linear-gradient(90deg,rgba(226,109,109,.06),var(--panel) 40%)}
+  .prio-card.prioridade{border-left-color:var(--vermelho)}
+  .prio-card.atencao{border-left-color:var(--amarelo)}
+  .prio-card.observar{border-left-color:var(--gold)}
+  .prio-nome{flex:1 1 180px;min-width:150px}
+  .prio-nome b{font-size:14.5px;color:var(--ink)}
+  .prio-motivo{font-size:12px;color:var(--dim);margin-top:3px}
+  .prio-motivo .selo{display:inline-block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+    padding:1px 8px;border-radius:999px;margin-right:7px;vertical-align:middle}
+  .selo.seguranca{background:#241214;border:1px solid #4a2530;color:var(--vermelho)}
+  .selo.prioridade{background:#241214;border:1px solid #4a2530;color:#f0a0a0}
+  .selo.atencao{background:#2a2413;border:1px solid #4a4020;color:var(--amarelo)}
+  .selo.observar{background:#221e12;border:1px solid #40381e;color:var(--gold2)}
+  .prio-meta{font-size:11px;color:var(--faint);flex:0 0 auto}
+  .prio-acoes{display:flex;gap:8px;flex:0 0 auto}
+  .pbtn{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:999px;
+    padding:8px 16px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .pbtn:hover{border-color:var(--gold);color:var(--gold2)}
+  .pbtn.forte{background:var(--grad);color:#141005;border-color:transparent;font-weight:600}
+  .prio-legenda{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:18px}
+  .pdot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .pdot.seguranca,.pdot.prioridade{background:var(--vermelho)}
+  .pdot.atencao{background:var(--amarelo)} .pdot.observar{background:var(--gold)}
+  .prio-vazio{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;text-align:center;color:var(--dim)}
   .h2c{font-family:'Cinzel';font-weight:500;font-size:16px;letter-spacing:1px;margin-bottom:4px}
   .subc{font-family:'Cormorant Garamond';font-style:italic;color:var(--dim);font-size:14px;margin-bottom:14px}
 </style>
@@ -152,7 +181,8 @@
 <div class="shell" id="shell">
   <aside class="side">
     <div class="brand"><span id="sideEmblema"></span><h1>TRILUMEN</h1></div>
-    <div class="nav-item on" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
+    <div class="nav-item on" data-v="prioridades" onclick="nav('prioridades')"><span class="ic">✦</span> Prioridades</div>
+    <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
     <div class="foot">TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
@@ -160,8 +190,21 @@
 
   <main class="main">
 
+    <!-- ===== CENTRAL DE PRIORIDADES ===== -->
+    <section id="view-prioridades">
+      <div class="topline"><h2>Quem precisa de você hoje</h2><span class="sub">a luz encontra primeiro quem mais precisa</span></div>
+      <div id="prioResumo" class="prio-resumo"></div>
+      <div id="prioCards"></div>
+      <div class="prio-legenda">
+        <span><span class="pdot seguranca"></span>Segurança — sinal de risco, agir primeiro</span>
+        <span><span class="pdot prioridade"></span>Prioridade</span>
+        <span><span class="pdot atencao"></span>Atenção</span>
+        <span><span class="pdot observar"></span>Observar</span>
+      </div>
+    </section>
+
     <!-- ===== VISÃO GERAL ===== -->
-    <section id="view-geral">
+    <section id="view-geral" class="hide">
       <div class="topline"><h2>Visão Geral</h2><span class="sub">acompanhamos cada etapa · transformamos vidas</span></div>
       <div class="stats-row" id="statsRow"></div>
       <div class="grid">
@@ -307,7 +350,7 @@ $('sideEmblema').innerHTML = emblema(13);
 
 /* ===== navegação ===== */
 function nav(v){
-  ['geral','jornadas','detalhe'].forEach(x=>$('view-'+x).classList.add('hide'));
+  ['prioridades','geral','jornadas','detalhe'].forEach(x=>$('view-'+x).classList.add('hide'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   if(v==='alertas'){
     $('view-jornadas').classList.remove('hide');
@@ -320,8 +363,54 @@ function nav(v){
     $('view-'+v).classList.remove('hide');
     document.querySelector('[data-v="'+v+'"]').classList.add('on');
     if(v==='jornadas') renderLista(false);
+    if(v==='prioridades') renderPrioridades();
+    if(v==='geral') carregarColetivo();
   }
   window.scrollTo(0,0);
+}
+
+/* ===== CENTRAL DE PRIORIDADES ===== */
+function nivelPrioridade(p){
+  const dias = diasSem(p.last_seen_at);
+  const st = p.ultimo_meta?.status;
+  const riscoAlto = p.risco_recente || p.ultimo_meta?.risco === 'ALTO';
+  if(riscoAlto)                       return {nivel:'seguranca', ordem:5, motivo:'Sinal de risco identificado nos últimos 7 dias — acolher e acionar o protocolo de segurança'};
+  if(st==='vermelho')                 return {nivel:'prioridade',ordem:4, motivo:'Último atendimento terminou em estado vermelho'};
+  if(dias>=7 && p.mensagens>0)        return {nivel:'atencao',   ordem:3, motivo:`Sem acessar há ${dias} dias — pode ter se afastado da jornada`};
+  if(st==='amarelo')                  return {nivel:'atencao',   ordem:3, motivo:'Última conversa em atenção (amarelo) — dor ainda ativa'};
+  if(dias>=5)                         return {nivel:'observar',  ordem:2, motivo:`${dias} dias sem acesso`};
+  if(!p.ultima_conversa)              return {nivel:'observar',  ordem:2, motivo:'Ainda não iniciou nenhuma conversa'};
+  return {nivel:'informativo', ordem:1, motivo:'Acolhido, sem sinais de atenção'};
+}
+
+function renderPrioridades(){
+  const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
+  const nomes = {seguranca:'segurança', prioridade:'prioridade', atencao:'atenção', observar:'observar'};
+  const com = pacientes.map(p => ({ p, ...nivelPrioridade(p) }));
+  const precisam = com.filter(x => x.ordem >= 2).sort((a,b)=> b.ordem - a.ordem || diasSem(b.p.last_seen_at) - diasSem(a.p.last_seen_at));
+  const tranquilos = com.length - precisam.length;
+
+  $('prioResumo').innerHTML = precisam.length
+    ? `<b>${precisam.length}</b> pessoa(s) pedindo sua atenção hoje · <b>${tranquilos}</b> em paz`
+    : `Todas as <b>${com.length}</b> pessoas estão acolhidas hoje. 🕊️`;
+
+  if(!precisam.length){
+    $('prioCards').innerHTML = '<div class="prio-vazio">Nenhuma prioridade agora. Que continue assim — a luz está atravessando.</div>';
+    return;
+  }
+  $('prioCards').innerHTML = precisam.map(({p,nivel,motivo})=>{
+    const emerg = (nivel==='seguranca' && p.emergency_phone) ? '' : '';
+    return `<div class="prio-card ${nivel}">
+      <div class="prio-nome">
+        <b>${p.name}</b>
+        <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}</div>
+      </div>
+      <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens} interações</div>
+      <div class="prio-acoes">
+        <button class="pbtn forte" onclick="abrirPaciente(${p.id})">Abrir ficha →</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function entrar(){
@@ -343,7 +432,7 @@ async function boot(){
     const [ov, us] = await Promise.all([ api('/api/admin/overview'), api('/api/admin/users') ]);
     pacientes = us.pacientes;
     $('gate').classList.add('hide'); $('shell').classList.add('on');
-    renderGeral(ov); renderLista(false);
+    renderPrioridades(); renderGeral(ov); renderLista(false);
   }catch(e){
     sessionStorage.removeItem('lumen_admin_key');
     $('keyErr').textContent = 'Chave inválida ou erro: ' + e.message;
