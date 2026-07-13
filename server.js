@@ -17,7 +17,8 @@ import { dirname, join } from 'node:path';
 import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers,
          getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
          todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
-         emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor } from './db.js';
+         emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor,
+         overviewStats, globalDaily, emotionsPredominant } from './db.js';
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -169,6 +170,15 @@ app.get('/api/admin/patient', requireAdmin, async (req, res) => {
 app.post('/api/admin/notes', requireAdmin, async (req, res) => {
   try { await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// visão geral da plataforma (dashboard TriLumen)
+app.get('/api/admin/overview', requireAdmin, async (req, res) => {
+  try {
+    const [stats, evolucao, emocoes] = await Promise.all([
+      overviewStats(), globalDaily(30), emotionsPredominant(30)
+    ]);
+    res.json({ stats, evolucao, emocoes });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // transcrição de um dia de atendimento (consulta do mentor)
 app.get('/api/admin/transcript', requireAdmin, async (req, res) => {

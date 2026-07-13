@@ -335,6 +335,50 @@ export async function transcriptOfDay(userId, day) {
   return r.rows;
 }
 
+// =========================================================
+//  VISÃO GERAL DA PLATAFORMA (dashboard TriLumen)
+// =========================================================
+export async function overviewStats() {
+  if (!pool) return null;
+  const r = await pool.query(`
+    SELECT
+      (SELECT count(*)::int FROM users) AS pessoas,
+      (SELECT count(DISTINCT user_id)::int FROM messages WHERE created_at > now() - interval '30 days') AS jornadas,
+      (SELECT count(DISTINCT user_id)::int FROM messages
+         WHERE meta->>'risco'='ALTO' AND created_at > now() - interval '7 days') AS alertas,
+      (SELECT count(*)::int FROM checkins
+         WHERE day = (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS checkins_hoje`);
+  return r.rows[0];
+}
+
+// evolução emocional agregada de todos os pacientes (média da tríade por dia)
+export async function globalDaily(days = 30) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
+           round(avg((meta->>'corpo')::numeric),1)    AS corpo,
+           round(avg((meta->>'alma')::numeric),1)     AS alma,
+           round(avg((meta->>'espirito')::numeric),1) AS espirito,
+           round(avg((meta->>'intensidade')::numeric),1) AS intensidade
+    FROM messages
+    WHERE role='assistant' AND meta IS NOT NULL
+      AND created_at > now() - ($1 || ' days')::interval
+    GROUP BY 1 ORDER BY 1`, [days]);
+  return r.rows;
+}
+
+// emoções predominantes na plataforma (para o gráfico de rosca)
+export async function emotionsPredominant(days = 30) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT meta->>'emocao' AS emocao, count(*)::int AS n
+    FROM messages
+    WHERE role='assistant' AND meta->>'emocao' IS NOT NULL AND meta->>'emocao' <> ''
+      AND created_at > now() - ($1 || ' days')::interval
+    GROUP BY 1 ORDER BY n DESC LIMIT 6`, [days]);
+  return r.rows;
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;
