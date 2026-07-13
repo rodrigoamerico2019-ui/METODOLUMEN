@@ -241,37 +241,87 @@ async function abrirPaciente(id){
     : '<span class="muted">ainda não houve conversas</span>';
 }
 
-/* ===== AS ESFERAS (a identidade do Método: três círculos que a luz atravessa) ===== */
+/* ===== AS ESFERAS — fiéis ao emblema do Método: três esferas na vertical,
+   atravessadas pelo feixe de luz, com clarões nos encontros.
+   Ordem de cima para baixo: ESPÍRITO → ALMA → CORPO (o espírito guia a alma; a alma, o corpo). ===== */
 function desenharEsferas(e){
-  const vals = { corpo: e?.corpo, alma: e?.alma, espirito: e?.espirito };
   const temDados = e && e.amostras > 0;
-  const cx = [90, 230, 370], nomes = ['CORPO','ALMA','ESPÍRITO'], chaves=['corpo','alma','espirito'];
-  const eixoY = 92, R = 62;
-  let svg = `<svg viewBox="0 0 460 210" style="width:100%;max-width:560px">
+  const ordem = [
+    { k:'espirito', nome:'ESPÍRITO' },
+    { k:'alma',     nome:'ALMA' },
+    { k:'corpo',    nome:'CORPO' }
+  ];
+  const CX = 150, R = 92;
+  const CYs = [128, 312, 496];               // esferas se tocando, como no emblema
+  const flares = [30, 220, 404, 594];        // clarões: topo, encontros e base
+  const H = 640;
+
+  // rachaduras sutis de mármore (traços fixos, discretos)
+  const cracks = (cx,cy)=>{
+    const p=[[-55,-30,-18,-8,20,10],[35,-45,10,-12,-25,15],[-40,38,-5,20,42,30],[15,42,28,12,50,-18]];
+    return p.map(q=>`<polyline points="${cx+q[0]},${cy+q[1]} ${cx+q[2]},${cy+q[3]} ${cx+q[4]},${cy+q[5]}"
+      fill="none" stroke="#B8862A" stroke-width=".7" opacity=".18"/>`).join('');
+  };
+  const flare = (cy,forte)=>`
+    <line x1="${CX-(forte?46:30)}" y1="${cy}" x2="${CX+(forte?46:30)}" y2="${cy}" stroke="url(#flareH)" stroke-width="${forte?3:2}" filter="url(#blur2)"/>
+    <circle cx="${CX}" cy="${cy}" r="${forte?7:5}" fill="#fff8e6" filter="url(#blur1)"/>
+    <circle cx="${CX}" cy="${cy}" r="${forte?3:2}" fill="#ffffff"/>`;
+
+  let svg = `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:320px;display:block;margin:0 auto">
     <defs>
       <linearGradient id="gradOuro" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#B8862A"/><stop offset="55%" stop-color="#E8C76A"/><stop offset="100%" stop-color="#B8862A"/>
       </linearGradient>
-    </defs>
-    <line x1="30" y1="${eixoY}" x2="430" y2="${eixoY}" stroke="#3a3223" stroke-width="1" stroke-dasharray="2 5"/>`;
-  chaves.forEach((k,i)=>{
-    const v = vals[k]==null ? null : Number(vals[k]);
+      <linearGradient id="feixe" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#E8C76A" stop-opacity="0"/>
+        <stop offset="12%" stop-color="#F5E3B0" stop-opacity=".9"/>
+        <stop offset="50%" stop-color="#FFF4D6"/>
+        <stop offset="88%" stop-color="#F5E3B0" stop-opacity=".9"/>
+        <stop offset="100%" stop-color="#E8C76A" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="flareH" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#E8C76A" stop-opacity="0"/>
+        <stop offset="50%" stop-color="#FFF4D6"/>
+        <stop offset="100%" stop-color="#E8C76A" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="interior">
+        <stop offset="0%" stop-color="#17140e"/><stop offset="75%" stop-color="#0b0906"/><stop offset="100%" stop-color="#060504"/>
+      </radialGradient>
+      <filter id="blur1"><feGaussianBlur stdDeviation="2.2"/></filter>
+      <filter id="blur2"><feGaussianBlur stdDeviation="3.5"/></filter>
+      <filter id="blur3"><feGaussianBlur stdDeviation="6"/></filter>
+    </defs>`;
+
+  // esferas
+  ordem.forEach((o,i)=>{
+    const cy = CYs[i];
+    const v = (e && e[o.k] != null) ? Number(e[o.k]) : null;
     const pct = v==null ? '—' : Math.round(v*10)+'%';
-    const preenchAng = v==null ? 0 : (v/10);
-    // arco de preenchimento: quanto da esfera está "iluminada"
     const circ = 2*Math.PI*R;
+    const preench = v==null ? 0 : v/10;
     svg += `<g class="esf">
-      <circle class="aro" cx="${cx[i]}" cy="${eixoY}" r="${R}"/>
-      <circle cx="${cx[i]}" cy="${eixoY}" r="${R}" fill="none" stroke="url(#gradOuro)" stroke-width="3.5"
-        stroke-dasharray="${(circ*preenchAng).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
-        transform="rotate(-90 ${cx[i]} ${eixoY})" opacity=".9"/>
-      <text class="pct" x="${cx[i]}" y="${eixoY+7}" text-anchor="middle" font-size="21" fill="#E8C76A">${pct}</text>
-      <text class="nomeEsf" x="${cx[i]}" y="${eixoY+R+24}" text-anchor="middle" font-size="11.5" letter-spacing="3" fill="#a89f8d">${nomes[i]}</text>
-      <title>${nomes[i]}: ${v==null?'sem dados ainda':v+'/10 na última semana'}</title>
+      <circle cx="${CX}" cy="${cy}" r="${R}" fill="url(#interior)"/>
+      ${cracks(CX,cy)}
+      <circle cx="${CX}" cy="${cy}" r="${R+7}" fill="none" stroke="#5a4a28" stroke-width="1" opacity=".55"/>
+      <circle class="aro" cx="${CX}" cy="${cy}" r="${R}"/>
+      <circle cx="${CX}" cy="${cy}" r="${R}" fill="none" stroke="url(#gradOuro)" stroke-width="4"
+        stroke-dasharray="${(circ*preench).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+        transform="rotate(-90 ${CX} ${cy})" opacity=".95"/>
+      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#E8C76A">${pct}</text>
+      <text class="nomeEsf" x="${CX+R+18}" y="${cy+4}" font-size="10.5" letter-spacing="3" fill="#a89f8d"
+        transform="rotate(90 ${CX+R+18} ${cy+4})" text-anchor="middle">${o.nome}</text>
+      <title>${o.nome}: ${v==null?'sem dados ainda':v+'/10 na última semana ('+pct+')'}</title>
     </g>`;
   });
-  svg += '</svg>';
-  $('esferas').innerHTML = temDados ? svg : svg + '<p class="muted" style="text-align:center">As esferas ganham vida conforme as conversas acontecem.</p>';
+
+  // o feixe de luz que atravessa tudo (por cima das esferas, como no emblema)
+  svg += `
+    <line x1="${CX}" y1="6" x2="${CX}" y2="${H-6}" stroke="url(#feixe)" stroke-width="9" opacity=".35" filter="url(#blur3)" pointer-events="none"/>
+    <line x1="${CX}" y1="6" x2="${CX}" y2="${H-6}" stroke="url(#feixe)" stroke-width="2.4" pointer-events="none"/>
+    <g pointer-events="none">${flares.map((y,i)=>flare(y, i===1||i===2)).join('')}</g>
+  </svg>`;
+
+  $('esferas').innerHTML = svg + (temDados ? '' : '<p class="muted" style="text-align:center">As esferas ganham vida conforme as conversas acontecem.</p>');
 }
 
 /* ===== TRANSCRIÇÃO DE UMA SESSÃO ===== */
