@@ -59,6 +59,21 @@ export async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_name TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
+    -- foto do paciente (data URL pequena, redimensionada no cliente) para o prontuário
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT;
+    -- áudios "Fala como está" (dado original separado da interpretação da IA)
+    CREATE TABLE IF NOT EXISTS audio_entries (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      mime TEXT,
+      bytes BYTEA,
+      duration_sec INT,
+      transcript TEXT,           -- o que foi dito (transcrição)
+      resumo JSONB,              -- leitura ESTRUTURADA da IA (nunca sobrescreve o original)
+      status TEXT DEFAULT 'enviado',
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_audio_user ON audio_entries (user_id, created_at DESC);
     -- anotações privadas do mentor + vitórias estruturadas (extraídas pelo prontuário)
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notas_mentor TEXT DEFAULT '';
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS vitorias JSONB DEFAULT '[]';
@@ -111,7 +126,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env';
 const norm = e => String(e || '').trim().toLowerCase();
 
 // --- cadastro com código de convite + consentimento LGPD ---
-export async function register({ name, email, password, invite, consent, birth, marital, city, address, phone, emergencyName, emergencyPhone }) {
+export async function register({ name, email, password, invite, consent, birth, marital, city, address, phone, emergencyName, emergencyPhone, photo }) {
   if (!pool) throw new Error('banco não configurado');
   name = String(name || '').trim(); email = norm(email);
   if (!name || name.length < 2) throw new Error('Informe seu nome.');
@@ -134,10 +149,12 @@ export async function register({ name, email, password, invite, consent, birth, 
   const dup = await pool.query('SELECT 1 FROM users WHERE email=$1', [email]);
   if (dup.rows[0]) throw new Error('Já existe uma conta com este e-mail. Use "Entrar".');
   const hash = await bcrypt.hash(password, 10);
+  // foto: aceita apenas data URL de imagem pequena (redimensionada no cliente)
+  const foto = (typeof photo === 'string' && /^data:image\/(png|jpe?g|webp);base64,/.test(photo) && photo.length < 400000) ? photo : null;
   const u = await pool.query(
-    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address,phone,emergency_name,emergency_phone)
-     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8,$9,$10,$11) RETURNING id,name,email,role`,
-    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim(), fone, emgNome, emgFone]
+    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address,phone,emergency_name,emergency_phone,photo)
+     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id,name,email,role`,
+    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim(), fone, emgNome, emgFone, foto]
   );
   await pool.query('UPDATE invite_codes SET used_count=used_count+1 WHERE code=$1', [code]);
   await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [u.rows[0].id]);
@@ -263,10 +280,58 @@ export async function getUserBasic(userId) {
   const r = await pool.query(`
     SELECT id, name, email, created_at, last_seen_at,
            birth_date, marital_status, city, address,
-           phone, emergency_name, emergency_phone,
+           phone, emergency_name, emergency_phone, photo,
            date_part('year', age(birth_date))::int AS idade
     FROM users WHERE id=$1`, [userId]);
   return r.rows[0] || null;
+}
+
+// foto no primeiro acesso (para quem não enviou no cadastro)
+export async function userHasPhoto(userId) {
+  if (!pool || !userId) return true;
+  const r = await pool.query('SELECT (photo IS NOT NULL) AS tem FROM users WHERE id=$1', [userId]);
+  return !!r.rows[0]?.tem;
+}
+export async function setUserPhoto(userId, photo) {
+  if (!pool || !userId) return;
+  if (!(typeof photo === 'string' && /^data:image\/(png|jpe?g|webp);base64,/.test(photo) && photo.length < 400000)) throw new Error('foto inválida');
+  await pool.query('UPDATE users SET photo=$2 WHERE id=$1', [userId, photo]);
+}
+
+// =========================================================
+//  ÁUDIOS "Fala como está"
+// =========================================================
+export async function saveAudio(userId, { mime, buffer, duration, transcript }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const r = await pool.query(
+    `INSERT INTO audio_entries (user_id, mime, bytes, duration_sec, transcript, status)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [userId, String(mime || 'audio/webm'), buffer, Math.round(duration || 0), transcript || null, transcript ? 'transcrito' : 'enviado']);
+  return r.rows[0].id;
+}
+export async function setAudioSummary(id, resumo, transcript) {
+  if (!pool) return;
+  const status = resumo ? 'concluido' : (transcript ? 'transcrito' : 'audio_only');
+  await pool.query('UPDATE audio_entries SET resumo=$2, transcript=COALESCE($3,transcript), status=$4 WHERE id=$1',
+    [id, resumo ? JSON.stringify(resumo) : null, transcript || null, status]);
+}
+export async function getAudioBytes(id) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT mime, bytes FROM audio_entries WHERE id=$1', [id]);
+  return r.rows[0] || null;
+}
+export async function listAudios(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(
+    `SELECT id, mime, duration_sec, transcript, resumo, status, created_at
+     FROM audio_entries WHERE user_id=$1 ORDER BY id DESC LIMIT 40`, [userId]);
+  return r.rows;
+}
+export async function myAudios(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(
+    `SELECT id, duration_sec, status, created_at FROM audio_entries WHERE user_id=$1 ORDER BY id DESC LIMIT 20`, [userId]);
+  return r.rows;
 }
 
 // contato de emergência do paciente (para onde o alerta de risco vai)

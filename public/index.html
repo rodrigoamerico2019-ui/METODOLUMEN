@@ -260,6 +260,13 @@
   .ag-form select:invalid { color:var(--ink-faint); font-style:italic; }
   .ag-form input[type=date] { color-scheme:dark; }
   .ag-lbl { font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-faint); text-align:left; margin:2px 2px -4px; }
+  .ag-foto { display:flex; align-items:center; gap:14px; }
+  .ag-foto img { width:64px; height:64px; border-radius:50%; object-fit:cover; border:1px solid var(--line);
+    background:var(--panel); display:none; }
+  .ag-foto img.on { display:block; }
+  .ag-foto-btn { flex:1; background:var(--panel); border:1px dashed var(--line); border-radius:14px; color:var(--ink-dim);
+    font-size:13px; padding:13px 15px; text-align:center; cursor:pointer; }
+  .ag-foto-btn:hover { border-color:var(--gold-soft); color:var(--ink); }
   .ag-consent { display:flex; gap:9px; align-items:flex-start; text-align:left; font-size:11px;
     color:var(--ink-dim); line-height:1.5; padding:2px 2px; }
   .ag-consent input { margin-top:2px; accent-color:#d4a94a; }
@@ -290,6 +297,24 @@
     border-radius:999px; padding:10px 20px; font-family:'Montserrat'; font-size:12px; letter-spacing:.5px; cursor:pointer; }
   .jor-btn:active { background:rgba(232,199,106,.12); }
   .jor-btn.hide { display:none; }
+  .jor-btn.forte { background:var(--gold-grad); color:#100d08; border-color:transparent; font-weight:600; }
+  /* gravador de áudio */
+  .gravador { max-width:360px; margin:16px auto 0; background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:18px; text-align:center; }
+  .gravador.hide { display:none; }
+  .grav-titulo { font-family:'Cormorant Garamond'; font-size:20px; color:var(--ink); }
+  .grav-consent { font-size:11px; color:var(--ink-faint); line-height:1.6; margin:8px 0 14px; }
+  .grav-tempo { font-family:'Cinzel'; font-size:30px; color:var(--gold-2); margin:6px 0 14px; }
+  .grav-acoes { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .grav-btn { background:var(--gold-grad); color:#100d08; border:none; border-radius:999px;
+    padding:11px 22px; font-family:'Montserrat'; font-weight:600; font-size:13px; cursor:pointer; }
+  .grav-btn.rec.gravando { background:#e26d6d; color:#fff; animation:pulseRec 1.2s infinite; }
+  .grav-btn.ghost { background:transparent; border:1px solid var(--line); color:var(--ink-dim); font-weight:400; }
+  .grav-btn.hide { display:none; }
+  @keyframes pulseRec { 0%,100%{opacity:1} 50%{opacity:.55} }
+  #gravPreview { width:100%; margin-top:14px; }
+  #gravPreview.hide { display:none; }
+  .grav-status { font-size:12px; color:var(--gold-soft); margin-top:10px; min-height:16px; }
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
@@ -367,6 +392,13 @@
       </select>
       <input type="text" id="agRegCity" placeholder="Cidade / UF" required />
       <input type="text" id="agRegAddress" placeholder="Endereço (rua, nº, bairro)" />
+      <label class="ag-lbl">Sua foto (para o seu acompanhamento)</label>
+      <div class="ag-foto">
+        <img id="agFotoPrev" alt="" />
+        <label class="ag-foto-btn">📷 Escolher foto
+          <input type="file" id="agRegFoto" accept="image/*" capture="user" hidden />
+        </label>
+      </div>
       <input type="tel" id="agRegPhone" placeholder="Seu WhatsApp com DDD" required />
       <label class="ag-lbl">Contato de emergência (quem cuida de você)</label>
       <input type="text" id="agRegEmgName" placeholder="Nome (cônjuge, familiar, pastor...)" required />
@@ -444,8 +476,25 @@
         <div class="jor-hint">Suas esferas dos últimos 7 dias — toque para ver a porcentagem.<br>
           <em>A luz só atravessa o que está alinhado.</em></div>
         <div class="jor-acoes">
+          <button class="jor-btn forte" id="falarBtn" onclick="abrirGravador()">🎙️ Falar como estou</button>
+          <button class="jor-btn hide" id="fotoBtn" onclick="document.getElementById('fotoInput').click()">📷 Adicionar minha foto</button>
+          <input type="file" id="fotoInput" accept="image/*" capture="user" hidden />
           <button class="jor-btn hide" id="installBtn" onclick="installApp()">📲 Instalar o app</button>
           <button class="jor-btn" id="pushBtn" onclick="enablePush()">🔔 Ativar lembretes no celular</button>
+        </div>
+
+        <div class="gravador hide" id="gravador">
+          <div class="grav-titulo">Fale como você está</div>
+          <div class="grav-consent">Seu áudio fica guardado com segurança e vai para o seu mentor no acompanhamento. Você pode ouvir antes de enviar, regravar ou apagar.</div>
+          <div class="grav-tempo" id="gravTempo">00:00</div>
+          <div class="grav-acoes">
+            <button class="grav-btn rec" id="gravRec" onclick="toggleGravacao()">● Gravar</button>
+            <button class="grav-btn hide" id="gravEnviar" onclick="enviarAudio()">Enviar →</button>
+            <button class="grav-btn ghost hide" id="gravRegravar" onclick="resetGravador()">Regravar</button>
+            <button class="grav-btn ghost" onclick="fecharGravador()">Cancelar</button>
+          </div>
+          <audio id="gravPreview" controls class="hide"></audio>
+          <div class="grav-status" id="gravStatus"></div>
         </div>
         <div class="jor-vit hide" id="jorVit">
           <div class="eyebrow" style="margin-top:14px">Vitórias da sua caminhada</div>
@@ -1331,6 +1380,36 @@ document.getElementById('agLoginForm').onsubmit = ev => { ev.preventDefault();
     password: document.getElementById('agLoginPass').value
   }, document.getElementById('agLoginBtn'));
 };
+/* redimensiona uma imagem escolhida para um data URL pequeno (quadrado ~320px) */
+function resizeImage(file, size = 320){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.width, img.height);
+      const c = document.createElement('canvas'); c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, size, size);
+      res(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+let fotoCadastro = null;
+document.getElementById('agRegFoto').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try { fotoCadastro = await resizeImage(f); const p = document.getElementById('agFotoPrev'); p.src = fotoCadastro; p.classList.add('on'); } catch(_){}
+};
+/* foto no primeiro acesso (paciente já logado sem foto) */
+document.getElementById('fotoInput').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try {
+    const data = await resizeImage(f);
+    const r = await fetch(API_BASE + '/api/me/photo', { method:'POST', headers: authHeaders(), body: JSON.stringify({ photo: data }) });
+    if((await r.json()).ok){ const b=document.getElementById('fotoBtn'); b.textContent='✓ Foto adicionada'; b.disabled=true; b.style.opacity=.6; toast('📷 Foto adicionada ao seu acompanhamento.'); }
+  } catch(_){ toast('Não consegui salvar a foto.'); }
+};
+
 document.getElementById('agRegForm').onsubmit = ev => { ev.preventDefault();
   agSubmit('/api/auth/register', {
     name: document.getElementById('agRegName').value,
@@ -1344,7 +1423,8 @@ document.getElementById('agRegForm').onsubmit = ev => { ev.preventDefault();
     emergencyName: document.getElementById('agRegEmgName').value,
     emergencyPhone: document.getElementById('agRegEmgPhone').value,
     invite: document.getElementById('agRegInvite').value,
-    consent: document.getElementById('agRegConsent').checked
+    consent: document.getElementById('agRegConsent').checked,
+    photo: fotoCadastro
   }, document.getElementById('agRegBtn'));
 };
 
@@ -1371,6 +1451,9 @@ function afterLogin(){
     .catch(()=>{});
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
+  // foto no primeiro acesso (para quem ainda não tem)
+  fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});
   // aparelho que já deu permissão: renova a inscrição em silêncio
   if(typeof Notification !== 'undefined' && Notification.permission === 'granted') enablePush(true);
 }
@@ -1441,6 +1524,73 @@ function loadMentorMessages(){
       });
       if(ms.length) fetch(API_BASE + '/api/me/messages/read', { method:'POST', headers: authHeaders() }).catch(()=>{});
     }).catch(()=>{});
+}
+
+/* ===== GRAVADOR DE ÁUDIO — "Fala como está" ===== */
+let mediaRec = null, audioChunks = [], audioBlob = null, gravTimer = null, gravSeg = 0;
+function abrirGravador(){ document.getElementById('gravador').classList.remove('hide'); resetGravador(); }
+function fecharGravador(){ pararStream(); document.getElementById('gravador').classList.add('hide'); }
+function resetGravador(){
+  pararStream(); audioBlob = null; audioChunks = []; gravSeg = 0;
+  document.getElementById('gravTempo').textContent = '00:00';
+  const rec=document.getElementById('gravRec'); rec.classList.remove('hide','gravando'); rec.textContent='● Gravar';
+  document.getElementById('gravEnviar').classList.add('hide');
+  document.getElementById('gravRegravar').classList.add('hide');
+  const p=document.getElementById('gravPreview'); p.classList.add('hide'); p.removeAttribute('src');
+  document.getElementById('gravStatus').textContent='';
+}
+function pararStream(){ if(mediaRec && mediaRec.state!=='inactive'){ try{mediaRec.stop();}catch(_){} } if(gravTimer){clearInterval(gravTimer);gravTimer=null;}
+  if(mediaRec && mediaRec.stream){ mediaRec.stream.getTracks().forEach(t=>t.stop()); } }
+function fmtSeg(s){ return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+
+async function toggleGravacao(){
+  const rec = document.getElementById('gravRec');
+  if(mediaRec && mediaRec.state==='recording'){
+    mediaRec.stop(); if(gravTimer){clearInterval(gravTimer);gravTimer=null;}
+    rec.classList.remove('gravando'); rec.classList.add('hide');
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+              : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+    mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRec.ondataavailable = e => { if(e.data.size) audioChunks.push(e.data); };
+    mediaRec.onstop = () => {
+      audioBlob = new Blob(audioChunks, { type: mediaRec.mimeType || 'audio/webm' });
+      const url = URL.createObjectURL(audioBlob);
+      const p = document.getElementById('gravPreview'); p.src = url; p.classList.remove('hide');
+      document.getElementById('gravEnviar').classList.remove('hide');
+      document.getElementById('gravRegravar').classList.remove('hide');
+    };
+    mediaRec.start();
+    gravSeg = 0; document.getElementById('gravTempo').textContent = '00:00';
+    gravTimer = setInterval(()=>{ gravSeg++; document.getElementById('gravTempo').textContent = fmtSeg(gravSeg);
+      if(gravSeg>=180){ toggleGravacao(); } }, 1000); // limite 3 min
+    rec.classList.add('gravando'); rec.textContent='■ Parar';
+  }catch(e){ document.getElementById('gravStatus').textContent = 'Não consegui acessar o microfone. Permita o acesso e tente de novo.'; }
+}
+
+async function enviarAudio(){
+  if(!audioBlob) return;
+  const st = document.getElementById('gravStatus');
+  const btn = document.getElementById('gravEnviar'); btn.disabled = true;
+  st.textContent = 'Enviando…';
+  try{
+    const r = await fetch(API_BASE + '/api/me/audio?dur=' + gravSeg, {
+      method:'POST',
+      headers: Object.assign({ 'Content-Type': audioBlob.type || 'audio/webm' }, AUTH.token ? { 'Authorization':'Bearer '+AUTH.token } : {}),
+      body: audioBlob
+    });
+    const d = await r.json();
+    if(d.ok){
+      st.textContent = '✓ Enviado ao seu mentor. Obrigado por compartilhar. 🙏';
+      addBubble('lumen', '🎙️ *Recebi seu áudio* — obrigada por confiar e falar. Se quiser, me conta também por aqui como você tá agora.');
+      setTimeout(fecharGravador, 2200);
+    } else st.textContent = 'Erro: ' + (d.error||'tente de novo');
+  }catch(e){ st.textContent = 'Não consegui enviar. Tente de novo.'; }
+  finally{ btn.disabled = false; }
 }
 
 /* ===== MINHA JORNADA — o paciente vê a própria evolução (Monitor) ===== */

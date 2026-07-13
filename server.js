@@ -21,7 +21,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          overviewStats, globalDaily, emotionsPredominant,
          savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead,
          usersForReminders, reminderSent, markReminderSent,
-         getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate } from './db.js';
+         getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
+         userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios } from './db.js';
 import webpush from 'web-push';
 
 // --- Notificações push (PWA) ---
@@ -90,7 +91,9 @@ app.get('/api/health', (req, res) => res.json({
   contas: dbReady,
   push: PUSH_ON,
   lembretes: PUSH_ON && String(process.env.REMINDERS || 'on') === 'on',
-  coletivo: COLETIVO_ON && !!COLETIVO
+  coletivo: COLETIVO_ON && !!COLETIVO,
+  audio: AUDIO_ON,
+  transcricao: !!process.env.OPENAI_API_KEY
 }));
 
 // ---------------------------------------------------------
@@ -196,14 +199,14 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 app.get('/api/admin/patient', requireAdmin, async (req, res) => {
   try {
     const id = Number(req.query.id);
-    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
-      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id)
+      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
                diario, esferas, checkins, sessoes, vitorias: extras.vitorias || [],
-               notas_mentor: extras.notas_mentor || '', streak });
+               notas_mentor: extras.notas_mentor || '', streak, audios });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
@@ -251,6 +254,16 @@ app.get('/api/admin/transcript', requireAdmin, async (req, res) => {
     res.json({ transcript: msgs });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// reprodução do áudio original (mentor)
+app.get('/api/admin/audio', requireAdmin, async (req, res) => {
+  try {
+    const a = await getAudioBytes(Number(req.query.id));
+    if (!a) return res.status(404).end();
+    res.set('Content-Type', a.mime || 'audio/webm');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(a.bytes);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 
 // ---------------------------------------------------------
 //  CHECK-IN DIÁRIO do paciente (o filtro de consciência)
@@ -286,6 +299,82 @@ app.post('/api/me/messages/read', requireAuth, async (req, res) => {
   try { await markMentorRead(req.user?.uid); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+
+// ---------------------------------------------------------
+//  FOTO do paciente (primeiro acesso → prontuário)
+// ---------------------------------------------------------
+app.get('/api/me/photo/needed', requireAuth, async (req, res) => {
+  try { res.json({ needed: !(await userHasPhoto(req.user?.uid)) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/photo', requireAuth, async (req, res) => {
+  try { await setUserPhoto(req.user?.uid, (req.body || {}).photo); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  ÁUDIO "Fala como está" — grava, transcreve e a IA faz leitura estruturada
+//  O áudio ORIGINAL é preservado; a interpretação da IA fica separada.
+// ---------------------------------------------------------
+const AUDIO_ON = String(process.env.AUDIO || 'on') === 'on';
+const audioLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Muitos áudios em pouco tempo. Aguarde um pouco.' } });
+
+app.post('/api/me/audio', audioLimiter, requireAuth,
+  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
+  async (req, res) => {
+    try {
+      if (!AUDIO_ON) return res.status(503).json({ error: 'áudio desativado' });
+      const buf = req.body;
+      if (!buf || !buf.length) return res.status(400).json({ error: 'áudio vazio' });
+      const mime = req.headers['content-type'] || 'audio/webm';
+      const dur = Number(req.query.dur || 0);
+      const id = await saveAudio(req.user?.uid, { mime, buffer: buf, duration: dur, transcript: null });
+      res.json({ ok: true, id, status: 'enviado' });
+      // processa em segundo plano (transcrição + leitura estruturada)
+      processarAudio(id, buf, mime, req.user).catch(e => console.error('audio proc:', e.message));
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  });
+
+// transcrição via OpenAI Whisper (se OPENAI_API_KEY) + leitura estruturada da Lúmen
+async function processarAudio(id, buf, mime, user) {
+  let transcript = null;
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const fd = new FormData();
+      fd.append('file', new Blob([buf], { type: mime }), 'audio.webm');
+      fd.append('model', 'whisper-1');
+      fd.append('language', 'pt');
+      const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + process.env.OPENAI_API_KEY }, body: fd
+      });
+      const d = await r.json();
+      transcript = (d.text || '').trim() || null;
+    } catch (e) { console.error('whisper:', e.message); }
+  }
+  if (!transcript) { await setAudioSummary(id, null, null); return; } // sem transcrição: mentor ouve o áudio
+
+  // leitura ESTRUTURADA — nunca diagnóstico, sempre separando dito × interpretação
+  let resumo = null;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        system: `Você lê a TRANSCRIÇÃO de um áudio em que a pessoa fala como está, no Método Lúmen. Produza APENAS um JSON válido (sem texto fora dele), com leitura de apoio ao mentor — NUNCA diagnóstico. Regras: separe o que a pessoa DISSE do que é hipótese; use "indicador/possível/tendência"; nunca afirme transtorno. Schema:
+{"resumo":"2-3 frases do que a pessoa trouxe","emocoes_declaradas":["..."],"acontecimentos":["fatos que ela mencionou"],"topicos":["temas"],"pedido_de_contato":true|false,"pontos_de_atencao":["o que o mentor deveria observar, se houver"],"limitacoes":"o que esta leitura NÃO permite concluir","confianca":0.0}`,
+        messages: [{ role: 'user', content: `Transcrição do áudio:\n"""${transcript.slice(0, 4000)}"""` }]
+      })
+    });
+    const d = await r.json();
+    const txt = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (m) resumo = JSON.parse(m[1] || m[0]);
+  } catch (e) { console.error('audio resumo:', e.message); }
+  await setAudioSummary(id, resumo, transcript);
+}
 
 // ---------------------------------------------------------
 //  MINHA JORNADA — o paciente vê a própria evolução
