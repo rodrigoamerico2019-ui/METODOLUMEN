@@ -72,6 +72,29 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now(),
       UNIQUE (user_id, day)
     );
+    -- notificações push (PWA): cada aparelho inscrito do paciente
+    CREATE TABLE IF NOT EXISTS push_subs (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT UNIQUE NOT NULL,
+      sub JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- mensagens do mentor para o paciente
+    CREATE TABLE IF NOT EXISTS mentor_messages (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      texto TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      read_at TIMESTAMPTZ
+    );
+    -- controle dos lembretes de bem-estar (1 por tipo por dia)
+    CREATE TABLE IF NOT EXISTS reminders_sent (
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      kind TEXT NOT NULL,
+      PRIMARY KEY (user_id, day, kind)
+    );
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -281,6 +304,69 @@ export async function setNotasMentor(userId, texto) {
   if (!pool || !userId) throw new Error('banco não configurado');
   await pool.query(`INSERT INTO profiles (user_id, notas_mentor) VALUES ($1,$2)
     ON CONFLICT (user_id) DO UPDATE SET notas_mentor=$2`, [userId, String(texto || '').slice(0, 8000)]);
+}
+
+// =========================================================
+//  PUSH (PWA) + MENSAGENS DO MENTOR + LEMBRETES
+// =========================================================
+export async function savePushSub(userId, sub) {
+  if (!pool || !userId || !sub?.endpoint) throw new Error('inscrição inválida');
+  await pool.query(`INSERT INTO push_subs (user_id, endpoint, sub) VALUES ($1,$2,$3)
+    ON CONFLICT (endpoint) DO UPDATE SET user_id=$1, sub=$3`, [userId, sub.endpoint, JSON.stringify(sub)]);
+}
+
+export async function pushSubsOf(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query('SELECT endpoint, sub FROM push_subs WHERE user_id=$1', [userId]);
+  return r.rows;
+}
+
+export async function deletePushSub(endpoint) {
+  if (!pool) return;
+  await pool.query('DELETE FROM push_subs WHERE endpoint=$1', [endpoint]);
+}
+
+export async function saveMentorMessage(userId, texto) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const r = await pool.query('INSERT INTO mentor_messages (user_id, texto) VALUES ($1,$2) RETURNING id, created_at',
+    [userId, String(texto || '').slice(0, 2000)]);
+  return r.rows[0];
+}
+
+export async function unreadMentorMessages(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`SELECT id, texto, created_at FROM mentor_messages
+    WHERE user_id=$1 AND read_at IS NULL ORDER BY id`, [userId]);
+  return r.rows;
+}
+
+export async function markMentorRead(userId) {
+  if (!pool || !userId) return;
+  await pool.query('UPDATE mentor_messages SET read_at=now() WHERE user_id=$1 AND read_at IS NULL', [userId]);
+}
+
+// pacientes com aparelho inscrito + se já fizeram o check-in de hoje (para os lembretes)
+export async function usersForReminders() {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT DISTINCT u.id, u.name,
+      EXISTS (SELECT 1 FROM checkins c WHERE c.user_id=u.id
+        AND c.day=(now() AT TIME ZONE 'America/Sao_Paulo')::date) AS checkin_hoje
+    FROM users u JOIN push_subs p ON p.user_id=u.id`);
+  return r.rows;
+}
+
+export async function reminderSent(userId, kind) {
+  if (!pool) return true;
+  const r = await pool.query(`SELECT 1 FROM reminders_sent
+    WHERE user_id=$1 AND kind=$2 AND day=(now() AT TIME ZONE 'America/Sao_Paulo')::date`, [userId, kind]);
+  return !!r.rows[0];
+}
+
+export async function markReminderSent(userId, kind) {
+  if (!pool) return;
+  await pool.query(`INSERT INTO reminders_sent (user_id, day, kind)
+    VALUES ($1,(now() AT TIME ZONE 'America/Sao_Paulo')::date,$2) ON CONFLICT DO NOTHING`, [userId, kind]);
 }
 
 // =========================================================

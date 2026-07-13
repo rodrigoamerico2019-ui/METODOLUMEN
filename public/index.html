@@ -5,6 +5,13 @@
 -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0D0D0D" />
+<link rel="icon" type="image/png" href="/icon-192.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Lúmen" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
 
@@ -278,6 +285,11 @@
   .jor-vit .vit { background:var(--panel); border:1px solid var(--line); border-radius:12px;
     padding:9px 13px; margin:6px auto; max-width:340px; font-size:12.5px; text-align:left; color:var(--ink); }
   .jor-vit .vit small { color:var(--gold-soft); margin-right:8px; }
+  .jor-acoes { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:14px; }
+  .jor-btn { background:transparent; border:1px solid var(--gold-soft); color:var(--gold-2);
+    border-radius:999px; padding:10px 20px; font-family:'Montserrat'; font-size:12px; letter-spacing:.5px; cursor:pointer; }
+  .jor-btn:active { background:rgba(232,199,106,.12); }
+  .jor-btn.hide { display:none; }
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
@@ -430,6 +442,10 @@
         <div class="jor-esferas" id="jorEsferas"></div>
         <div class="jor-hint">Suas esferas dos últimos 7 dias — toque para ver a porcentagem.<br>
           <em>A luz só atravessa o que está alinhado.</em></div>
+        <div class="jor-acoes">
+          <button class="jor-btn hide" id="installBtn" onclick="installApp()">📲 Instalar o app</button>
+          <button class="jor-btn" id="pushBtn" onclick="enablePush()">🔔 Ativar lembretes no celular</button>
+        </div>
         <div class="jor-vit hide" id="jorVit">
           <div class="eyebrow" style="margin-top:14px">Vitórias da sua caminhada</div>
           <div id="jorVitList"></div>
@@ -1352,7 +1368,10 @@ function afterLogin(){
     .then(r => r.ok ? r.json() : { hoje: null })
     .then(d => { if(d.hoje) skipToChat(d.hoje); })
     .catch(()=>{});
-  loadJourney(); // esferas, sequência de dias e vitórias no Monitor
+  loadJourney();          // esferas, sequência de dias e vitórias no Monitor
+  loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
+  // aparelho que já deu permissão: renova a inscrição em silêncio
+  if(typeof Notification !== 'undefined' && Notification.permission === 'granted') enablePush(true);
 }
 
 /* mostra o valor dos controles da tríade enquanto arrasta */
@@ -1360,6 +1379,68 @@ function afterLogin(){
   const el = document.getElementById('tr'+k);
   if(el) el.oninput = () => document.getElementById('tr'+k+'V').textContent = el.value;
 });
+
+/* ===== PWA — service worker, instalação e notificações push ===== */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const b = document.getElementById('installBtn');
+  if(b) b.classList.remove('hide');
+});
+async function installApp(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice.catch(()=>{});
+  deferredPrompt = null;
+  document.getElementById('installBtn').classList.add('hide');
+}
+
+function urlB64ToUint8(base64){
+  const pad = '='.repeat((4 - base64.length % 4) % 4);
+  const b = (base64 + pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw = atob(b);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function enablePush(silencioso){
+  try{
+    if(!AUTH.token) return;
+    if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+      if(!silencioso) toast('Este navegador não suporta notificações. No iPhone: Compartilhar → Adicionar à Tela de Início, e ative por lá.');
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted'){ if(!silencioso) toast('Permita as notificações para receber os lembretes.'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const d = await fetch(API_BASE + '/api/push/key', { headers: authHeaders() }).then(r=>r.json());
+    if(!d.key) return;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlB64ToUint8(d.key) });
+    await fetch(API_BASE + '/api/push/subscribe', { method:'POST', headers: authHeaders(), body: JSON.stringify(sub) });
+    const b = document.getElementById('pushBtn');
+    if(b){ b.textContent = '🔔 Lembretes ativados'; b.disabled = true; b.style.opacity = .6; }
+    if(!silencioso) toast('🔔 Pronto! Você receberá os lembretes de bem-estar neste aparelho.');
+  }catch(e){ if(!silencioso) toast('Não consegui ativar as notificações aqui.'); }
+}
+
+/* mensagens do mentor: aparecem na conversa e entram na memória da Lúmen */
+function loadMentorMessages(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/messages', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : { mensagens: [] })
+    .then(d => {
+      const ms = d.mensagens || [];
+      ms.forEach(m => {
+        addBubble('lumen', '💬 *Mensagem do seu mentor:* ' + m.texto);
+        state.history.push({ role:'assistant', content:'[Mensagem do mentor humano ao paciente]: ' + m.texto });
+      });
+      if(ms.length) fetch(API_BASE + '/api/me/messages/read', { method:'POST', headers: authHeaders() }).catch(()=>{});
+    }).catch(()=>{});
+}
 
 /* ===== MINHA JORNADA — o paciente vê a própria evolução (Monitor) ===== */
 function loadJourney(){

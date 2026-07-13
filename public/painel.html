@@ -250,6 +250,13 @@
         </div>
       </div>
       <div class="card">
+        <div class="h2c">💬 Enviar mensagem ao paciente</div>
+        <p class="subc">chega como notificação no celular e aparece na conversa do app</p>
+        <textarea id="dMsg" class="notas" style="min-height:70px" placeholder="Ex.: Estou orando por você essa semana. Não esqueça do seu check-in de hoje. 🙏"></textarea>
+        <button class="btn" style="margin-top:10px;padding:10px 26px" onclick="enviarMsg()">Enviar agora</button>
+        <span class="muted" id="msgStatus" style="margin-left:12px"></span>
+      </div>
+      <div class="card">
         <div class="h2c">✍️ Anotações do mentor</div>
         <p class="subc">só você vê — observações, direcionamentos, motivos de oração</p>
         <textarea id="dNotas" class="notas" placeholder="Suas anotações sobre esta pessoa…"></textarea>
@@ -625,6 +632,24 @@ function baixarSessao(diaISO){
   a.href = URL.createObjectURL(blob);
   a.download = `sessao-${diaISO}-${pacienteAtual.name.replace(/\s+/g,'_')}.txt`;
   a.click();
+}
+
+async function enviarMsg(){
+  const texto = $('dMsg').value.trim();
+  if(!texto) return;
+  try{
+    const r = await fetch('/api/admin/message?id='+pacienteAtual.id+'&key='+encodeURIComponent(KEY), {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ texto })
+    });
+    const j = await r.json();
+    if(j.ok){
+      $('msgStatus').textContent = j.push_enviados > 0
+        ? '✓ enviada + notificação no celular ('+j.push_enviados+' aparelho'+(j.push_enviados>1?'s':'')+')'
+        : '✓ enviada — aparece quando abrir o app (sem aparelho com notificações ativas)';
+      $('dMsg').value = '';
+    } else $('msgStatus').textContent = 'erro: ' + j.error;
+    setTimeout(()=>$('msgStatus').textContent='', 6000);
+  }catch(e){ $('msgStatus').textContent = 'erro ao enviar'; }
 }
 
 async function salvarNotas(){

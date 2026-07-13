@@ -18,7 +18,33 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
          todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
          emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor,
-         overviewStats, globalDaily, emotionsPredominant } from './db.js';
+         overviewStats, globalDaily, emotionsPredominant,
+         savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead,
+         usersForReminders, reminderSent, markReminderSent } from './db.js';
+import webpush from 'web-push';
+
+// --- Notificações push (PWA) ---
+const PUSH_ON = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+if (PUSH_ON) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:contato@metodolumen.com.br',
+    process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY
+  );
+}
+
+// envia uma notificação a todos os aparelhos do paciente (limpa inscrições mortas)
+async function sendPushToUser(uid, payload) {
+  if (!PUSH_ON || !uid) return 0;
+  const subs = await pushSubsOf(uid);
+  let ok = 0;
+  for (const s of subs) {
+    try { await webpush.sendNotification(s.sub, JSON.stringify(payload)); ok++; }
+    catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) await deletePushSub(s.endpoint).catch(() => {});
+    }
+  }
+  return ok;
+}
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -171,6 +197,21 @@ app.post('/api/admin/notes', requireAdmin, async (req, res) => {
   try { await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// mensagem do mentor → salva e notifica o celular do paciente
+app.post('/api/admin/message', requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.query.id);
+    const texto = String((req.body || {}).texto || '').trim();
+    if (!texto) return res.status(400).json({ error: 'mensagem vazia' });
+    await saveMentorMessage(id, texto);
+    const enviados = await sendPushToUser(id, {
+      title: '💬 Mensagem do seu mentor',
+      body: texto.length > 120 ? texto.slice(0, 117) + '…' : texto,
+      tag: 'mentor', url: '/'
+    });
+    res.json({ ok: true, push_enviados: enviados });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 // visão geral da plataforma (dashboard TriLumen)
 app.get('/api/admin/overview', requireAdmin, async (req, res) => {
   try {
@@ -197,6 +238,29 @@ app.get('/api/checkin', requireAuth, async (req, res) => {
 });
 app.post('/api/checkin', requireAuth, async (req, res) => {
   try { res.json({ ok: true, checkin: await saveCheckin(req.user?.uid, req.body || {}) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  PUSH (PWA) — inscrição do aparelho do paciente
+// ---------------------------------------------------------
+app.get('/api/push/key', requireAuth, (req, res) => {
+  res.json({ key: process.env.VAPID_PUBLIC_KEY || null });
+});
+app.post('/api/push/subscribe', requireAuth, async (req, res) => {
+  try { await savePushSub(req.user?.uid, req.body || {}); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  MENSAGENS DO MENTOR — o paciente recebe e lê no app
+// ---------------------------------------------------------
+app.get('/api/me/messages', requireAuth, async (req, res) => {
+  try { res.json({ mensagens: await unreadMentorMessages(req.user?.uid) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/messages/read', requireAuth, async (req, res) => {
+  try { await markMentorRead(req.user?.uid); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -546,6 +610,42 @@ app.get('/api/health', (req, res) => res.json({
   whatsapp: (process.env.WHATSAPP_PROVIDER || 'none'),
   email: !!process.env.SMTP_HOST
 }));
+
+// ---------------------------------------------------------
+//  LEMBRETES DE BEM-ESTAR — notificações automáticas do dia
+//  Cada tipo sai no máximo 1x por dia, na janela certa (hora de Brasília).
+// ---------------------------------------------------------
+const LEMBRETES = [
+  { kind: 'checkin',  deHora: 9,  ateHora: 12, soSemCheckin: true,
+    title: '🌅 Seu check-in de hoje', body: 'Você ainda não fez seu check-in de bem-estar. A consciência é o primeiro alinhamento — leva 1 minuto.' },
+  { kind: 'gratidao', deHora: 15, ateHora: 17, soSemCheckin: false,
+    title: '✨ Gratidão', body: 'Já praticou a gratidão hoje? Lembre de uma coisa boa do seu dia e agradeça a Deus por ela.' },
+  { kind: 'corpo',    deHora: 18, ateHora: 20, soSemCheckin: false,
+    title: '🫀 O templo importa', body: 'E o corpo hoje — caminhou, se movimentou, bebeu água? Cuidar do templo também é adoração.' },
+  { kind: 'oracao',   deHora: 20, ateHora: 22, soSemCheckin: false,
+    title: '🕊️ Momento com Deus', body: 'Antes do dia terminar: já teve seu momento com o Pai hoje? Alguns minutos em oração realinham tudo.' }
+];
+
+async function rodarLembretes() {
+  if (!PUSH_ON || !dbReady || String(process.env.REMINDERS || 'on') !== 'on') return;
+  try {
+    const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+    const ativos = LEMBRETES.filter(l => hora >= l.deHora && hora < l.ateHora);
+    if (!ativos.length) return;
+    const pacientes = await usersForReminders();
+    for (const p of pacientes) {
+      for (const l of ativos) {
+        if (l.soSemCheckin && p.checkin_hoje) continue;
+        if (await reminderSent(p.id, l.kind)) continue;
+        const nome = String(p.name || '').split(' ')[0];
+        const enviados = await sendPushToUser(p.id, { title: l.title, body: (nome ? nome + ', ' : '') + l.body.charAt(0).toLowerCase() + l.body.slice(1), tag: l.kind, url: '/' });
+        if (enviados > 0) await markReminderSent(p.id, l.kind);
+      }
+    }
+  } catch (e) { console.error('lembretes:', e.message); }
+}
+setInterval(rodarLembretes, 10 * 60 * 1000); // verifica a cada 10 minutos
+setTimeout(rodarLembretes, 20 * 1000);       // e uma vez logo após subir
 
 initDb().catch(e => console.error('  Banco: falha ao iniciar —', e.message));
 
