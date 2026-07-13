@@ -179,6 +179,11 @@
           <div id="chartDonut"></div>
         </div>
       </div>
+      <div class="card">
+        <h3>🌟 Sabedoria Coletiva · o que as jornadas ensinam (anônimo)</h3>
+        <p class="subc" id="colStatus">a IA aprende com todas as jornadas, sem nunca revelar dados de ninguém</p>
+        <div class="pront" id="colTexto"></div>
+      </div>
     </section>
 
     <!-- ===== JORNADAS (lista) ===== -->
@@ -356,6 +361,23 @@ function renderGeral(d){
     <div class="stat-card"><div class="k">Check-ins<br>hoje</div><div class="v">${s.checkins_hoje ?? 0}</div></div>`;
   $('chartEvolucao').innerHTML = chartLinhas(d.evolucao || []);
   $('chartDonut').innerHTML = donut(d.emocoes || []);
+  carregarColetivo();
+}
+
+async function carregarColetivo(){
+  try{
+    const c = await api('/api/admin/collective');
+    if(c.texto){
+      $('colTexto').textContent = c.texto;
+      $('colTexto').className = 'pront';
+      $('colStatus').textContent = `destilado de ${c.amostras} vitórias anônimas` +
+        (c.atualizado_em ? ' · ' + new Date(c.atualizado_em).toLocaleDateString('pt-BR') : '');
+    } else {
+      $('colTexto').className = 'pront pront-empty';
+      $('colTexto').textContent = 'A sabedoria coletiva nasce quando houver vitórias suficientes registradas nas jornadas (a partir de ~8). Conforme os pacientes usam e avançam, a IA vai destilando aqui — de forma anônima — o que tende a curar.';
+      $('colStatus').textContent = 'aguardando as primeiras jornadas';
+    }
+  }catch(e){ $('colTexto').textContent = ''; }
 }
 
 /* rosca de emoções predominantes */
