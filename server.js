@@ -24,12 +24,22 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
 import webpush from 'web-push';
 
 // --- Notificações push (PWA) ---
-const PUSH_ON = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
-if (PUSH_ON) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'mailto:contato@metodolumen.com.br',
-    process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY
-  );
+// Sanitiza as chaves (espaços/aspas/quebras colados por engano) e NUNCA derruba
+// o servidor por chave inválida: só desliga o push e avisa no log.
+const limpaChave = v => String(v || '').replace(/["'\s]/g, '').replace(/=+$/, '');
+const VAPID_PUB = limpaChave(process.env.VAPID_PUBLIC_KEY);
+const VAPID_PRIV = limpaChave(process.env.VAPID_PRIVATE_KEY);
+let PUSH_ON = false;
+if (VAPID_PUB && VAPID_PRIV) {
+  try {
+    webpush.setVapidDetails(
+      (process.env.VAPID_SUBJECT || 'mailto:contato@metodolumen.com.br').trim(),
+      VAPID_PUB, VAPID_PRIV
+    );
+    PUSH_ON = true;
+  } catch (e) {
+    console.warn(`  Push DESLIGADO — chave VAPID inválida (pública com ${VAPID_PUB.length} chars, esperado 87; privada com ${VAPID_PRIV.length}, esperado 43): ${e.message}`);
+  }
 }
 
 // envia uma notificação a todos os aparelhos do paciente (limpa inscrições mortas)
@@ -247,7 +257,7 @@ app.post('/api/checkin', requireAuth, async (req, res) => {
 //  PUSH (PWA) — inscrição do aparelho do paciente
 // ---------------------------------------------------------
 app.get('/api/push/key', requireAuth, (req, res) => {
-  res.json({ key: process.env.VAPID_PUBLIC_KEY || null });
+  res.json({ key: PUSH_ON ? VAPID_PUB : null });
 });
 app.post('/api/push/subscribe', requireAuth, async (req, res) => {
   try { await savePushSub(req.user?.uid, req.body || {}); res.json({ ok: true }); }
