@@ -55,6 +55,13 @@ export async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS marital_status TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+    -- telefone e contato de emergência (para onde vai o alerta de risco desta pessoa)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
+    -- anotações privadas do mentor + vitórias estruturadas (extraídas pelo prontuário)
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notas_mentor TEXT DEFAULT '';
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS vitorias JSONB DEFAULT '[]';
     -- check-in diário (o "filtro" de consciência: como estou hoje em corpo/alma/espírito)
     CREATE TABLE IF NOT EXISTS checkins (
       id BIGSERIAL PRIMARY KEY,
@@ -73,7 +80,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env';
 const norm = e => String(e || '').trim().toLowerCase();
 
 // --- cadastro com código de convite + consentimento LGPD ---
-export async function register({ name, email, password, invite, consent, birth, marital, city, address }) {
+export async function register({ name, email, password, invite, consent, birth, marital, city, address, phone, emergencyName, emergencyPhone }) {
   if (!pool) throw new Error('banco não configurado');
   name = String(name || '').trim(); email = norm(email);
   if (!name || name.length < 2) throw new Error('Informe seu nome.');
@@ -84,6 +91,11 @@ export async function register({ name, email, password, invite, consent, birth, 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(nasc)) throw new Error('Informe sua data de nascimento.');
   if (!String(marital || '').trim()) throw new Error('Informe seu estado civil.');
   if (!String(city || '').trim()) throw new Error('Informe sua cidade.');
+  const fone = String(phone || '').replace(/\D/g, '');
+  if (fone.length < 10) throw new Error('Informe seu WhatsApp com DDD.');
+  const emgNome = String(emergencyName || '').trim();
+  const emgFone = String(emergencyPhone || '').replace(/\D/g, '');
+  if (!emgNome || emgFone.length < 10) throw new Error('Informe um contato de emergência (nome e WhatsApp com DDD) — é quem cuidará de você se precisar.');
   const code = String(invite || '').trim().toUpperCase();
   const inv = await pool.query('SELECT * FROM invite_codes WHERE code=$1', [code]);
   if (!inv.rows[0]) throw new Error('Código de convite inválido.');
@@ -92,9 +104,9 @@ export async function register({ name, email, password, invite, consent, birth, 
   if (dup.rows[0]) throw new Error('Já existe uma conta com este e-mail. Use "Entrar".');
   const hash = await bcrypt.hash(password, 10);
   const u = await pool.query(
-    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address)
-     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8) RETURNING id,name,email,role`,
-    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim()]
+    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address,phone,emergency_name,emergency_phone)
+     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8,$9,$10,$11) RETURNING id,name,email,role`,
+    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim(), fone, emgNome, emgFone]
   );
   await pool.query('UPDATE invite_codes SET used_count=used_count+1 WHERE code=$1', [code]);
   await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [u.rows[0].id]);
@@ -154,11 +166,14 @@ export async function createInvite(note, maxUses = 1) {
 export async function listUsers() {
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT u.id, u.name, u.email, u.created_at, u.last_seen_at,
+    SELECT u.id, u.name, u.email, u.created_at, u.last_seen_at, u.birth_date,
+           date_part('day', u.birth_date)::int AS nasc_dia, date_part('month', u.birth_date)::int AS nasc_mes,
            count(m.id) FILTER (WHERE m.role='user') AS mensagens,
            max(m.created_at) AS ultima_conversa,
            (SELECT meta FROM messages m2 WHERE m2.user_id=u.id AND m2.meta IS NOT NULL
-             ORDER BY m2.id DESC LIMIT 1) AS ultimo_meta
+             ORDER BY m2.id DESC LIMIT 1) AS ultimo_meta,
+           EXISTS (SELECT 1 FROM messages m3 WHERE m3.user_id=u.id
+             AND m3.meta->>'risco'='ALTO' AND m3.created_at > now() - interval '7 days') AS risco_recente
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
     GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`);
   return r.rows;
@@ -217,9 +232,55 @@ export async function getUserBasic(userId) {
   const r = await pool.query(`
     SELECT id, name, email, created_at, last_seen_at,
            birth_date, marital_status, city, address,
+           phone, emergency_name, emergency_phone,
            date_part('year', age(birth_date))::int AS idade
     FROM users WHERE id=$1`, [userId]);
   return r.rows[0] || null;
+}
+
+// contato de emergência do paciente (para onde o alerta de risco vai)
+export async function emergencyContact(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT name, emergency_name, emergency_phone FROM users WHERE id=$1', [userId]);
+  return r.rows[0] || null;
+}
+
+// sequência de dias seguidos com check-in (terminando hoje ou ontem)
+export async function checkinStreak(userId) {
+  if (!pool || !userId) return 0;
+  const r = await pool.query(`
+    WITH dias AS (SELECT day FROM checkins WHERE user_id=$1 ORDER BY day DESC LIMIT 120)
+    SELECT count(*)::int AS streak FROM (
+      SELECT day, row_number() OVER (ORDER BY day DESC) AS rn,
+             (now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje
+      FROM dias
+    ) t
+    WHERE day = hoje - (rn - 1)::int OR day = hoje - rn::int`, [userId]);
+  return r.rows[0]?.streak || 0;
+}
+
+// vitórias estruturadas + anotações do mentor
+export async function getExtras(userId) {
+  if (!pool || !userId) return { vitorias: [], notas_mentor: '' };
+  const r = await pool.query('SELECT vitorias, notas_mentor FROM profiles WHERE user_id=$1', [userId]);
+  return r.rows[0] || { vitorias: [], notas_mentor: '' };
+}
+
+export async function mergeVitorias(userId, novas) {
+  if (!pool || !userId || !Array.isArray(novas) || !novas.length) return;
+  const atual = (await getExtras(userId)).vitorias || [];
+  const chaves = new Set(atual.map(v => (v.texto || '').toLowerCase().slice(0, 60)));
+  for (const v of novas) {
+    const t = String(v.texto || '').trim();
+    if (t && !chaves.has(t.toLowerCase().slice(0, 60))) atual.push({ data: String(v.data || '').slice(0, 20), texto: t.slice(0, 200) });
+  }
+  await pool.query('UPDATE profiles SET vitorias=$2 WHERE user_id=$1', [userId, JSON.stringify(atual.slice(-40))]);
+}
+
+export async function setNotasMentor(userId, texto) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query(`INSERT INTO profiles (user_id, notas_mentor) VALUES ($1,$2)
+    ON CONFLICT (user_id) DO UPDATE SET notas_mentor=$2`, [userId, String(texto || '').slice(0, 8000)]);
 }
 
 // =========================================================

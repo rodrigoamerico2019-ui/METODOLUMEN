@@ -245,7 +245,7 @@
   .ag-form { width:100%; max-width:340px; display:flex; flex-direction:column; gap:10px; }
   .ag-form.hide { display:none; }
   .ag-form input[type=text], .ag-form input[type=email], .ag-form input[type=password],
-  .ag-form input[type=date], .ag-form select {
+  .ag-form input[type=date], .ag-form input[type=tel], .ag-form select {
     width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
     font-family:'Montserrat'; font-size:14px; padding:13px 15px; -webkit-appearance:none; appearance:none; }
   .ag-form input:focus, .ag-form select:focus { outline:none; border-color:var(--gold-soft); }
@@ -262,6 +262,22 @@
   .ag-err { margin-top:14px; max-width:340px; font-size:12.5px; color:#e0a04a; line-height:1.5; }
   .ag-err.hide { display:none; }
   .ag-foot { margin-top:22px; font-size:10.5px; letter-spacing:.6px; color:var(--ink-faint); }
+
+  /* minha jornada (monitor) */
+  .jornada { text-align:center; margin-bottom:22px; }
+  .jornada.hide { display:none; }
+  .jor-streak { font-size:13px; color:var(--gold-2); margin-bottom:8px; letter-spacing:.5px; }
+  .jor-esferas svg .esf circle.aro { fill:rgba(232,199,106,.04); stroke:#6d5a33; stroke-width:1.4; transition:all .25s ease; }
+  .jor-esferas svg .esf:hover circle.aro, .jor-esferas svg .esf:active circle.aro { fill:rgba(232,199,106,.16);
+    stroke:#E8C76A; stroke-width:2.4; filter:drop-shadow(0 0 12px rgba(232,199,106,.6)); }
+  .jor-esferas svg .esf .pct { opacity:0; transition:opacity .25s ease; font-weight:600; }
+  .jor-esferas svg .esf:hover .pct, .jor-esferas svg .esf:active .pct { opacity:1; }
+  .jor-hint { font-size:10.5px; color:var(--ink-faint); line-height:1.6; }
+  .jor-hint em { color:var(--gold-soft); font-family:'Cormorant Garamond'; font-size:12px; }
+  .jor-vit.hide { display:none; }
+  .jor-vit .vit { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:9px 13px; margin:6px auto; max-width:340px; font-size:12.5px; text-align:left; color:var(--ink); }
+  .jor-vit .vit small { color:var(--gold-soft); margin-right:8px; }
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
@@ -339,6 +355,10 @@
       </select>
       <input type="text" id="agRegCity" placeholder="Cidade / UF" required />
       <input type="text" id="agRegAddress" placeholder="Endereço (rua, nº, bairro)" />
+      <input type="tel" id="agRegPhone" placeholder="Seu WhatsApp com DDD" required />
+      <label class="ag-lbl">Contato de emergência (quem cuida de você)</label>
+      <input type="text" id="agRegEmgName" placeholder="Nome (cônjuge, familiar, pastor...)" required />
+      <input type="tel" id="agRegEmgPhone" placeholder="WhatsApp dele(a) com DDD" required />
       <input type="text" id="agRegInvite" placeholder="Código de convite (ex.: LUMEN-XXXXXX)" style="text-transform:uppercase" required />
       <label class="ag-consent"><input type="checkbox" id="agRegConsent" />
         Aceito que minhas conversas e meu acompanhamento fiquem guardados com segurança para a minha evolução no Método Lúmen, acessíveis ao meu mentor. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
@@ -403,6 +423,18 @@
       <div class="eyebrow">Corpo · Alma · Espírito</div>
       <div class="section-title">Monitor</div>
       <div class="section-sub">Como a luz está atravessando você hoje.</div>
+
+      <!-- MINHA JORNADA (só aparece logado, com dados reais) -->
+      <div class="jornada hide" id="jornada">
+        <div class="jor-streak" id="jorStreak"></div>
+        <div class="jor-esferas" id="jorEsferas"></div>
+        <div class="jor-hint">Suas esferas dos últimos 7 dias — toque para ver a porcentagem.<br>
+          <em>A luz só atravessa o que está alinhado.</em></div>
+        <div class="jor-vit hide" id="jorVit">
+          <div class="eyebrow" style="margin-top:14px">Vitórias da sua caminhada</div>
+          <div id="jorVitList"></div>
+        </div>
+      </div>
 
       <div class="aura-wrap">
         <div class="aura" id="aura" style="--pulse:4s">
@@ -673,7 +705,7 @@ function triggerAlert(userText, type){
 
   // ENVIO AUTOMÁTICO pelo servidor (WhatsApp). Sem servidor, usa o link manual abaixo.
   fetch(API_BASE + '/api/alert', {
-    method:'POST', headers:{ 'Content-Type':'application/json' },
+    method:'POST', headers: authHeaders(), // logado: o alerta vai ao contato de emergência do paciente
     body: JSON.stringify({ type, name: state.name, phone, time })
   }).then(r=>r.json()).then(d=>{
     if(d && d.sent) toast('✓ Alerta enviado automaticamente pelo WhatsApp de emergência.');
@@ -1291,6 +1323,9 @@ document.getElementById('agRegForm').onsubmit = ev => { ev.preventDefault();
     marital: document.getElementById('agRegMarital').value,
     city: document.getElementById('agRegCity').value,
     address: document.getElementById('agRegAddress').value,
+    phone: document.getElementById('agRegPhone').value,
+    emergencyName: document.getElementById('agRegEmgName').value,
+    emergencyPhone: document.getElementById('agRegEmgPhone').value,
     invite: document.getElementById('agRegInvite').value,
     consent: document.getElementById('agRegConsent').checked
   }, document.getElementById('agRegBtn'));
@@ -1317,6 +1352,7 @@ function afterLogin(){
     .then(r => r.ok ? r.json() : { hoje: null })
     .then(d => { if(d.hoje) skipToChat(d.hoje); })
     .catch(()=>{});
+  loadJourney(); // esferas, sequência de dias e vitórias no Monitor
 }
 
 /* mostra o valor dos controles da tríade enquanto arrasta */
@@ -1324,6 +1360,75 @@ function afterLogin(){
   const el = document.getElementById('tr'+k);
   if(el) el.oninput = () => document.getElementById('tr'+k+'V').textContent = el.value;
 });
+
+/* ===== MINHA JORNADA — o paciente vê a própria evolução (Monitor) ===== */
+function loadJourney(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/journey', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if(!d) return;
+      document.getElementById('jornada').classList.remove('hide');
+      document.getElementById('jorStreak').innerHTML = d.streak > 1
+        ? `🔥 <b>${d.streak} dias seguidos</b> de check-in — constância é alinhamento`
+        : `Seu caminho começa um dia de cada vez.`;
+      document.getElementById('jorEsferas').innerHTML = esferasEmblema(d.esferas);
+      const vits = (d.vitorias || []).slice(-5).reverse();
+      if(vits.length){
+        document.getElementById('jorVit').classList.remove('hide');
+        document.getElementById('jorVitList').innerHTML =
+          vits.map(v => `<div class="vit"><small>${v.data || '•'}</small>🏆 ${v.texto}</div>`).join('');
+      }
+    }).catch(()=>{});
+}
+
+/* emblema compacto: as três esferas verticais atravessadas pela luz */
+function esferasEmblema(e){
+  const ordem = [ {k:'espirito',n:'ESPÍRITO'}, {k:'alma',n:'ALMA'}, {k:'corpo',n:'CORPO'} ];
+  const CX=150, R=88, CYs=[118, 292, 466], H=590;
+  let s = `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:210px;display:block;margin:0 auto">
+    <defs>
+      <linearGradient id="jGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#B8862A"/><stop offset="55%" stop-color="#E8C76A"/><stop offset="100%" stop-color="#B8862A"/>
+      </linearGradient>
+      <linearGradient id="jFeixe" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#E8C76A" stop-opacity="0"/><stop offset="15%" stop-color="#F5E3B0" stop-opacity=".9"/>
+        <stop offset="50%" stop-color="#FFF4D6"/><stop offset="85%" stop-color="#F5E3B0" stop-opacity=".9"/>
+        <stop offset="100%" stop-color="#E8C76A" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="jInt"><stop offset="0%" stop-color="#17140e"/><stop offset="100%" stop-color="#060504"/></radialGradient>
+      <filter id="jB1"><feGaussianBlur stdDeviation="2"/></filter>
+      <filter id="jB2"><feGaussianBlur stdDeviation="5"/></filter>
+    </defs>`;
+  ordem.forEach((o,i)=>{
+    const cy = CYs[i];
+    const v = (e && e[o.k] != null) ? Number(e[o.k]) : null;
+    const pct = v==null ? '—' : Math.round(v*10)+'%';
+    const circ = 2*Math.PI*R, pre = v==null ? 0 : v/10;
+    s += `<g class="esf">
+      <circle cx="${CX}" cy="${cy}" r="${R}" fill="url(#jInt)"/>
+      <circle cx="${CX}" cy="${cy}" r="${R+6}" fill="none" stroke="#5a4a28" stroke-width="1" opacity=".5"/>
+      <circle class="aro" cx="${CX}" cy="${cy}" r="${R}"/>
+      <circle cx="${CX}" cy="${cy}" r="${R}" fill="none" stroke="url(#jGrad)" stroke-width="4"
+        stroke-dasharray="${(circ*pre).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+        transform="rotate(-90 ${CX} ${cy})" opacity=".95"/>
+      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#E8C76A">${pct}</text>
+      <text x="${CX+R+16}" y="${cy+4}" font-size="10" letter-spacing="3" fill="#a89f8d"
+        transform="rotate(90 ${CX+R+16} ${cy+4})" text-anchor="middle">${o.n}</text>
+      <title>${o.n}: ${v==null?'sem dados ainda':pct+' na última semana'}</title>
+    </g>`;
+  });
+  s += `<line x1="${CX}" y1="4" x2="${CX}" y2="${H-4}" stroke="url(#jFeixe)" stroke-width="8" opacity=".35" filter="url(#jB2)" pointer-events="none"/>
+    <line x1="${CX}" y1="4" x2="${CX}" y2="${H-4}" stroke="url(#jFeixe)" stroke-width="2.2" pointer-events="none"/>`;
+  [24, 205, 379, 556].forEach((y,i)=>{
+    const forte = (i===1||i===2);
+    s += `<g pointer-events="none">
+      <line x1="${CX-(forte?42:26)}" y1="${y}" x2="${CX+(forte?42:26)}" y2="${y}" stroke="url(#jFeixe)" stroke-width="${forte?2.6:1.8}" filter="url(#jB2)"/>
+      <circle cx="${CX}" cy="${y}" r="${forte?6:4}" fill="#fff8e6" filter="url(#jB1)"/>
+      <circle cx="${CX}" cy="${y}" r="${forte?2.6:1.8}" fill="#ffffff"/></g>`;
+  });
+  return s + '</svg>';
+}
 
 /* na abertura: se o servidor tem contas, exige login; senão segue como antes */
 (async function boot(){
@@ -1360,7 +1465,8 @@ function startWithMood(mood){
     alma: Number(document.getElementById('trAlma').value),
     espirito: Number(document.getElementById('trEspirito').value)
   };
-  if(AUTH.token) fetch(API_BASE + '/api/checkin', { method:'POST', headers: authHeaders(), body: JSON.stringify(tri) }).catch(()=>{});
+  if(AUTH.token) fetch(API_BASE + '/api/checkin', { method:'POST', headers: authHeaders(), body: JSON.stringify(tri) })
+    .then(()=>loadJourney()).catch(()=>{});
 
   // a primeira fala já parte da IA, acolhendo pelo nome, pelo humor e pela tríade de hoje
   const abertura = (nm ? 'Meu nome é ' + nm + '. ' : '') + 'Cheguei aqui me sentindo ' + mood +

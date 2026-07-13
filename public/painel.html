@@ -74,6 +74,19 @@
   .t-meta{font-size:10.5px;color:var(--faint);margin-top:3px}
   .dl{float:right;background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer}
   .dl:hover{color:var(--gold2);border-color:var(--golds)}
+  .reb{display:flex;flex-wrap:wrap;gap:10px}
+  .reb .tile{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 16px;font-size:12px;color:var(--dim);min-width:96px}
+  .reb .tile b{display:block;font-size:20px;color:var(--ink)}
+  .reb .tile.alerta{border-color:#5a2e33}
+  .reb .lista-mini{width:100%;font-size:12px;color:var(--dim);margin-top:4px;line-height:1.7}
+  .reb .lista-mini b{color:var(--ink);font-weight:500}
+  .badge-at{display:inline-block;background:#2a1518;border:1px solid #4a2530;color:#e26d6d;font-size:9.5px;
+    letter-spacing:1px;border-radius:999px;padding:2px 9px;margin-left:8px;vertical-align:middle}
+  .notas{width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    color:var(--ink);font-family:'Montserrat';font-size:13px;padding:12px 14px;line-height:1.6;resize:vertical}
+  .notas:focus{outline:none;border-color:var(--golds)}
+  .vit-item{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 13px;margin-bottom:7px;font-size:12.5px}
+  .vit-item small{color:var(--golds);margin-right:8px}
 </style>
 </head>
 <body>
@@ -95,13 +108,18 @@
   <!-- lista de pacientes -->
   <div id="lista" class="hide">
     <div class="card">
+      <h2>O rebanho hoje</h2>
+      <p class="sub">visão geral de quem caminha com você</p>
+      <div id="rebanho"></div>
+    </div>
+    <div class="card">
       <h2>Pacientes e mentorados</h2>
       <p class="sub" id="listaSub">carregando…</p>
       <table id="tbl"><thead><tr>
         <th>Estado</th><th>Nome</th><th>Última conversa</th><th>Interações</th><th>No método desde</th>
       </tr></thead><tbody></tbody></table>
     </div>
-    <p class="muted">Clique num paciente para abrir a jornada completa. Estado = último atendimento (verde acolhido · amarelo atenção · vermelho risco).</p>
+    <p class="muted">Ordenados por quem mais precisa de atenção (risco recente, estado e ausência). Estado = último atendimento (verde acolhido · amarelo atenção · vermelho risco).</p>
   </div>
 
   <!-- detalhe do paciente -->
@@ -140,6 +158,29 @@
         </div>
       </div>
     </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Autoconsciência</h2>
+        <p class="sub">como a pessoa SE avalia (check-in) × como a Lúmen a percebe — linhas que convergem = consciência crescendo</p>
+        <div id="chartConsciencia"></div>
+        <div class="legend">
+          <span><i style="background:#a89f8d"></i>autoavaliação (check-in)</span>
+          <span><i style="background:#E8C76A"></i>leitura da Lúmen</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>🏆 Vitórias e gratidões</h2>
+        <p class="sub">o que a caminhada já conquistou — celebre com ela</p>
+        <div id="dVitorias"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>✍️ Anotações do mentor</h2>
+      <p class="sub">só você vê — observações, direcionamentos, motivos de oração</p>
+      <textarea id="dNotas" class="notas" placeholder="Suas anotações sobre esta pessoa…"></textarea>
+      <button class="btn" style="margin-top:10px" onclick="salvarNotas()">Salvar anotações</button>
+      <span class="muted" id="notasStatus" style="margin-left:12px"></span>
+    </div>
     <div class="card">
       <h2>Prontuário evolutivo</h2>
       <p class="sub" id="dProntEm"></p>
@@ -173,24 +214,49 @@ async function api(path){
   return j;
 }
 
+const diasSem = s => s ? Math.floor((Date.now() - new Date(s).getTime())/86400000) : 999;
+
 async function carregarLista(){
   try{
     const d = await api('/api/admin/users');
     $('keybox').classList.add('hide'); $('lista').classList.remove('hide');
-    const tb = $('tbl').querySelector('tbody'); tb.innerHTML='';
     const fmt = s => s ? new Date(s).toLocaleDateString('pt-BR') : '—';
     const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
-    d.pacientes.forEach(p=>{
+
+    // fila de atenção: risco recente > estado > ausência
+    const score = p => (p.risco_recente?100:0) +
+      ({vermelho:50, amarelo:25}[p.ultimo_meta?.status]||0) +
+      Math.min(diasSem(p.last_seen_at), 20);
+    const ps = [...d.pacientes].sort((a,b)=>score(b)-score(a));
+
+    // resumo do rebanho
+    const conta = s => ps.filter(p=>p.ultimo_meta?.status===s).length;
+    const sumidos = ps.filter(p=>diasSem(p.last_seen_at)>=5);
+    const mesAtual = new Date().getMonth()+1;
+    const niver = ps.filter(p=>p.nasc_mes===mesAtual);
+    $('rebanho').innerHTML = `<div class="reb">
+      <div class="tile"><b style="color:var(--verde)">${conta('verde')}</b>acolhidos</div>
+      <div class="tile"><b style="color:var(--amarelo)">${conta('amarelo')}</b>em atenção</div>
+      <div class="tile ${conta('vermelho')?'alerta':''}"><b style="color:var(--vermelho)">${conta('vermelho')}</b>em risco</div>
+      <div class="tile"><b>${ps.length}</b>no total</div>
+      <div class="tile ${sumidos.length?'alerta':''}"><b>${sumidos.length}</b>sem acessar há 5+ dias</div>
+      ${sumidos.length ? `<div class="lista-mini">🕯️ <b>Quem se afastou:</b> ${sumidos.map(p=>`${p.name.split(' ')[0]} (${diasSem(p.last_seen_at)}d)`).join(' · ')}</div>` : ''}
+      ${niver.length ? `<div class="lista-mini">🎂 <b>Aniversariantes do mês:</b> ${niver.map(p=>`${p.name.split(' ')[0]} (dia ${p.nasc_dia})`).join(' · ')}</div>` : ''}
+    </div>`;
+
+    const tb = $('tbl').querySelector('tbody'); tb.innerHTML='';
+    ps.forEach(p=>{
       const st = p.ultimo_meta?.status || 'cinza';
-      const risco = p.ultimo_meta?.risco === 'ALTO';
+      const risco = p.risco_recente || p.ultimo_meta?.risco === 'ALTO';
+      const sum = diasSem(p.last_seen_at)>=5;
       const tr = document.createElement('tr'); tr.className='pac';
       tr.innerHTML = `<td><span class="dot ${st}"></span>${risco?'<span class="risco">RISCO</span>':''}</td>
-        <td><b>${p.name}</b><br><span class="muted">${p.email}</span></td>
+        <td><b>${p.name}</b>${sum?'<span class="badge-at">AUSENTE</span>':''}<br><span class="muted">${p.email}</span></td>
         <td>${fmtH(p.ultima_conversa)}</td><td>${p.mensagens}</td><td>${fmt(p.created_at)}</td>`;
       tr.onclick = ()=>abrirPaciente(p.id);
       tb.appendChild(tr);
     });
-    $('listaSub').textContent = d.pacientes.length + ' pessoa(s) em acompanhamento';
+    $('listaSub').textContent = ps.length + ' pessoa(s) em acompanhamento';
   }catch(e){
     sessionStorage.removeItem('lumen_admin_key');
     $('keyErr').textContent = 'Chave inválida ou erro: ' + e.message;
@@ -214,7 +280,9 @@ async function abrirPaciente(id){
     nasc ? `Nascimento <b>${nasc}</b>` : null,
     p.marital_status ? `Estado civil <b>${p.marital_status}</b>` : null,
     p.city ? `Cidade <b>${p.city}</b>` : null,
-    p.address ? `Endereço <b>${p.address}</b>` : null
+    p.address ? `Endereço <b>${p.address}</b>` : null,
+    p.phone ? `📱 WhatsApp <b>${p.phone}</b>` : null,
+    p.emergency_name ? `🆘 Emergência <b>${p.emergency_name} · ${p.emergency_phone||''}</b>` : null
   ].filter(Boolean).join(' · ') || '<span class="muted">cadastro anterior aos novos campos</span>';
 
   const dias = d.diario.length;
@@ -222,9 +290,22 @@ async function abrirPaciente(id){
   const chkHoje = d.checkins[d.checkins.length-1];
   $('dStats').innerHTML =
     `<span class="stat"><b>${dias}</b>dias com conversa (60d)</span>` +
+    (d.streak > 1 ? `<span class="stat"><b>🔥 ${d.streak}</b>dias seguidos de check-in</span>` : '') +
     (ultimo ? `<span class="stat"><b>${ultimo.emocao||'—'}</b>última emoção dominante</span>
       <span class="stat"><b style="color:${cor(ultimo.status)}">${ultimo.status}</b>último estado</span>` : '') +
     (chkHoje ? `<span class="stat"><b>${dia(chkHoje.dia)} · ${chkHoje.emocao||'—'}</b>último check-in (auto): corpo ${chkHoje.corpo} · alma ${chkHoje.alma} · espírito ${chkHoje.espirito}</span>` : '');
+
+  // autoconsciência: autoavaliação × leitura da Lúmen
+  $('chartConsciencia').innerHTML = chartConsciencia(d.checkins, d.diario);
+
+  // vitórias e gratidões
+  $('dVitorias').innerHTML = (d.vitorias && d.vitorias.length)
+    ? d.vitorias.slice(-10).reverse().map(v=>`<div class="vit-item"><small>${v.data||'•'}</small>🏆 ${v.texto}</div>`).join('')
+    : '<p class="muted">As vitórias aparecerão aqui conforme a jornada avança.</p>';
+
+  // anotações do mentor
+  $('dNotas').value = d.notas_mentor || '';
+  $('notasStatus').textContent = '';
 
   desenharEsferas(d.esferas);
   $('chartTriade').innerHTML = chartLinhas(d.diario);
@@ -395,6 +476,40 @@ function chartBarras(rows){
   const labels = rows.map((r,i)=> (rows.length<=10 || i%Math.ceil(rows.length/8)===0)
     ? `<text x="${esc(i,0,Math.max(rows.length-1,1),P,W-P)}" y="${H-6}" font-size="8.5" fill="#6d6656" text-anchor="middle">${dia(r.dia)}</text>` : '').join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${bars}${labels}</svg>`;
+}
+
+/* autoconsciência: média da tríade autoavaliada (check-in) × média avaliada pela Lúmen, por dia */
+function chartConsciencia(checkins, diario){
+  const md = r => { const vs=['corpo','alma','espirito'].map(k=>r[k]).filter(v=>v!=null).map(Number);
+    return vs.length ? vs.reduce((a,b)=>a+b,0)/vs.length : null; };
+  const mapa = {};
+  checkins.forEach(c=>{ const m=md(c); if(m!=null){ (mapa[c.dia]=mapa[c.dia]||{}).auto=m; } });
+  diario.forEach(r=>{ const m=md(r); if(m!=null){ (mapa[r.dia]=mapa[r.dia]||{}).lumen=m; } });
+  const dias = Object.keys(mapa).sort();
+  if(dias.length < 2) return '<p class="muted">Este gráfico nasce quando houver check-ins e conversas em dias suficientes.</p>';
+  const xs = dias.map((_,i)=>esc(i,0,dias.length-1,P,W-P));
+  const linha = (campo,corL,tracejado)=>{
+    const pts = dias.map((dd,i)=> mapa[dd][campo]!=null ? xs[i]+','+esc(mapa[dd][campo],0,10,H-P,P) : null).filter(Boolean).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${corL}" stroke-width="2.2" ${tracejado?'stroke-dasharray="5 4"':''} stroke-linejoin="round"/>`;
+  };
+  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H-P,P)}" stroke="#2e2a22" stroke-dasharray="3 4"/>
+    <text x="6" y="${esc(v,0,10,H-P,P)+4}" font-size="9" fill="#6d6656">${v}</text>`).join('');
+  const labels = dias.map((dd,i)=> (dias.length<=10 || i%Math.ceil(dias.length/8)===0)
+    ? `<text x="${xs[i]}" y="${H-6}" font-size="8.5" fill="#6d6656" text-anchor="middle">${dia(dd)}</text>` : '').join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${grade}${labels}
+    ${linha('auto','#a89f8d',true)}${linha('lumen','#E8C76A',false)}</svg>`;
+}
+
+async function salvarNotas(){
+  try{
+    const r = await fetch('/api/admin/notes?id='+pacienteAtual.id+'&key='+encodeURIComponent(KEY), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ texto: $('dNotas').value })
+    });
+    const j = await r.json();
+    $('notasStatus').textContent = j.ok ? '✓ salvo' : ('erro: '+j.error);
+    setTimeout(()=>$('notasStatus').textContent='', 3000);
+  }catch(e){ $('notasStatus').textContent = 'erro ao salvar'; }
 }
 
 if(KEY) carregarLista();

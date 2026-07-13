@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers,
          getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
-         todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages } from './db.js';
+         todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
+         emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor } from './db.js';
 
 // --- Base de conhecimento do Método Lúmen (destilada das obras e do curso do Rodrigo) ---
 // Lê TODOS os .md de knowledge/ (base doutrinária + as 60 aulas), concatena e injeta
@@ -108,13 +109,24 @@ ALMA: estado emocional predominante, padrões (vitimismo/avanço/crise), gatilho
 ESPÍRITO: a relação com Deus que transparece (fé, distância, práticas).
 VITÓRIAS E GRATIDÕES: avanços conquistados e motivos de gratidão que a pessoa relatou (com datas aproximadas) — para a Lúmen celebrar e ancorar ensino.
 ATENÇÃO: riscos, sinais de alerta, o que não esquecer na próxima conversa.
-Preserve o que segue válido do prontuário anterior, corrija o que evoluiu, descarte o que ficou obsoleto.`,
+Preserve o que segue válido do prontuário anterior, corrija o que evoluiu, descarte o que ficou obsoleto.
+AO FINAL, depois do prontuário, acrescente UMA linha exatamente neste formato com as vitórias/gratidões NOVAS destas conversas (array vazio se não houver):
+##VITORIAS[{"data":"dd/mm","texto":"vitória em poucas palavras"}]##`,
         messages: [{ role: 'user', content: `PRONTUÁRIO ATUAL:\n${atual}\n\nCONVERSAS NOVAS DESDE A ÚLTIMA CONSOLIDAÇÃO:\n${trechos}\n\nEscreva o prontuário atualizado completo.` }]
       })
     });
     const data = await r.json();
-    const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-    if (texto) { await setProntuario(uid, texto); console.log(`  Prontuário consolidado (paciente ${uid}, ${novas.length} msgs novas).`); }
+    let texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (texto) {
+      // separa as vitórias estruturadas do texto do prontuário
+      const mv = texto.match(/##VITORIAS(\[[\s\S]*?\])##/);
+      if (mv) {
+        texto = texto.replace(mv[0], '').trim();
+        try { await mergeVitorias(uid, JSON.parse(mv[1])); } catch (_) {}
+      }
+      await setProntuario(uid, texto);
+      console.log(`  Prontuário consolidado (paciente ${uid}, ${novas.length} msgs novas).`);
+    }
   } finally { emAtualizacao.delete(uid); }
 }
 
@@ -139,18 +151,24 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try { res.json({ pacientes: await listUsers() }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
-// detalhe de um paciente: cadastro, prontuário, séries e esferas
+// detalhe de um paciente: cadastro, prontuário, séries, esferas, vitórias e notas
 app.get('/api/admin/patient', requireAdmin, async (req, res) => {
   try {
     const id = Number(req.query.id);
-    const [basico, pront, diario, esferas, checkins, sessoes] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
-      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id)
+      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
-               diario, esferas, checkins, sessoes });
+               diario, esferas, checkins, sessoes, vitorias: extras.vitorias || [],
+               notas_mentor: extras.notas_mentor || '', streak });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// anotações privadas do mentor
+app.post('/api/admin/notes', requireAdmin, async (req, res) => {
+  try { await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // transcrição de um dia de atendimento (consulta do mentor)
 app.get('/api/admin/transcript', requireAdmin, async (req, res) => {
@@ -170,6 +188,19 @@ app.get('/api/checkin', requireAuth, async (req, res) => {
 app.post('/api/checkin', requireAuth, async (req, res) => {
   try { res.json({ ok: true, checkin: await saveCheckin(req.user?.uid, req.body || {}) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  MINHA JORNADA — o paciente vê a própria evolução
+// ---------------------------------------------------------
+app.get('/api/me/journey', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const [esferas, streak, extras, serie] = await Promise.all([
+      triadAverages(uid, 7), checkinStreak(uid), getExtras(uid), checkinSeries(uid, 30)
+    ]);
+    res.json({ esferas, streak, vitorias: extras.vitorias || [], checkins: serie });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // --- Trava da BETA (senha única) ---
@@ -387,17 +418,35 @@ app.post('/api/alert', async (req, res) => {
   try {
     const { type = 'si', name = 'a pessoa em atendimento', phone, time } = req.body || {};
     const when = time || new Date().toLocaleString('pt-BR');
+
+    // se o paciente está logado, o alerta vai para o CONTATO DE EMERGÊNCIA dele
+    let destino = phone, nomePaciente = name, guardiao = '';
+    try {
+      const h = req.headers.authorization || '';
+      if (h.startsWith('Bearer ')) {
+        const jwt = (await import('jsonwebtoken')).default;
+        const tok = jwt.verify(h.slice(7), process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env');
+        const c = await emergencyContact(tok.uid);
+        if (c) {
+          nomePaciente = c.name || name;
+          if (c.emergency_phone) { destino = c.emergency_phone; guardiao = c.emergency_name || ''; }
+        }
+      }
+    } catch (_) { /* sem login válido: segue para o guardião padrão */ }
+
     let msg;
     if (type === 'outros') {
       msg = `[LÚMEN · ALERTA GRAVE — RISCO A TERCEIROS]\n${when}\n\n` +
-        `Durante um atendimento surgiram sinais de risco de dano a outra pessoa ou a uma criança, envolvendo ${name}. ` +
+        (guardiao ? `${guardiao}, ` : '') +
+        `durante um atendimento surgiram sinais de risco de dano a outra pessoa ou a uma criança, envolvendo ${nomePaciente}. ` +
         `Isto exige contato imediato e, se necessário, acionamento das autoridades. Não ignore esta mensagem.`;
     } else {
       msg = `[LÚMEN · ALERTA DE CUIDADO — RISCO DE VIDA]\n${when}\n\n` +
-        `Foram identificados sinais de risco emocional grave com ${name}. Por favor, entre em contato o quanto antes. ` +
+        (guardiao ? `${guardiao}, ` : '') +
+        `foram identificados sinais de risco emocional grave com ${nomePaciente}. Por favor, entre em contato o quanto antes. ` +
         `Essa pessoa pode precisar de você agora.`;
     }
-    const result = await sendWhatsApp(phone, msg);
+    const result = await sendWhatsApp(destino, msg);
     res.json(result);
   } catch (e) {
     console.error('alert:', e);
