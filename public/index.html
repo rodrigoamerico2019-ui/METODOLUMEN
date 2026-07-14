@@ -6,30 +6,34 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#0D0D0D" />
+<meta name="theme-color" content="#F4EEE2" />
 <link rel="icon" type="image/png" href="/icon-192.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Lúmen" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
 
   :root {
-    --bg:        #000000;
-    --bg-2:      #0a0908;
-    --panel:     #131210;
-    --panel-2:   #1c1a16;
-    --line:      #2e2a22;
-    --gold-1:    #B8862A;
-    --gold-2:    #E8C76A;
-    --gold-soft: #d4a94a;
-    --ink:       #efe9dd;
-    --ink-dim:   #a89f8d;
-    --ink-faint: #6d6656;
-    --danger:    #e26d6d;
-    --danger-bg: #2a1518;
-    --gold-grad: linear-gradient(135deg, #B8862A 0%, #E8C76A 55%, #B8862A 100%);
+    /* App do paciente — versão CLARA/acolhedora (creme + dourado).
+       O painel do mentor (painel.html) permanece escuro/premium. */
+    --bg:        #F4EEE2;
+    --bg-2:      #FBF8F1;
+    --panel:     #FFFFFF;
+    --panel-2:   #F7F2E8;
+    --line:      #E7DECB;
+    --gold-1:    #B8912F;
+    --gold-2:    #C9A227;
+    --gold-soft: #B8912F;
+    --ink:       #1E1B16;
+    --ink-dim:   #6B6355;
+    --ink-faint: #A79E8D;
+    --danger:    #c0442f;
+    --danger-bg: #f7e6df;
+    --gold-grad: linear-gradient(135deg, #C9A227 0%, #E4C878 55%, #C9A227 100%);
+    --on-gold:   #2a2208;   /* texto escuro sobre botões dourados */
+    --sh:        0 6px 22px rgba(30,24,16,.08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -323,7 +327,13 @@
   .pv-versiculo { font-family:'Cormorant Garamond'; font-style:italic; font-size:20px; line-height:1.4; color:var(--ink); }
   .pv-ref { font-family:'Cinzel'; font-size:12px; letter-spacing:1px; color:var(--gold-2); margin:8px 0 14px; }
   .pv-reflexao { font-size:13.5px; line-height:1.7; color:var(--ink-dim); }
-  .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
+  .ob-logo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:10px; }
+  .ob-logo svg { width:58px; height:auto; }
+  .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:6px; font-size:22px; color:var(--ink); }
+  .ob-logo .ob-por { font-family:'Cormorant Garamond'; font-style:italic; font-size:13px; color:var(--gold-soft); margin-top:-4px; }
+  .bubble.lumen, .report-card, .cards .card, .palavra, .gravador { box-shadow: var(--sh); }
+  .checkin button, .ob-grid button, .send-btn, .ag-btn, .jor-btn.forte { box-shadow: 0 3px 12px rgba(201,162,39,.18); }
+  .ob-logo-img { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
   .ob-triade { width:100%; max-width:360px; margin:0 auto 20px; display:flex; flex-direction:column; gap:13px; }
@@ -375,7 +385,21 @@
 
   <!-- ============ PORTA DE ENTRADA / LOGIN (restrito a pacientes e mentorados) ============ -->
   <div class="authgate hide" id="authgate">
-    <img class="ob-logo" src="logo.png" alt="Método Lúmen" />
+    <div class="ob-logo">
+      <svg viewBox="0 0 100 210" xmlns="http://www.w3.org/2000/svg" aria-label="Método Lúmen">
+        <defs>
+          <linearGradient id="obg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C9A227"/><stop offset="55%" stop-color="#E4C878"/><stop offset="100%" stop-color="#C9A227"/></linearGradient>
+          <linearGradient id="obf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E4C878" stop-opacity="0"/><stop offset="50%" stop-color="#E9C453"/><stop offset="100%" stop-color="#E4C878" stop-opacity="0"/></linearGradient>
+        </defs>
+        <circle cx="50" cy="36" r="31" fill="#FBF6E9"/><circle cx="50" cy="36" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <circle cx="50" cy="105" r="31" fill="#FBF6E9"/><circle cx="50" cy="105" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <circle cx="50" cy="174" r="31" fill="#FBF6E9"/><circle cx="50" cy="174" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <line x1="50" y1="2" x2="50" y2="208" stroke="url(#obf)" stroke-width="2.4"/>
+        <circle cx="50" cy="5" r="2.4" fill="#E9C453"/><circle cx="50" cy="70" r="2.6" fill="#E9C453"/><circle cx="50" cy="140" r="2.6" fill="#E9C453"/><circle cx="50" cy="205" r="2.4" fill="#E9C453"/>
+      </svg>
+      <div class="ob-word">LÚMEN</div>
+      <div class="ob-por">por Rodrigo Américo</div>
+    </div>
     <div class="ag-tabs">
       <button id="agTabLogin" class="on">Entrar</button>
       <button id="agTabReg">Criar conta</button>
@@ -424,7 +448,16 @@
 
   <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
   <div class="onboarding" id="onboarding">
-    <img class="ob-logo" src="logo.png" alt="Método Lúmen — por Rodrigo Américo — a luz só atravessa o que está alinhado" />
+    <div class="ob-logo">
+      <svg viewBox="0 0 100 210" xmlns="http://www.w3.org/2000/svg" aria-label="Método Lúmen">
+        <circle cx="50" cy="36" r="31" fill="#FBF6E9"/><circle cx="50" cy="36" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <circle cx="50" cy="105" r="31" fill="#FBF6E9"/><circle cx="50" cy="105" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <circle cx="50" cy="174" r="31" fill="#FBF6E9"/><circle cx="50" cy="174" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
+        <line x1="50" y1="2" x2="50" y2="208" stroke="url(#obf)" stroke-width="2.4"/>
+        <circle cx="50" cy="5" r="2.4" fill="#E9C453"/><circle cx="50" cy="70" r="2.6" fill="#E9C453"/><circle cx="50" cy="140" r="2.6" fill="#E9C453"/><circle cx="50" cy="205" r="2.4" fill="#E9C453"/>
+      </svg>
+      <div class="ob-word">LÚMEN</div>
+    </div>
     <div class="ob-name"><input id="obNameInput" type="text" placeholder="Como posso te chamar?" autocomplete="off" /></div>
     <div class="ob-q">Seu check-in de hoje.<br>Como você está?</div>
     <div class="ob-triade" id="obTriade">
@@ -1656,11 +1689,11 @@ function esferasEmblema(e){
         <stop offset="0%" stop-color="#B8862A"/><stop offset="55%" stop-color="#E8C76A"/><stop offset="100%" stop-color="#B8862A"/>
       </linearGradient>
       <linearGradient id="jFeixe" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#E8C76A" stop-opacity="0"/><stop offset="15%" stop-color="#F5E3B0" stop-opacity=".9"/>
-        <stop offset="50%" stop-color="#FFF4D6"/><stop offset="85%" stop-color="#F5E3B0" stop-opacity=".9"/>
-        <stop offset="100%" stop-color="#E8C76A" stop-opacity="0"/>
+        <stop offset="0%" stop-color="#C9A227" stop-opacity="0"/><stop offset="15%" stop-color="#D9B84A" stop-opacity=".9"/>
+        <stop offset="50%" stop-color="#C9A227"/><stop offset="85%" stop-color="#D9B84A" stop-opacity=".9"/>
+        <stop offset="100%" stop-color="#C9A227" stop-opacity="0"/>
       </linearGradient>
-      <radialGradient id="jInt"><stop offset="0%" stop-color="#17140e"/><stop offset="100%" stop-color="#060504"/></radialGradient>
+      <radialGradient id="jInt"><stop offset="0%" stop-color="#FFFDF7"/><stop offset="100%" stop-color="#FBF6E9"/></radialGradient>
       <filter id="jB1"><feGaussianBlur stdDeviation="2"/></filter>
       <filter id="jB2"><feGaussianBlur stdDeviation="5"/></filter>
     </defs>`;
@@ -1671,13 +1704,13 @@ function esferasEmblema(e){
     const circ = 2*Math.PI*R, pre = v==null ? 0 : v/10;
     s += `<g class="esf">
       <circle cx="${CX}" cy="${cy}" r="${R}" fill="url(#jInt)"/>
-      <circle cx="${CX}" cy="${cy}" r="${R+6}" fill="none" stroke="#5a4a28" stroke-width="1" opacity=".5"/>
+      <circle cx="${CX}" cy="${cy}" r="${R+6}" fill="none" stroke="#E0D3B0" stroke-width="1" opacity=".7"/>
       <circle class="aro" cx="${CX}" cy="${cy}" r="${R}"/>
       <circle cx="${CX}" cy="${cy}" r="${R}" fill="none" stroke="url(#jGrad)" stroke-width="4"
         stroke-dasharray="${(circ*pre).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
         transform="rotate(-90 ${CX} ${cy})" opacity=".95"/>
-      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#E8C76A">${pct}</text>
-      <text x="${CX+R+16}" y="${cy+4}" font-size="10" letter-spacing="3" fill="#a89f8d"
+      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#B8912F">${pct}</text>
+      <text x="${CX+R+16}" y="${cy+4}" font-size="10" letter-spacing="3" fill="#9a8f76"
         transform="rotate(90 ${CX+R+16} ${cy+4})" text-anchor="middle">${o.n}</text>
       <title>${o.n}: ${v==null?'sem dados ainda':pct+' na última semana'}</title>
     </g>`;
@@ -1688,8 +1721,8 @@ function esferasEmblema(e){
     const forte = (i===1||i===2);
     s += `<g pointer-events="none">
       <line x1="${CX-(forte?42:26)}" y1="${y}" x2="${CX+(forte?42:26)}" y2="${y}" stroke="url(#jFeixe)" stroke-width="${forte?2.6:1.8}" filter="url(#jB2)"/>
-      <circle cx="${CX}" cy="${y}" r="${forte?6:4}" fill="#fff8e6" filter="url(#jB1)"/>
-      <circle cx="${CX}" cy="${y}" r="${forte?2.6:1.8}" fill="#ffffff"/></g>`;
+      <circle cx="${CX}" cy="${y}" r="${forte?6:4}" fill="#E9C453" filter="url(#jB1)"/>
+      <circle cx="${CX}" cy="${y}" r="${forte?2.6:1.8}" fill="#C9A227"/></g>`;
   });
   return s + '</svg>';
 }
