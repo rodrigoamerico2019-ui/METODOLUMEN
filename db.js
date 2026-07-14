@@ -17,6 +17,17 @@ export const dbReady = !!pool;
 export async function initDb() {
   if (!pool) { console.warn('  Aviso: DATABASE_URL ausente — rodando SEM contas/histórico.'); return; }
   await pool.query(`
+    -- ORGANIZAÇÕES (multi-tenant): cada terapeuta/clínica é uma org com um plano
+    CREATE TABLE IF NOT EXISTS organizations (
+      id BIGSERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      plano TEXT NOT NULL DEFAULT 'one',
+      limite_pessoas INT NOT NULL DEFAULT 30,
+      status TEXT NOT NULL DEFAULT 'ativa',
+      asaas_customer TEXT,
+      asaas_subscription TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -28,6 +39,18 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now(),
       last_seen_at TIMESTAMPTZ
     );
+    -- multi-tenant: vínculo do usuário à organização + login de mentor
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id BIGINT REFERENCES organizations(id);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_login BOOLEAN DEFAULT false;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (lower(username)) WHERE username IS NOT NULL;
+    ALTER TABLE invite_codes ADD COLUMN IF NOT EXISTS org_id BIGINT;
+    -- organização padrão (Método Lúmen) para todos os dados atuais
+    INSERT INTO organizations (id, nome, plano, limite_pessoas)
+      VALUES (1, 'Método Lúmen', 'prime', 250) ON CONFLICT (id) DO NOTHING;
+    SELECT setval(pg_get_serial_sequence('organizations','id'), GREATEST((SELECT max(id) FROM organizations), 1));
+    UPDATE users SET org_id = 1 WHERE org_id IS NULL;
+    UPDATE invite_codes SET org_id = 1 WHERE org_id IS NULL;
     CREATE TABLE IF NOT EXISTS invite_codes (
       code TEXT PRIMARY KEY,
       note TEXT,
@@ -133,6 +156,13 @@ export async function initDb() {
 const JWT_SECRET = process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env';
 const norm = e => String(e || '').trim().toLowerCase();
 
+// planos comerciais TriLumen
+export const PLANOS = {
+  one:   { nome: 'TRILUMEN ONE',   limite: 30,  preco: 79.90 },
+  plus:  { nome: 'TRILUMEN PLUS',  limite: 100, preco: 149.90 },
+  prime: { nome: 'TRILUMEN PRIME', limite: 250, preco: 259.90 }
+};
+
 // --- cadastro com código de convite + consentimento LGPD ---
 export async function register({ name, email, password, invite, consent, birth, marital, city, address, phone, emergencyName, emergencyPhone, photo }) {
   if (!pool) throw new Error('banco não configurado');
@@ -154,15 +184,23 @@ export async function register({ name, email, password, invite, consent, birth, 
   const inv = await pool.query('SELECT * FROM invite_codes WHERE code=$1', [code]);
   if (!inv.rows[0]) throw new Error('Código de convite inválido.');
   if (inv.rows[0].used_count >= inv.rows[0].max_uses) throw new Error('Este código de convite já foi utilizado.');
+  const orgId = inv.rows[0].org_id || 1;
+  // limite do plano da organização
+  const org = await pool.query('SELECT limite_pessoas, status FROM organizations WHERE id=$1', [orgId]);
+  if (org.rows[0] && org.rows[0].status !== 'ativa') throw new Error('Esta conta está inativa. Fale com seu mentor.');
+  if (org.rows[0]) {
+    const cnt = await pool.query("SELECT count(*)::int AS n FROM users WHERE org_id=$1 AND role='paciente'", [orgId]);
+    if (cnt.rows[0].n >= org.rows[0].limite_pessoas) throw new Error('O limite de pessoas deste plano foi atingido. Fale com seu mentor.');
+  }
   const dup = await pool.query('SELECT 1 FROM users WHERE email=$1', [email]);
   if (dup.rows[0]) throw new Error('Já existe uma conta com este e-mail. Use "Entrar".');
   const hash = await bcrypt.hash(password, 10);
   // foto: aceita apenas data URL de imagem pequena (redimensionada no cliente)
   const foto = (typeof photo === 'string' && /^data:image\/(png|jpe?g|webp);base64,/.test(photo) && photo.length < 400000) ? photo : null;
   const u = await pool.query(
-    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address,phone,emergency_name,emergency_phone,photo)
-     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id,name,email,role`,
-    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim(), fone, emgNome, emgFone, foto]
+    `INSERT INTO users (email,name,password_hash,invite_code,consent_at,last_seen_at,birth_date,marital_status,city,address,phone,emergency_name,emergency_phone,photo,org_id)
+     VALUES ($1,$2,$3,$4,now(),now(),$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,name,email,role`,
+    [email, name, hash, code, nasc, String(marital).trim(), String(city).trim(), String(address || '').trim(), fone, emgNome, emgFone, foto, orgId]
   );
   await pool.query('UPDATE invite_codes SET used_count=used_count+1 WHERE code=$1', [code]);
   await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [u.rows[0].id]);
@@ -212,14 +250,89 @@ export async function recentHistory(userId, limit = 30) {
 }
 
 // --- convites (o mentor gera pelo navegador com a ADMIN_KEY) ---
-export async function createInvite(note, maxUses = 1) {
+export async function createInvite(note, maxUses = 1, orgId = 1) {
   if (!pool) throw new Error('banco não configurado');
   const code = 'LUMEN-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-  await pool.query('INSERT INTO invite_codes (code,note,max_uses) VALUES ($1,$2,$3)', [code, note || '', maxUses]);
+  await pool.query('INSERT INTO invite_codes (code,note,max_uses,org_id) VALUES ($1,$2,$3,$4)', [code, note || '', maxUses, orgId]);
   return code;
 }
 
-export async function listUsers() {
+// =========================================================
+//  MULTI-TENANT: organizações, provisionamento e login de mentor
+// =========================================================
+function slugUser(email) {
+  const base = String(email || 'mentor').split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'mentor';
+  return base + Math.floor(100 + Math.random() * 900);
+}
+
+// cria a organização + a conta de mentor com acesso TEMPORÁRIO (usado após o pagamento)
+export async function provisionarAssinatura({ plano, nome, email, asaasCustomer, asaasSubscription }) {
+  if (!pool) throw new Error('banco não configurado');
+  const p = PLANOS[String(plano || '').toLowerCase()] || PLANOS.one;
+  email = norm(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('e-mail inválido');
+  const nomeOrg = String(nome || email.split('@')[0]).trim();
+  // se já existe conta com esse e-mail, não duplica (idempotência de webhook)
+  const existe = await pool.query('SELECT id, org_id FROM users WHERE email=$1', [email]);
+  if (existe.rows[0]) {
+    return { jaExistia: true, email, org_id: existe.rows[0].org_id, plano: String(plano).toLowerCase() };
+  }
+  const org = await pool.query(
+    `INSERT INTO organizations (nome, plano, limite_pessoas, asaas_customer, asaas_subscription)
+     VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [nomeOrg, String(plano).toLowerCase(), p.limite, asaasCustomer || null, asaasSubscription || null]);
+  const orgId = org.rows[0].id;
+  const username = slugUser(email);
+  const senhaTemp = Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  const hash = await bcrypt.hash(senhaTemp, 10);
+  await pool.query(
+    `INSERT INTO users (email, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
+     VALUES ($1,$2,$3,'mentor',$4,$5,true,now(),now())`,
+    [email, nomeOrg, hash, orgId, username]);
+  return { jaExistia: false, org_id: orgId, plano: String(plano).toLowerCase(), plano_nome: p.nome,
+           email, username, senha_temp: senhaTemp, limite: p.limite };
+}
+
+// login do mentor (por e-mail OU usuário)
+export async function mentorLogin({ login, password }) {
+  if (!pool) throw new Error('banco não configurado');
+  const l = norm(login);
+  const u = await pool.query(
+    `SELECT * FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(username)=$1)`, [l]);
+  if (!u.rows[0] || !(await bcrypt.compare(String(password || ''), u.rows[0].password_hash)))
+    throw new Error('Usuário ou senha incorretos.');
+  await pool.query('UPDATE users SET last_seen_at=now() WHERE id=$1', [u.rows[0].id]);
+  const token = jwt.sign({ uid: u.rows[0].id, org_id: u.rows[0].org_id, role: u.rows[0].role, mentor: true },
+    JWT_SECRET, { expiresIn: '30d' });
+  return { token, name: u.rows[0].name, username: u.rows[0].username, must_change: !!u.rows[0].must_change_login, org_id: u.rows[0].org_id };
+}
+
+export async function changeMentorLogin(uid, { username, password }) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const user = String(username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  if (user.length < 3) throw new Error('Escolha um nome de usuário (mín. 3 caracteres, sem espaços).');
+  if (!password || password.length < 6) throw new Error('A nova senha precisa de pelo menos 6 caracteres.');
+  const dup = await pool.query('SELECT 1 FROM users WHERE lower(username)=$1 AND id<>$2', [user, uid]);
+  if (dup.rows[0]) throw new Error('Esse nome de usuário já está em uso.');
+  const hash = await bcrypt.hash(password, 10);
+  await pool.query('UPDATE users SET username=$1, password_hash=$2, must_change_login=false WHERE id=$3', [user, hash, uid]);
+  return { ok: true, username: user };
+}
+
+export async function orgById(orgId) {
+  if (!pool || !orgId) return null;
+  const r = await pool.query(`SELECT o.*,
+      (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas
+    FROM organizations o WHERE id=$1`, [orgId]);
+  return r.rows[0] || null;
+}
+export async function patientOrg(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT org_id FROM users WHERE id=$1', [userId]);
+  return r.rows[0]?.org_id || null;
+}
+
+export async function listUsers(orgId = null) {
   if (!pool) return [];
   const r = await pool.query(`
     SELECT u.id, u.name, u.email, u.created_at, u.last_seen_at, u.birth_date,
@@ -231,7 +344,8 @@ export async function listUsers() {
            EXISTS (SELECT 1 FROM messages m3 WHERE m3.user_id=u.id
              AND m3.meta->>'risco'='ALTO' AND m3.created_at > now() - interval '7 days') AS risco_recente
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
-    GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`);
+    WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1)
+    GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`, [orgId]);
   return r.rows;
 }
 
@@ -325,7 +439,8 @@ export async function setAudioSummary(id, resumo, transcript) {
 }
 export async function getAudioBytes(id) {
   if (!pool) return null;
-  const r = await pool.query('SELECT mime, bytes FROM audio_entries WHERE id=$1', [id]);
+  const r = await pool.query(`SELECT a.mime, a.bytes, u.org_id
+    FROM audio_entries a JOIN users u ON u.id=a.user_id WHERE a.id=$1`, [id]);
   return r.rows[0] || null;
 }
 export async function listAudios(userId) {

@@ -23,8 +23,10 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          usersForReminders, reminderSent, markReminderSent,
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
-         palavraToday, setPalavra, usersForPalavra } from './db.js';
+         palavraToday, setPalavra, usersForPalavra,
+         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg } from './db.js';
 import webpush from 'web-push';
+import jwtLib from 'jsonwebtoken';
 
 // --- Notificações push (PWA) ---
 // Sanitiza as chaves (espaços/aspas/quebras colados por engano) e NUNCA derruba
@@ -180,27 +182,40 @@ AO FINAL, depois do prontuário, acrescente UMA linha exatamente neste formato c
 //  MENTOR — gerar convites e ver pacientes (protegido por ADMIN_KEY)
 //  Uso pelo navegador: /api/admin/invite?key=SUA_ADMIN_KEY&note=Maria&uses=1
 // ---------------------------------------------------------
+// Acesso ao painel: ADMIN_KEY = super-admin (Rodrigo, vê TODAS as orgs, req.orgId=null)
+// OU token de mentor (Bearer) = vê apenas a própria organização (req.orgId setado).
 function requireAdmin(req, res, next) {
-  // tolerante a espaços/quebras de linha acidentais ao colar a chave no painel
   const esperado = String(process.env.ADMIN_KEY || '').trim();
   const recebido = String(req.query.key || '').trim();
-  if (esperado && recebido === esperado) return next();
-  res.status(403).json({ error: 'chave de administrador inválida' });
+  if (esperado && recebido === esperado) { req.orgId = null; req.superAdmin = true; return next(); }
+  try {
+    const h = req.headers.authorization || '';
+    const tok = h.startsWith('Bearer ') ? jwtVerify(h.slice(7)) : null;
+    if (tok && tok.mentor) { req.orgId = tok.org_id; req.mentorUid = tok.uid; return next(); }
+  } catch (_) {}
+  res.status(403).json({ error: 'acesso não autorizado' });
 }
+function jwtVerify(token) {
+  const jwt = jwtLib; return jwt.verify(token, process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env');
+}
+
 app.get('/api/admin/invite', requireAdmin, async (req, res) => {
   try {
-    const code = await createInvite(req.query.note || '', Math.max(1, Number(req.query.uses || 1)));
+    const org = req.orgId || 1; // super-admin gera para a org Método Lúmen por padrão
+    const code = await createInvite(req.query.note || '', Math.max(1, Number(req.query.uses || 1)), org);
     res.json({ ok: true, code, note: req.query.note || '', usos: Number(req.query.uses || 1) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
-  try { res.json({ pacientes: await listUsers() }); }
+  try { res.json({ pacientes: await listUsers(req.orgId) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // detalhe de um paciente: cadastro, prontuário, séries, esferas, vitórias e notas
 app.get('/api/admin/patient', requireAdmin, async (req, res) => {
   try {
     const id = Number(req.query.id);
+    // mentor só acessa paciente da própria organização
+    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
     const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
       triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id)
@@ -213,12 +228,15 @@ app.get('/api/admin/patient', requireAdmin, async (req, res) => {
 });
 // anotações privadas do mentor
 app.post('/api/admin/notes', requireAdmin, async (req, res) => {
-  try { await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, async (req, res) => {
   try {
+    if (!(await guardPaciente(req, res))) return;
     const id = Number(req.query.id);
     const texto = String((req.body || {}).texto || '').trim();
     if (!texto) return res.status(400).json({ error: 'mensagem vazia' });
@@ -246,21 +264,59 @@ app.get('/api/admin/overview', requireAdmin, async (req, res) => {
     const [stats, evolucao, emocoes] = await Promise.all([
       overviewStats(), globalDaily(30), emotionsPredominant(30)
     ]);
-    res.json({ stats, evolucao, emocoes });
+    res.json({ stats, evolucao, emocoes, org: req.orgId ? await orgById(req.orgId) : null });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// guarda: mentor só acessa pacientes da própria org
+async function guardPaciente(req, res) {
+  if (!req.orgId) return true;
+  if ((await patientOrg(Number(req.query.id))) !== req.orgId) { res.status(403).json({ error: 'sem acesso' }); return false; }
+  return true;
+}
 // transcrição de um dia de atendimento (consulta do mentor)
 app.get('/api/admin/transcript', requireAdmin, async (req, res) => {
   try {
+    if (!(await guardPaciente(req, res))) return;
     const msgs = await transcriptOfDay(Number(req.query.id), String(req.query.day || ''));
     res.json({ transcript: msgs });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  MENTOR — login, sessão e troca do acesso temporário
+// ---------------------------------------------------------
+app.post('/api/mentor/login', authLimiter, async (req, res) => {
+  try { res.json(await mentorLogin(req.body || {})); }
+  catch (e) { res.status(401).json({ error: String(e.message || e) }); }
+});
+app.get('/api/mentor/me', requireAdmin, async (req, res) => {
+  if (req.superAdmin) return res.json({ super: true, org: null });
+  res.json({ super: false, org: await orgById(req.orgId) });
+});
+app.post('/api/mentor/change', requireAdmin, async (req, res) => {
+  try {
+    if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
+    res.json(await changeMentorLogin(req.mentorUid, req.body || {}));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  ASSINATURA — provisionamento automático (usado pelo webhook do Asaas)
+//  Por enquanto: /api/admin/simular-assinatura (ADMIN_KEY) para testar o fluxo.
+// ---------------------------------------------------------
+app.get('/api/admin/simular-assinatura', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const r = await provisionarAssinatura({ plano: req.query.plano || 'one', nome: req.query.nome || '', email: req.query.email || '' });
+    res.json({ ok: true, acesso: r });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // reprodução do áudio original (mentor)
 app.get('/api/admin/audio', requireAdmin, async (req, res) => {
   try {
     const a = await getAudioBytes(Number(req.query.id));
     if (!a) return res.status(404).end();
+    if (req.orgId && a.org_id !== req.orgId) return res.status(403).end();
     res.set('Content-Type', a.mime || 'audio/webm');
     res.set('Cache-Control', 'private, max-age=3600');
     res.send(a.bytes);
