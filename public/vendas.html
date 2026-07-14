@@ -277,14 +277,8 @@ document.getElementById('footEmb').innerHTML = emblema(13);
   document.getElementById('heroChart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%">${line(0,'#7ab8d9')}${line(1.5,'#E4C878')}${line(3,'#9fca7a')}</svg>`;
 })();
 
-/* CHECKOUT — a ser ligado ao gateway (links de pagamento por plano) */
-const CHECKOUT = { one:'', plus:'', prime:'' };
-function assinar(plano){
-  const url = CHECKOUT[plano];
-  if(url){ window.location.href = url; return; }
-  alert('Pagamento em configuração 🙏\n\nEm instantes o checkout do plano ' + plano.toUpperCase() +
-    ' estará disponível. Enquanto isso, fale com a gente para garantir seu acesso.');
-}
+/* CHECKOUT — leva ao formulário de assinatura (Asaas) */
+function assinar(plano){ window.location.href = '/checkout.html?plano=' + plano; }
 </script>
 </body>
 </html>

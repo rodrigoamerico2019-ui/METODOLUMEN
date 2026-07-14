@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Assinar · TriLumen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital@0;1&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--cream:#F4EEE2;--card:#FFFFFF;--ink:#1E1B16;--dim:#6B6355;--faint:#A79E8D;--gold:#C9A227;--gold2:#E4C878;--gold-d:#B8912F;--line:#E7DECB;--dark:#14120E;
+    --grad:linear-gradient(135deg,#C9A227 0%,#E4C878 55%,#C9A227 100%);--sh:0 8px 30px rgba(30,24,16,.09);}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(700px 420px at 50% 0%,rgba(201,162,39,.10),transparent 60%),var(--cream);color:var(--ink);font-family:'Montserrat',sans-serif;min-height:100vh;padding:30px 18px 60px}
+  .box{max-width:420px;margin:0 auto}
+  .emb{display:flex;justify-content:center;margin-bottom:8px}
+  h1{font-family:'Cinzel';text-align:center;letter-spacing:4px;font-size:20px}
+  .sub{text-align:center;font-family:'Cormorant Garamond';font-style:italic;color:var(--gold-d);font-size:15px;margin:4px 0 22px}
+  .plano-card{background:var(--dark);color:#efe6d0;border-radius:16px;padding:18px 20px;margin-bottom:20px;box-shadow:var(--sh);text-align:center}
+  .plano-card .nm{font-family:'Cinzel';letter-spacing:2px;font-size:16px;color:#fff}
+  .plano-card .lim{font-size:12px;color:#b7ad95;margin-top:3px}
+  .plano-card .pr{font-family:'Cinzel';font-size:30px;color:var(--gold2);margin-top:8px}
+  .plano-card .pr small{font-size:13px;color:#8a8168}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--sh)}
+  label{display:block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin:12px 2px 5px}
+  input{width:100%;background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 15px;font-size:14px;color:var(--ink);font-family:'Montserrat'}
+  input:focus{outline:none;border-color:var(--gold)}
+  .btn{width:100%;background:var(--grad);color:#2a2208;border:none;border-radius:12px;padding:15px;font-weight:600;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-top:20px;box-shadow:0 4px 14px rgba(201,162,39,.28)}
+  .btn:disabled{opacity:.6;cursor:wait}
+  .pgs{display:flex;gap:8px;justify-content:center;font-size:11px;color:var(--dim);margin-top:14px}
+  .pgs span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+  .err{color:#c0442f;font-size:12.5px;margin-top:12px;text-align:center;line-height:1.5}
+  .foot{text-align:center;font-size:11px;color:var(--faint);margin-top:18px;line-height:1.6}
+  .foot a{color:var(--gold-d)}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="emb" id="emb"></div>
+  <h1>TRILUMEN</h1>
+  <div class="sub">falta pouco para começar sua transformação</div>
+
+  <div class="plano-card" id="planoCard">
+    <div class="nm" id="pNome">—</div>
+    <div class="lim" id="pLim"></div>
+    <div class="pr" id="pPreco"></div>
+  </div>
+
+  <div class="card">
+    <label>Seu nome completo</label>
+    <input id="nome" placeholder="Como você se chama" autocomplete="name" />
+    <label>Seu e-mail (aqui você recebe o acesso)</label>
+    <input id="email" type="email" placeholder="voce@email.com" autocomplete="email" />
+    <label>CPF ou CNPJ</label>
+    <input id="doc" inputmode="numeric" placeholder="Somente números" />
+    <label>WhatsApp com DDD</label>
+    <input id="phone" type="tel" placeholder="(11) 99999-9999" autocomplete="tel" />
+    <button class="btn" id="btn" onclick="pagar()">Ir para o pagamento →</button>
+    <div class="pgs"><span>💳 Cartão</span><span>⚡ Pix</span><span>🧾 Boleto</span></div>
+    <div class="err" id="err" style="display:none"></div>
+  </div>
+  <div class="foot">Pagamento seguro processado pelo Asaas.<br>Você recebe o acesso no e-mail assim que o pagamento for confirmado.<br><a href="/vendas.html">← ver os planos</a></div>
+</div>
+
+<script>
+const PLANOS = {
+  one:{nome:'TRILUMEN ONE',lim:'até 30 pessoas',preco:'79,90'},
+  plus:{nome:'TRILUMEN PLUS',lim:'até 100 pessoas',preco:'149,90'},
+  prime:{nome:'TRILUMEN PRIME',lim:'até 250 pessoas',preco:'259,90'}
+};
+const plano = (new URLSearchParams(location.search).get('plano')||'one').toLowerCase();
+const p = PLANOS[plano] || PLANOS.one;
+document.getElementById('pNome').textContent = p.nome;
+document.getElementById('pLim').textContent = p.lim;
+document.getElementById('pPreco').innerHTML = 'R$ '+p.preco+' <small>/mês</small>';
+document.getElementById('emb').innerHTML = `<svg width="42" height="92" viewBox="0 0 100 210">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C9A227"/><stop offset="55%" stop-color="#E4C878"/><stop offset="100%" stop-color="#C9A227"/></linearGradient></defs>
+  ${[36,105,174].map(cy=>`<circle cx="50" cy="${cy}" r="31" fill="none" stroke="url(#g)" stroke-width="4"/>`).join('')}
+  <line x1="50" y1="4" x2="50" y2="206" stroke="#E4C878" stroke-width="2.4"/></svg>`;
+
+async function pagar(){
+  const err = document.getElementById('err'), btn = document.getElementById('btn');
+  err.style.display='none';
+  const body = {
+    plano,
+    nome: document.getElementById('nome').value.trim(),
+    email: document.getElementById('email').value.trim(),
+    cpfCnpj: document.getElementById('doc').value,
+    phone: document.getElementById('phone').value
+  };
+  btn.disabled = true; btn.textContent = 'Gerando pagamento…';
+  try{
+    const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if(d.ok && d.url){ window.location.href = d.url; return; }
+    throw new Error(d.error || 'Não foi possível gerar o pagamento.');
+  }catch(e){ err.textContent = e.message; err.style.display='block'; btn.disabled=false; btn.textContent='Ir para o pagamento →'; }
+}
+</script>
+</body>
+</html>

@@ -24,7 +24,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
-         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg } from './db.js';
+         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg,
+         saveCheckout, getCheckoutBySub, markCheckoutProvisioned } from './db.js';
 import webpush from 'web-push';
 import jwtLib from 'jsonwebtoken';
 
@@ -97,7 +98,8 @@ app.get('/api/health', (req, res) => res.json({
   coletivo: COLETIVO_ON && !!COLETIVO,
   audio: AUDIO_ON,
   transcricao: !!process.env.OPENAI_API_KEY,
-  palavra: PALAVRA_ON
+  palavra: PALAVRA_ON,
+  pagamento: ASAAS_ON
 }));
 
 // ---------------------------------------------------------
@@ -301,16 +303,108 @@ app.post('/api/mentor/change', requireAdmin, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-//  ASSINATURA — provisionamento automático (usado pelo webhook do Asaas)
-//  Por enquanto: /api/admin/simular-assinatura (ADMIN_KEY) para testar o fluxo.
+//  ASSINATURA — provisionamento automático
+//  /api/admin/simular-assinatura (ADMIN_KEY) para testar sem pagar.
 // ---------------------------------------------------------
 app.get('/api/admin/simular-assinatura', requireAdmin, async (req, res) => {
   try {
     if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
     const r = await provisionarAssinatura({ plano: req.query.plano || 'one', nome: req.query.nome || '', email: req.query.email || '' });
+    if (!r.jaExistia) enviarAcessoMentor(r).catch(() => {});
     res.json({ ok: true, acesso: r });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
+
+// ---------------------------------------------------------
+//  ASAAS — checkout de assinatura + webhook de pagamento
+// ---------------------------------------------------------
+const ASAAS_KEY = String(process.env.ASAAS_API_KEY || '').trim();
+const ASAAS_ON = !!ASAAS_KEY;
+const ASAAS_BASE = ASAAS_KEY.includes('_hmlg_') ? 'https://api-sandbox.asaas.com/v3' : 'https://api.asaas.com/v3';
+async function asaas(path, method = 'GET', body) {
+  const r = await fetch(ASAAS_BASE + path, {
+    method, headers: { access_token: ASAAS_KEY, 'Content-Type': 'application/json', 'User-Agent': 'TriLumen' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.errors?.[0]?.description || ('Asaas HTTP ' + r.status));
+  return d;
+}
+
+// o cliente preenche o checkout → cria cliente + assinatura no Asaas → devolve a URL de pagamento
+app.post('/api/checkout', async (req, res) => {
+  try {
+    if (!ASAAS_ON) return res.status(503).json({ error: 'pagamento ainda não configurado' });
+    const { plano, nome, email, cpfCnpj, phone } = req.body || {};
+    const p = PLANOS[String(plano || '').toLowerCase()];
+    if (!p) return res.status(400).json({ error: 'plano inválido' });
+    if (!String(nome || '').trim()) return res.status(400).json({ error: 'informe seu nome' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''))) return res.status(400).json({ error: 'e-mail inválido' });
+    const doc = String(cpfCnpj || '').replace(/\D/g, '');
+    if (doc.length < 11) return res.status(400).json({ error: 'informe um CPF ou CNPJ válido' });
+
+    const cust = await asaas('/customers', 'POST', {
+      name: String(nome).trim(), email: String(email).trim().toLowerCase(),
+      cpfCnpj: doc, mobilePhone: String(phone || '').replace(/\D/g, '') || undefined
+    });
+    const hoje = new Date().toISOString().slice(0, 10);
+    const sub = await asaas('/subscriptions', 'POST', {
+      customer: cust.id, billingType: 'UNDEFINED', value: p.preco, nextDueDate: hoje,
+      cycle: 'MONTHLY', description: 'Assinatura ' + p.nome, externalReference: String(plano).toLowerCase()
+    });
+    const pays = await asaas('/subscriptions/' + sub.id + '/payments');
+    const url = pays.data?.[0]?.invoiceUrl || null;
+    await saveCheckout({ sub: sub.id, customer: cust.id, email, nome, plano: String(plano).toLowerCase() });
+    res.json({ ok: true, url });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// webhook do Asaas: pagamento confirmado → provisiona o acesso e envia por e-mail
+app.post('/api/webhook/asaas', async (req, res) => {
+  res.json({ received: true }); // responde rápido para o Asaas
+  try {
+    if (process.env.ASAAS_WEBHOOK_TOKEN && req.headers['asaas-access-token'] !== process.env.ASAAS_WEBHOOK_TOKEN) return;
+    const ev = req.body || {};
+    const pay = ev.payment || {};
+    if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(ev.event) && pay.subscription) {
+      const ck = await getCheckoutBySub(pay.subscription);
+      if (ck && !ck.provisioned_at) {
+        const acesso = await provisionarAssinatura({
+          plano: ck.plano, nome: ck.nome, email: ck.email,
+          asaasCustomer: ck.asaas_customer, asaasSubscription: pay.subscription
+        });
+        await markCheckoutProvisioned(pay.subscription);
+        if (!acesso.jaExistia) { await enviarAcessoMentor(acesso); console.log(`  Assinatura provisionada: ${acesso.email} (${acesso.plano_nome}).`); }
+      }
+    }
+  } catch (e) { console.error('asaas webhook:', e.message); }
+});
+
+// envia (ou registra) o acesso temporário do mentor
+async function enviarAcessoMentor(a) {
+  const link = (process.env.PAINEL_URL || 'https://painel.trilumen.com.br');
+  const corpo =
+`Bem-vindo(a) ao TriLumen — ${a.plano_nome}!
+
+Seu acesso ao painel do mentor:
+• Endereço: ${link}
+• Usuário: ${a.username}
+• Senha temporária: ${a.senha_temp}
+
+No primeiro acesso, você vai escolher seu próprio usuário e senha.
+A luz só atravessa o que está alinhado. 🕊️`;
+  const t = mailer();
+  if (t) {
+    try {
+      await t.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: a.email, subject: 'Seu acesso ao TriLumen ✨', text: corpo
+      });
+      return;
+    } catch (e) { console.error('e-mail acesso:', e.message); }
+  }
+  console.log(`  [ACESSO TRILUMEN] ${a.email} → usuário ${a.username} / senha ${a.senha_temp} (SMTP off — envie manualmente)`);
+}
 // reprodução do áudio original (mentor)
 app.get('/api/admin/audio', requireAdmin, async (req, res) => {
   try {

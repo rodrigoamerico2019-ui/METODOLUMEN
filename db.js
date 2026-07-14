@@ -133,6 +133,15 @@ export async function initDb() {
       kind TEXT NOT NULL,
       PRIMARY KEY (user_id, day, kind)
     );
+    -- CHECKOUTS Asaas: liga o pagamento (assinatura) ao provisionamento do acesso
+    CREATE TABLE IF NOT EXISTS checkouts (
+      asaas_subscription TEXT PRIMARY KEY,
+      asaas_customer TEXT,
+      email TEXT, nome TEXT, plano TEXT,
+      status TEXT DEFAULT 'pendente',
+      created_at TIMESTAMPTZ DEFAULT now(),
+      provisioned_at TIMESTAMPTZ
+    );
     -- PALAVRA VIVA do dia: versículo + reflexão personalizados por jornada (1 por pessoa/dia)
     CREATE TABLE IF NOT EXISTS palavra_viva (
       user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -330,6 +339,23 @@ export async function patientOrg(userId) {
   if (!pool || !userId) return null;
   const r = await pool.query('SELECT org_id FROM users WHERE id=$1', [userId]);
   return r.rows[0]?.org_id || null;
+}
+
+// checkouts do Asaas (assinatura → provisionamento)
+export async function saveCheckout({ sub, customer, email, nome, plano }) {
+  if (!pool) return;
+  await pool.query(`INSERT INTO checkouts (asaas_subscription, asaas_customer, email, nome, plano)
+    VALUES ($1,$2,$3,$4,$5) ON CONFLICT (asaas_subscription) DO NOTHING`,
+    [sub, customer, norm(email), nome, plano]);
+}
+export async function getCheckoutBySub(sub) {
+  if (!pool) return null;
+  const r = await pool.query('SELECT * FROM checkouts WHERE asaas_subscription=$1', [sub]);
+  return r.rows[0] || null;
+}
+export async function markCheckoutProvisioned(sub) {
+  if (!pool) return;
+  await pool.query("UPDATE checkouts SET status='provisionado', provisioned_at=now() WHERE asaas_subscription=$1", [sub]);
 }
 
 export async function listUsers(orgId = null) {
