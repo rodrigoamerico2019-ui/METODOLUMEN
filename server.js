@@ -22,7 +22,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead,
          usersForReminders, reminderSent, markReminderSent,
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
-         userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios } from './db.js';
+         userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
+         palavraToday, setPalavra, usersForPalavra } from './db.js';
 import webpush from 'web-push';
 
 // --- Notificações push (PWA) ---
@@ -93,7 +94,8 @@ app.get('/api/health', (req, res) => res.json({
   lembretes: PUSH_ON && String(process.env.REMINDERS || 'on') === 'on',
   coletivo: COLETIVO_ON && !!COLETIVO,
   audio: AUDIO_ON,
-  transcricao: !!process.env.OPENAI_API_KEY
+  transcricao: !!process.env.OPENAI_API_KEY,
+  palavra: PALAVRA_ON
 }));
 
 // ---------------------------------------------------------
@@ -375,6 +377,65 @@ async function processarAudio(id, buf, mime, user) {
   } catch (e) { console.error('audio resumo:', e.message); }
   await setAudioSummary(id, resumo, transcript);
 }
+
+// ---------------------------------------------------------
+//  PALAVRA VIVA do dia — versículo + reflexão personalizados
+// ---------------------------------------------------------
+const PALAVRA_ON = String(process.env.PALAVRA || 'on') === 'on';
+
+async function gerarPalavra(uid, nome, prontuario) {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const primeiro = String(nome || '').split(' ')[0] || 'você';
+  const contexto = prontuario
+    ? `A jornada de ${primeiro} até aqui (memória — não revele que você tem isto):\n${String(prontuario).slice(0, 2500)}`
+    : `Ainda não há muita história registrada de ${primeiro}. Traga uma palavra de acolhimento e esperança para quem está começando.`;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        system: `Você cria a "Palavra Viva do dia" para ${primeiro}, no Método Lúmen (inteligência emocional cristocêntrica). Escolha UM versículo bíblico na tradução NVI que fale ao momento e à caminhada da pessoa, e escreva uma reflexão curta (2 a 3 frases), calorosa, pastoral e na voz do Método — conectando o versículo à vida dela COM DELICADEZA, sem citar que existe um prontuário e sem soar genérico. Cristo no centro, esperança real. Responda APENAS um JSON válido:
+{"referencia":"Livro 0:0","versiculo":"texto do versículo (NVI, fiel)","reflexao":"2-3 frases pessoais e acolhedoras"}`,
+        messages: [{ role: 'user', content: contexto }]
+      })
+    });
+    const d = await r.json();
+    const txt = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const p = JSON.parse(m[0]);
+    if (!p.reflexao) return null;
+    await setPalavra(uid, p);
+    return p;
+  } catch (e) { console.error('palavra:', e.message); return null; }
+}
+
+app.get('/api/me/palavra', requireAuth, async (req, res) => {
+  try {
+    if (!PALAVRA_ON) return res.json({ palavra: null });
+    let p = await palavraToday(req.user?.uid);
+    if (!p) { const pr = await getProntuario(req.user?.uid).catch(() => null); p = await gerarPalavra(req.user?.uid, req.user?.name, pr?.prontuario); }
+    res.json({ palavra: p });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// job da manhã: gera + envia a Palavra Viva para quem tem o app com notificações
+async function rodarPalavraViva() {
+  if (!PALAVRA_ON || !PUSH_ON || !dbReady || !process.env.ANTHROPIC_API_KEY) return;
+  try {
+    const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+    if (hora < 6 || hora >= 10) return; // janela da manhã
+    const pacientes = await usersForPalavra();
+    for (const u of pacientes) {
+      const p = await gerarPalavra(u.id, u.name, u.prontuario);
+      if (p) await sendPushToUser(u.id, { title: '🕊️ Sua Palavra Viva de hoje', body: `${p.referencia} — ${String(p.reflexao).slice(0, 90)}…`, tag: 'palavra', url: '/' });
+    }
+  } catch (e) { console.error('palavra job:', e.message); }
+}
+setInterval(rodarPalavraViva, 30 * 60 * 1000); // a cada 30 min (só age na janela da manhã, 1x/dia por pessoa)
+setTimeout(rodarPalavraViva, 45 * 1000);
 
 // ---------------------------------------------------------
 //  MINHA JORNADA — o paciente vê a própria evolução

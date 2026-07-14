@@ -110,6 +110,14 @@ export async function initDb() {
       kind TEXT NOT NULL,
       PRIMARY KEY (user_id, day, kind)
     );
+    -- PALAVRA VIVA do dia: versículo + reflexão personalizados por jornada (1 por pessoa/dia)
+    CREATE TABLE IF NOT EXISTS palavra_viva (
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      day DATE NOT NULL,
+      referencia TEXT, versiculo TEXT, reflexao TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (user_id, day)
+    );
     -- SABEDORIA COLETIVA (anônima): o que muitas jornadas ensinam sobre a cura.
     -- Linha única. Nunca guarda nome nem dado identificável de ninguém.
     CREATE TABLE IF NOT EXISTS collective_wisdom (
@@ -440,6 +448,35 @@ export async function markReminderSent(userId, kind) {
   if (!pool) return;
   await pool.query(`INSERT INTO reminders_sent (user_id, day, kind)
     VALUES ($1,(now() AT TIME ZONE 'America/Sao_Paulo')::date,$2) ON CONFLICT DO NOTHING`, [userId, kind]);
+}
+
+// =========================================================
+//  PALAVRA VIVA do dia (versículo + reflexão por jornada)
+// =========================================================
+export async function palavraToday(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query(`SELECT referencia, versiculo, reflexao, created_at FROM palavra_viva
+    WHERE user_id=$1 AND day=(now() AT TIME ZONE 'America/Sao_Paulo')::date`, [userId]);
+  return r.rows[0] || null;
+}
+export async function setPalavra(userId, { referencia, versiculo, reflexao }) {
+  if (!pool || !userId) return;
+  await pool.query(`INSERT INTO palavra_viva (user_id, day, referencia, versiculo, reflexao)
+    VALUES ($1,(now() AT TIME ZONE 'America/Sao_Paulo')::date,$2,$3,$4)
+    ON CONFLICT (user_id, day) DO UPDATE SET referencia=$2, versiculo=$3, reflexao=$4`,
+    [userId, String(referencia || '').slice(0, 60), String(versiculo || '').slice(0, 600), String(reflexao || '').slice(0, 900)]);
+}
+// pacientes com aparelho inscrito e SEM a palavra de hoje (para o job da manhã)
+export async function usersForPalavra() {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT DISTINCT u.id, u.name, p.prontuario
+    FROM users u
+    JOIN push_subs s ON s.user_id=u.id
+    LEFT JOIN profiles p ON p.user_id=u.id
+    WHERE NOT EXISTS (SELECT 1 FROM palavra_viva pv WHERE pv.user_id=u.id
+      AND pv.day=(now() AT TIME ZONE 'America/Sao_Paulo')::date)`);
+  return r.rows;
 }
 
 // =========================================================

@@ -315,6 +315,14 @@
   #gravPreview { width:100%; margin-top:14px; }
   #gravPreview.hide { display:none; }
   .grav-status { font-size:12px; color:var(--gold-soft); margin-top:10px; min-height:16px; }
+  /* Palavra Viva do dia */
+  .palavra { max-width:440px; margin:0 auto 22px; background:linear-gradient(160deg, rgba(212,175,55,.10), var(--panel) 60%);
+    border:1px solid var(--line); border-left:3px solid var(--gold-soft); border-radius:16px; padding:20px 22px; text-align:left; animation:fade .5s ease; }
+  .palavra.hide { display:none; }
+  .pv-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:12px; }
+  .pv-versiculo { font-family:'Cormorant Garamond'; font-style:italic; font-size:20px; line-height:1.4; color:var(--ink); }
+  .pv-ref { font-family:'Cinzel'; font-size:12px; letter-spacing:1px; color:var(--gold-2); margin:8px 0 14px; }
+  .pv-reflexao { font-size:13.5px; line-height:1.7; color:var(--ink-dim); }
   .ob-logo { width:min(76%, 300px); max-height:36vh; object-fit:contain; margin-bottom:6px;
     filter:drop-shadow(0 0 34px rgba(232,199,106,.28)); animation:fade .6s ease; }
   .ob-q { font-family:'Cormorant Garamond'; font-size:28px; line-height:1.25; color:var(--ink); margin:26px 0 22px; }
@@ -468,6 +476,14 @@
       <div class="eyebrow">Corpo · Alma · Espírito</div>
       <div class="section-title">Monitor</div>
       <div class="section-sub">Como a luz está atravessando você hoje.</div>
+
+      <!-- PALAVRA VIVA DO DIA (personalizada) -->
+      <div class="palavra hide" id="palavra">
+        <div class="pv-eyebrow">🕊️ Sua Palavra Viva de hoje</div>
+        <div class="pv-versiculo" id="pvVersiculo"></div>
+        <div class="pv-ref" id="pvRef"></div>
+        <div class="pv-reflexao" id="pvReflexao"></div>
+      </div>
 
       <!-- MINHA JORNADA (só aparece logado, com dados reais) -->
       <div class="jornada hide" id="jornada">
@@ -1451,6 +1467,7 @@ function afterLogin(){
     .catch(()=>{});
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
+  loadPalavra();          // Palavra Viva do dia (personalizada)
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});
@@ -1523,6 +1540,21 @@ function loadMentorMessages(){
         state.history.push({ role:'assistant', content:'[Mensagem do mentor humano ao paciente]: ' + m.texto });
       });
       if(ms.length) fetch(API_BASE + '/api/me/messages/read', { method:'POST', headers: authHeaders() }).catch(()=>{});
+    }).catch(()=>{});
+}
+
+/* ===== PALAVRA VIVA DO DIA (personalizada pela jornada) ===== */
+function loadPalavra(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/palavra', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      const p = d && d.palavra;
+      if(!p || !p.reflexao) return;
+      document.getElementById('pvVersiculo').textContent = '“' + (p.versiculo||'') + '”';
+      document.getElementById('pvRef').textContent = p.referencia || '';
+      document.getElementById('pvReflexao').textContent = p.reflexao || '';
+      document.getElementById('palavra').classList.remove('hide');
     }).catch(()=>{});
 }
 
