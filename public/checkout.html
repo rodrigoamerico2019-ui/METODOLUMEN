@@ -63,12 +63,17 @@
 
 <script>
 const PLANOS = {
-  one:{nome:'TRILUMEN ONE',lim:'até 30 pessoas',preco:'79,90'},
-  plus:{nome:'TRILUMEN PLUS',lim:'até 100 pessoas',preco:'149,90'},
-  prime:{nome:'TRILUMEN PRIME',lim:'até 250 pessoas',preco:'259,90'}
+  essencial:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90'},
+  profissional:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90'},
+  clinica:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90'},
+  premium:{nome:'TRILUMEN PREMIUM',lim:'até 500 pacientes',preco:'549,90'},
+  // aliases legados
+  one:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90'},
+  plus:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90'},
+  prime:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90'}
 };
-const plano = (new URLSearchParams(location.search).get('plano')||'one').toLowerCase();
-const p = PLANOS[plano] || PLANOS.one;
+const plano = (new URLSearchParams(location.search).get('plano')||'essencial').toLowerCase();
+const p = PLANOS[plano] || PLANOS.essencial;
 document.getElementById('pNome').textContent = p.nome;
 document.getElementById('pLim').textContent = p.lim;
 document.getElementById('pPreco').innerHTML = 'R$ '+p.preco+' <small>/mês</small>';

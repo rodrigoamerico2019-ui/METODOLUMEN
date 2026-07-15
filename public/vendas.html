@@ -80,8 +80,8 @@
   .planos-sec h2{color:#fff}
   .planos-sec .center p{color:#b7ad95}
   .planos-sec .eyebrow{color:var(--gold2)}
-  .planos{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
-  .plano{background:#1b1810;border:1px solid #2e2a20;border-radius:20px;padding:30px 26px;display:flex;flex-direction:column}
+  .planos{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:stretch}
+  .plano{background:#1b1810;border:1px solid #2e2a20;border-radius:20px;padding:28px 22px;display:flex;flex-direction:column}
   .plano.pop{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold), 0 14px 40px rgba(201,162,39,.14);position:relative}
   .selo-pop{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--grad);color:#2a2208;
     font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;padding:5px 16px;border-radius:999px}
@@ -89,7 +89,7 @@
   .plano .lim{font-size:12.5px;color:#b7ad95;margin-top:4px}
   .plano .preco{margin:22px 0 6px;display:flex;align-items:baseline;gap:4px}
   .plano .preco .c{font-size:14px;color:var(--gold2)}
-  .plano .preco .n{font-family:'Cinzel';font-size:40px;color:var(--gold2);line-height:1}
+  .plano .preco .n{font-family:'Cinzel';font-size:34px;color:var(--gold2);line-height:1}
   .plano .preco .p{font-size:13px;color:#8a8168}
   .plano ul{list-style:none;margin:20px 0 24px;flex:1}
   .plano li{font-size:13px;color:#d8cfba;padding:7px 0 7px 24px;position:relative;border-top:1px solid #262218}
@@ -111,12 +111,14 @@
   footer .brand{justify-content:center;margin-bottom:10px}
   footer .brand .nm{color:#efe6d0;font-size:14px}
 
+  @media(max-width:1080px){ .planos{grid-template-columns:repeat(2,1fr)} }
   @media(max-width:820px){
     .hero .wrap{grid-template-columns:1fr;gap:30px} h1{font-size:34px} .hero-art{order:-1}
     .pilares .grid{grid-template-columns:repeat(2,1fr);gap:20px}
-    .feats,.planos,.paraquem .feats{grid-template-columns:1fr}
+    .feats,.paraquem .feats{grid-template-columns:1fr}
     h2{font-size:26px}
   }
+  @media(max-width:560px){ .planos{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -188,44 +190,57 @@
   </div>
   <div class="planos">
     <div class="plano">
-      <div class="nome">TRILUMEN ONE</div>
-      <div class="lim">até 30 pessoas acompanhadas</div>
-      <div class="preco"><span class="c">R$</span><span class="n">79</span><span class="c">,90</span><span class="p">/mês</span></div>
+      <div class="nome">ESSENCIAL</div>
+      <div class="lim">até 30 pacientes acompanhados</div>
+      <div class="preco"><span class="c">R$</span><span class="n">99</span><span class="c">,90</span><span class="p">/mês</span></div>
       <ul>
         <li>Plataforma completa</li>
         <li>App do paciente + painel do mentor</li>
         <li>IA, esferas e prontuário evolutivo</li>
-        <li>Alertas e notificações</li>
+        <li>Escalas, plano de ação e linha do tempo</li>
         <li>Suporte por e-mail</li>
       </ul>
-      <button class="btn" onclick="assinar('one')">Assinar o ONE</button>
+      <button class="btn" onclick="assinar('essencial')">Assinar o Essencial</button>
     </div>
     <div class="plano pop">
       <div class="selo-pop">Mais escolhido</div>
-      <div class="nome">TRILUMEN PLUS</div>
-      <div class="lim">até 100 pessoas acompanhadas</div>
-      <div class="preco"><span class="c">R$</span><span class="n">149</span><span class="c">,90</span><span class="p">/mês</span></div>
+      <div class="nome">PROFISSIONAL</div>
+      <div class="lim">até 100 pacientes acompanhados</div>
+      <div class="preco"><span class="c">R$</span><span class="n">179</span><span class="c">,90</span><span class="p">/mês</span></div>
       <ul>
-        <li>Tudo do ONE</li>
+        <li>Tudo do Essencial</li>
         <li>Até 100 jornadas ativas</li>
         <li>Fala como está (áudio + leitura IA)</li>
         <li>Palavra Viva personalizada</li>
         <li>Suporte prioritário</li>
       </ul>
-      <button class="btn" onclick="assinar('plus')">Assinar o PLUS</button>
+      <button class="btn" onclick="assinar('profissional')">Assinar o Profissional</button>
     </div>
     <div class="plano">
-      <div class="nome">TRILUMEN PRIME</div>
-      <div class="lim">até 250 pessoas acompanhadas</div>
-      <div class="preco"><span class="c">R$</span><span class="n">259</span><span class="c">,90</span><span class="p">/mês</span></div>
+      <div class="nome">CLÍNICA</div>
+      <div class="lim">até 250 pacientes acompanhados</div>
+      <div class="preco"><span class="c">R$</span><span class="n">329</span><span class="c">,90</span><span class="p">/mês</span></div>
       <ul>
-        <li>Tudo do PLUS</li>
+        <li>Tudo do Profissional</li>
         <li>Até 250 jornadas ativas</li>
         <li>Ideal para clínicas e instituições</li>
         <li>Vários profissionais na equipe</li>
         <li>Suporte dedicado</li>
       </ul>
-      <button class="btn" onclick="assinar('prime')">Assinar o PRIME</button>
+      <button class="btn" onclick="assinar('clinica')">Assinar o Clínica</button>
+    </div>
+    <div class="plano">
+      <div class="nome">PREMIUM</div>
+      <div class="lim">até 500 pacientes acompanhados</div>
+      <div class="preco"><span class="c">R$</span><span class="n">549</span><span class="c">,90</span><span class="p">/mês</span></div>
+      <ul>
+        <li>Tudo do Clínica</li>
+        <li>Até 500 jornadas ativas</li>
+        <li>Para grandes clínicas e redes</li>
+        <li>Equipe ampliada de profissionais</li>
+        <li>Suporte dedicado premium</li>
+      </ul>
+      <button class="btn" onclick="assinar('premium')">Assinar o Premium</button>
     </div>
   </div>
   <div class="planos-nota">Pagamento no cartão de crédito (recorrente) ou Pix · dados protegidos · você recebe o acesso na hora após a confirmação.</div>

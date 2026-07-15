@@ -190,9 +190,14 @@ const norm = e => String(e || '').trim().toLowerCase();
 
 // planos comerciais TriLumen
 export const PLANOS = {
-  one:   { nome: 'TRILUMEN ONE',   limite: 30,  preco: 79.90 },
-  plus:  { nome: 'TRILUMEN PLUS',  limite: 100, preco: 149.90 },
-  prime: { nome: 'TRILUMEN PRIME', limite: 250, preco: 259.90 }
+  essencial:    { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90 },
+  profissional: { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90 },
+  clinica:      { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90 },
+  premium:      { nome: 'TRILUMEN PREMIUM',      limite: 500, preco: 549.90 },
+  // aliases legados (compatibilidade com organizações/links antigos)
+  one:   { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90 },
+  plus:  { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90 },
+  prime: { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90 }
 };
 
 // --- cadastro com código de convite + consentimento LGPD ---
