@@ -24,7 +24,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
-         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg,
+         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg, listOrganizations,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan } from './db.js';
@@ -256,8 +256,10 @@ function requireAdmin(req, res, next) {
   const recebido = String(req.query.key || '').trim();
   if (esperado && recebido === esperado) { req.orgId = null; req.superAdmin = true; return next(); }
   try {
+    // token de mentor: no header Authorization OU na query ?token= (para <audio src>)
     const h = req.headers.authorization || '';
-    const tok = h.startsWith('Bearer ') ? jwtVerify(h.slice(7)) : null;
+    const raw = h.startsWith('Bearer ') ? h.slice(7) : (req.query.token ? String(req.query.token) : null);
+    const tok = raw ? jwtVerify(raw) : null;
     if (tok && tok.mentor) { req.orgId = tok.org_id; req.mentorUid = tok.uid; return next(); }
   } catch (_) {}
   res.status(403).json({ error: 'acesso não autorizado' });
@@ -439,6 +441,18 @@ app.post('/api/mentor/change', requireAdmin, async (req, res) => {
     if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
     res.json(await changeMentorLogin(req.mentorUid, req.body || {}));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// CENTRAL DE LICENÇAS — todas as organizações/planos (apenas super-admin)
+app.get('/api/admin/orgs', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const orgs = (await listOrganizations()).map(o => {
+      const p = PLANOS[String(o.plano || '').toLowerCase()] || {};
+      return { ...o, plano_nome: p.nome || o.plano, preco: p.preco || null, limite_plano: p.limite || o.limite_pessoas };
+    });
+    res.json({ orgs });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // ---------------------------------------------------------

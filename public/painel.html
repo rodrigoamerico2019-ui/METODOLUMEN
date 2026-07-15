@@ -26,6 +26,9 @@
     color:var(--ink);padding:13px 15px;font-size:14px;margin:26px 0 12px;text-align:center}
   .gate input:focus{outline:none;border-color:var(--gold)}
   .gate .err{color:var(--amarelo);font-size:12px;margin-top:12px;max-width:320px;line-height:1.5}
+  .gate-link{color:var(--faint);font-size:12px;margin-top:16px;cursor:pointer}
+  .gate-link:hover{color:var(--gold2);text-decoration:underline}
+  .gate-msg{color:var(--dim);font-size:13px;line-height:1.6;margin:24px auto 4px;max-width:320px}
   .btn{background:var(--grad);color:#141005;border:none;border-radius:999px;padding:12px 40px;
     font-family:'Montserrat';font-weight:600;font-size:13px;letter-spacing:1px;cursor:pointer}
   .btn:hover{filter:brightness(1.08)}
@@ -146,6 +149,25 @@
   .tl-when{font-size:10.5px;color:var(--faint);letter-spacing:.3px}
   .tl-tit{font-size:13.5px;color:var(--ink);font-weight:500;margin-top:1px}
   .tl-det{font-size:12px;color:var(--dim);margin-top:2px;line-height:1.5}
+  /* Central de Licenças */
+  .lic-stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+  .lic-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;min-width:140px}
+  .lic-card .k{font-size:11px;color:var(--faint);letter-spacing:.5px}
+  .lic-card .v{font-family:'Cinzel';font-size:28px;color:var(--ink);margin-top:4px}
+  .lic-card .v small{font-size:13px;color:var(--gold2)}
+  .lic-tabela{width:100%;border-collapse:collapse}
+  .lic-tabela th{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold2);text-align:left;padding:10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap}
+  .lic-tabela td{padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink);vertical-align:middle}
+  .lic-cliente b{display:block} .lic-cliente small{color:var(--faint);font-size:11px}
+  .lic-plano{display:inline-block;font-size:11px;letter-spacing:.5px;padding:4px 11px;border-radius:999px;background:rgba(212,175,55,.14);color:var(--gold2);border:1px solid var(--gold);white-space:nowrap}
+  .lic-uso{min-width:120px}
+  .lic-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin-top:5px}
+  .lic-bar i{display:block;height:100%;background:var(--grad)}
+  .lic-st{font-size:11px;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  .lic-st.ativa{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid #3a5a2e}
+  .lic-st.inativa{background:#241214;color:var(--vermelho);border:1px solid #4a2530}
+  .lic-st.pend{background:#2a2413;color:var(--amarelo);border:1px solid #4a4020}
+  .lic-wrap{overflow-x:auto}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -219,8 +241,30 @@
   <div id="gateEmblema"></div>
   <h1>TRILUMEN</h1>
   <div class="tag">A Plataforma Inteligente<br>da Jornada Humana</div>
-  <input type="password" id="keyInput" placeholder="Chave do mentor" />
-  <button class="btn" onclick="entrar()">Entrar</button>
+
+  <!-- login do MENTOR (padrão) -->
+  <div id="gateMentor">
+    <input id="mUser" placeholder="Seu usuário" autocomplete="username" onkeydown="if(event.key==='Enter')entrarMentor()" />
+    <input id="mPass" type="password" placeholder="Sua senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrarMentor()" />
+    <button class="btn" onclick="entrarMentor()">Entrar</button>
+    <div class="gate-link" onclick="modoGate('admin')">Sou o administrador da plataforma</div>
+  </div>
+
+  <!-- login do ADMINISTRADOR (chave mestra) -->
+  <div id="gateAdmin" class="hide">
+    <input type="password" id="keyInput" placeholder="Chave do administrador" onkeydown="if(event.key==='Enter')entrar()" />
+    <button class="btn" onclick="entrar()">Entrar</button>
+    <div class="gate-link" onclick="modoGate('mentor')">← Sou mentor</div>
+  </div>
+
+  <!-- PRIMEIRO ACESSO: trocar usuário e senha -->
+  <div id="gateChange" class="hide">
+    <div class="gate-msg">Boas-vindas! 🌟 Por segurança, defina seu <b>usuário</b> e uma <b>senha</b> só sua para os próximos acessos.</div>
+    <input id="cUser" placeholder="Escolha seu usuário" autocomplete="username" />
+    <input id="cPass" type="password" placeholder="Nova senha (mín. 6 caracteres)" autocomplete="new-password" onkeydown="if(event.key==='Enter')salvarPrimeiroAcesso()" />
+    <button class="btn" onclick="salvarPrimeiroAcesso()">Salvar e entrar</button>
+  </div>
+
   <div class="err" id="keyErr"></div>
 </div>
 
@@ -232,7 +276,9 @@
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
-    <div class="foot">TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
+    <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Licenças</div>
+    <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
+    <div class="foot"><span id="footWho"></span>TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
   </aside>
 
   <main class="main">
@@ -402,12 +448,29 @@
       </div>
     </section>
 
+    <!-- ===== CENTRAL DE LICENÇAS (super-admin) ===== -->
+    <section id="view-licencas" class="hide">
+      <div class="topline"><h2>Central de Licenças</h2><span class="sub">cada cliente, seu plano e o uso da assinatura</span></div>
+      <div class="lic-stats" id="licStats"></div>
+      <div class="card">
+        <div class="h2c">Clientes e planos</div>
+        <p class="subc">todas as organizações da plataforma · uso vs. limite do plano</p>
+        <div class="lic-wrap"><table class="lic-tabela" id="licTabela"></table></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
 let KEY = sessionStorage.getItem('lumen_admin_key') || '';
+let MTOKEN = localStorage.getItem('trilumen_mentor_token') || '';   // token do mentor
+let IS_SUPER = false;                                               // super-admin (chave mestra)
+// autenticação unificada: mentor usa Bearer; admin usa ?key=
+function authHead(){ return MTOKEN ? { 'Authorization':'Bearer '+MTOKEN } : {}; }
+function authQS(path){ return MTOKEN ? path : (path + (path.includes('?')?'&':'?') + 'key=' + encodeURIComponent(KEY)); }
+function mediaQS(){ return MTOKEN ? ('token='+encodeURIComponent(MTOKEN)) : ('key='+encodeURIComponent(KEY)); }
 let pacientes = [], pacienteAtual = null;
 
 /* ===== emblema TriLumen (as três esferas + feixe) ===== */
@@ -428,7 +491,7 @@ $('sideEmblema').innerHTML = emblema(13);
 
 /* ===== navegação ===== */
 function nav(v){
-  ['prioridades','geral','jornadas','detalhe'].forEach(x=>$('view-'+x).classList.add('hide'));
+  ['prioridades','geral','jornadas','detalhe','licencas'].forEach(x=>$('view-'+x).classList.add('hide'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   if(v==='alertas'){
     $('view-jornadas').classList.remove('hide');
@@ -439,10 +502,11 @@ function nav(v){
     document.querySelector('[data-v="jornadas"]').classList.add('on');
   } else {
     $('view-'+v).classList.remove('hide');
-    document.querySelector('[data-v="'+v+'"]').classList.add('on');
+    const it = document.querySelector('[data-v="'+v+'"]'); if(it) it.classList.add('on');
     if(v==='jornadas') renderLista(false);
     if(v==='prioridades') renderPrioridades();
     if(v==='geral') carregarColetivo();
+    if(v==='licencas') carregarLicencas();
   }
   window.scrollTo(0,0);
 }
@@ -491,18 +555,81 @@ function renderPrioridades(){
   }).join('');
 }
 
+/* alterna entre os formulários do gate */
+function modoGate(m){
+  $('keyErr').textContent = '';
+  $('gateMentor').classList.toggle('hide', m!=='mentor');
+  $('gateAdmin').classList.toggle('hide', m!=='admin');
+  $('gateChange').classList.toggle('hide', m!=='change');
+}
+
+/* entrada do ADMINISTRADOR (chave mestra) */
 function entrar(){
   KEY = $('keyInput').value.trim();
   if(!KEY) return;
+  MTOKEN = ''; localStorage.removeItem('trilumen_mentor_token');
   sessionStorage.setItem('lumen_admin_key', KEY);
-  boot();
+  bootAfterAuth();
+}
+
+/* entrada do MENTOR (usuário + senha) */
+async function entrarMentor(){
+  const login = $('mUser').value.trim(), password = $('mPass').value;
+  if(!login || !password) return;
+  $('keyErr').textContent = '';
+  try{
+    const r = await fetch('/api/mentor/login', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ login, password }) });
+    const d = await r.json();
+    if(d.error) throw new Error(d.error);
+    MTOKEN = d.token; localStorage.setItem('trilumen_mentor_token', MTOKEN);
+    KEY = ''; sessionStorage.removeItem('lumen_admin_key');
+    if(d.must_change){ modoGate('change'); return; }   // 1º acesso: trocar usuário/senha
+    bootAfterAuth();
+  }catch(e){ $('keyErr').textContent = 'Não consegui entrar: ' + e.message; }
+}
+
+/* primeiro acesso: define usuário e senha próprios */
+async function salvarPrimeiroAcesso(){
+  const username = $('cUser').value.trim(), password = $('cPass').value;
+  if(!username || !password) return;
+  $('keyErr').textContent = '';
+  try{
+    const r = await fetch('/api/mentor/change', { method:'POST',
+      headers:{'Content-Type':'application/json', ...authHead()}, body: JSON.stringify({ username, password }) });
+    const d = await r.json();
+    if(d.error) throw new Error(d.error);
+    bootAfterAuth();
+  }catch(e){ $('keyErr').textContent = 'Não consegui salvar: ' + e.message; }
+}
+
+function sair(){
+  MTOKEN=''; KEY=''; IS_SUPER=false;
+  localStorage.removeItem('trilumen_mentor_token'); sessionStorage.removeItem('lumen_admin_key');
+  $('shell').classList.remove('on'); $('gate').classList.remove('hide');
+  modoGate('mentor'); $('mUser').value=''; $('mPass').value=''; $('keyInput').value='';
 }
 
 async function api(path){
-  const r = await fetch(path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY));
+  const r = await fetch(authQS(path), { headers: authHead() });
   const j = await r.json();
   if(j.error) throw new Error(j.error);
   return j;
+}
+
+/* descobre se é super-admin, ajusta o menu e carrega o painel */
+async function bootAfterAuth(){
+  try{
+    const me = await api('/api/mentor/me');
+    IS_SUPER = !!me.super;
+    $('navLicencas').classList.toggle('hide', !IS_SUPER);
+    $('footWho').innerHTML = IS_SUPER ? 'Administrador · <b>todas as licenças</b><br>' :
+      (me.org ? (me.org.nome + '<br>') : '');
+    boot();
+  }catch(e){
+    sair();
+    $('keyErr').textContent = 'Acesso inválido ou expirado. Entre novamente.';
+  }
 }
 
 async function boot(){
@@ -510,12 +637,44 @@ async function boot(){
     const [ov, us] = await Promise.all([ api('/api/admin/overview'), api('/api/admin/users') ]);
     pacientes = us.pacientes;
     $('gate').classList.add('hide'); $('shell').classList.add('on');
-    renderPrioridades(); renderGeral(ov); renderLista(false);
+    nav('prioridades'); renderGeral(ov);
   }catch(e){
-    sessionStorage.removeItem('lumen_admin_key');
-    $('keyErr').textContent = 'Chave inválida ou erro: ' + e.message;
+    $('keyErr').textContent = 'Erro ao carregar: ' + e.message;
     $('gate').classList.remove('hide');
   }
+}
+
+/* ===== CENTRAL DE LICENÇAS (super-admin) ===== */
+async function carregarLicencas(){
+  try{
+    const d = await api('/api/admin/orgs');
+    const orgs = d.orgs || [];
+    const totalPessoas = orgs.reduce((s,o)=>s+(o.pessoas||0),0);
+    const ativas = orgs.filter(o=>o.status==='ativa').length;
+    const receita = orgs.filter(o=>o.status==='ativa').reduce((s,o)=>s+(o.preco||0),0);
+    const brl = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
+    $('licStats').innerHTML = `
+      <div class="lic-card"><div class="k">Clientes</div><div class="v">${orgs.length}</div></div>
+      <div class="lic-card"><div class="k">Licenças ativas</div><div class="v">${ativas}</div></div>
+      <div class="lic-card"><div class="k">Pessoas atendidas</div><div class="v">${totalPessoas}</div></div>
+      <div class="lic-card"><div class="k">Receita recorrente/mês</div><div class="v"><small>${brl(receita)}</small></div></div>`;
+    const linhas = orgs.map(o=>{
+      const pct = o.limite_pessoas ? Math.min(100, Math.round((o.pessoas/o.limite_pessoas)*100)) : 0;
+      const st = o.status!=='ativa' ? '<span class="lic-st inativa">inativa</span>'
+        : (o.primeiro_acesso_pendente ? '<span class="lic-st pend">aguardando 1º acesso</span>' : '<span class="lic-st ativa">ativa</span>');
+      return `<tr>
+        <td class="lic-cliente"><b>${o.nome||'—'}</b><small>${o.mentor_email||''}${o.mentor_username?(' · @'+o.mentor_username):''}</small></td>
+        <td><span class="lic-plano">${o.plano_nome||o.plano}</span><br><small style="color:var(--faint)">${o.preco?brl(o.preco)+'/mês':'—'}</small></td>
+        <td class="lic-uso">${o.pessoas}/${o.limite_pessoas} pessoas<div class="lic-bar"><i style="width:${pct}%"></i></div></td>
+        <td>${st}</td>
+        <td><small>${o.asaas_subscription||'—'}</small></td>
+        <td><small>${o.created_at?new Date(o.created_at).toLocaleDateString('pt-BR'):'—'}</small></td>
+      </tr>`;
+    }).join('');
+    $('licTabela').innerHTML = `<thead><tr>
+      <th>Cliente</th><th>Plano</th><th>Uso</th><th>Status</th><th>Assinatura</th><th>Desde</th>
+    </tr></thead><tbody>${linhas || '<tr><td colspan="6" class="muted">Nenhuma organização ainda.</td></tr>'}</tbody>`;
+  }catch(e){ $('licTabela').innerHTML = '<tbody><tr><td class="muted">Erro ao carregar licenças: '+e.message+'</td></tr></tbody>'; }
 }
 
 /* ===== VISÃO GERAL ===== */
@@ -849,8 +1008,8 @@ function renderPlano(plano){
   }
 }
 async function postAdmin(path, body){
-  const r = await fetch(path + (path.includes('?')?'&':'?') + 'key=' + encodeURIComponent(KEY), {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+  const r = await fetch(authQS(path), {
+    method:'POST', headers:{'Content-Type':'application/json', ...authHead()}, body: JSON.stringify(body||{}) });
   const j = await r.json(); if(j.error) throw new Error(j.error); return j;
 }
 async function gerarPlano(){
@@ -941,7 +1100,7 @@ function renderAudios(audios){
   $('dAudios').innerHTML = audios.map(a=>{
     const quando = new Date(a.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
     const dur = a.duration_sec ? Math.floor(a.duration_sec/60)+':'+String(a.duration_sec%60).padStart(2,'0') : '';
-    const player = `<audio controls preload="none" src="/api/admin/audio?id=${a.id}&key=${encodeURIComponent(KEY)}"></audio>`;
+    const player = `<audio controls preload="none" src="/api/admin/audio?id=${a.id}&${mediaQS()}"></audio>`;
     let leitura;
     const rz = a.resumo;
     if(rz && typeof rz === 'object'){
@@ -1001,8 +1160,8 @@ async function enviarMsg(){
   const texto = $('dMsg').value.trim();
   if(!texto) return;
   try{
-    const r = await fetch('/api/admin/message?id='+pacienteAtual.id+'&key='+encodeURIComponent(KEY), {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ texto })
+    const r = await fetch(authQS('/api/admin/message?id='+pacienteAtual.id), {
+      method:'POST', headers:{'Content-Type':'application/json', ...authHead()}, body: JSON.stringify({ texto })
     });
     const j = await r.json();
     if(j.ok){
@@ -1017,8 +1176,8 @@ async function enviarMsg(){
 
 async function salvarNotas(){
   try{
-    const r = await fetch('/api/admin/notes?id='+pacienteAtual.id+'&key='+encodeURIComponent(KEY), {
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const r = await fetch(authQS('/api/admin/notes?id='+pacienteAtual.id), {
+      method:'POST', headers:{'Content-Type':'application/json', ...authHead()},
       body: JSON.stringify({ texto: $('dNotas').value })
     });
     const j = await r.json();
@@ -1027,7 +1186,8 @@ async function salvarNotas(){
   }catch(e){ $('notasStatus').textContent = 'erro ao salvar'; }
 }
 
-if(KEY) boot();
+// auto-login: mentor (token) tem prioridade; senão administrador (chave)
+if(MTOKEN || KEY){ bootAfterAuth(); } else { modoGate('mentor'); }
 </script>
 </body>
 </html>

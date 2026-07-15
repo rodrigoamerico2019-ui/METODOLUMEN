@@ -364,6 +364,21 @@ export async function patientOrg(userId) {
   return r.rows[0]?.org_id || null;
 }
 
+// TODAS as organizações com uso e dados da assinatura (Central de Licenças — super-admin)
+export async function listOrganizations() {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT o.id, o.nome, o.plano, o.limite_pessoas, o.status,
+           o.asaas_subscription, o.asaas_customer, o.created_at,
+           (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas,
+           (SELECT u.email    FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_email,
+           (SELECT u.username FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_username,
+           (SELECT bool_or(u.must_change_login) FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner')) AS primeiro_acesso_pendente,
+           (SELECT max(u.last_seen_at) FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner')) AS mentor_ultimo_acesso
+    FROM organizations o ORDER BY o.created_at DESC`);
+  return r.rows;
+}
+
 // checkouts do Asaas (assinatura → provisionamento)
 export async function saveCheckout({ sub, customer, email, nome, plano }) {
   if (!pool) return;
