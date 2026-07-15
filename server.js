@@ -808,11 +808,17 @@ if (!dbReady && process.env.BETA_USER && process.env.BETA_PASS) {
   console.log('  Proteção: login individual por paciente (trava BETA dispensada)');
 }
 
-// Roteamento por marca: painel.trilumen.com.br (ou qualquer subdomínio "painel.")
-// abre direto o dashboard do mentor; os demais abrem o app do paciente.
+// Roteamento por marca (só afeta a raiz "/"):
+//   painel.trilumen.com.br      → painel do mentor
+//   trilumen.com.br e www.*     → página de vendas (home institucional da marca)
+//   app.* e demais (onrender)   → app do paciente (index.html)
 app.use((req, res, next) => {
-  if (req.path === '/' && String(req.hostname || '').startsWith('painel.')) {
-    return res.redirect('/painel.html');
+  if (req.path === '/') {
+    const host = String(req.hostname || '').toLowerCase();
+    if (host.startsWith('painel.')) return res.redirect('/painel.html');
+    if (host === 'trilumen.com.br' || host.startsWith('www.')) {
+      return res.sendFile(join(__dir, 'public', 'vendas.html'));
+    }
   }
   next();
 });
