@@ -100,6 +100,11 @@ export async function initDb() {
     -- anotações privadas do mentor + vitórias estruturadas (extraídas pelo prontuário)
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notas_mentor TEXT DEFAULT '';
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS vitorias JSONB DEFAULT '[]';
+    -- MAPA INICIAL (questionário obrigatório do 1º acesso): respostas + bússola p/ a IA + sinal de risco
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa JSONB;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_bussola TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_em TIMESTAMPTZ;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_risco BOOLEAN DEFAULT false;
     -- check-in diário (o "filtro" de consciência: como estou hoje em corpo/alma/espírito)
     CREATE TABLE IF NOT EXISTS checkins (
       id BIGSERIAL PRIMARY KEY,
@@ -411,7 +416,8 @@ export async function listUsers(orgId = null) {
            (SELECT meta FROM messages m2 WHERE m2.user_id=u.id AND m2.meta IS NOT NULL
              ORDER BY m2.id DESC LIMIT 1) AS ultimo_meta,
            EXISTS (SELECT 1 FROM messages m3 WHERE m3.user_id=u.id
-             AND m3.meta->>'risco'='ALTO' AND m3.created_at > now() - interval '7 days') AS risco_recente
+             AND m3.meta->>'risco'='ALTO' AND m3.created_at > now() - interval '7 days') AS risco_recente,
+           (SELECT p.mapa_risco FROM profiles p WHERE p.user_id=u.id) AS mapa_risco
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
     WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1)
     GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`, [orgId]);
@@ -569,6 +575,32 @@ export async function setNotasMentor(userId, texto) {
   if (!pool || !userId) throw new Error('banco não configurado');
   await pool.query(`INSERT INTO profiles (user_id, notas_mentor) VALUES ($1,$2)
     ON CONFLICT (user_id) DO UPDATE SET notas_mentor=$2`, [userId, String(texto || '').slice(0, 8000)]);
+}
+
+// =========================================================
+//  MAPA INICIAL (questionário do 1º acesso)
+// =========================================================
+export async function mapaNeeded(userId) {
+  if (!pool || !userId) return false;
+  const r = await pool.query('SELECT mapa_em FROM profiles WHERE user_id=$1', [userId]);
+  return !r.rows[0] || !r.rows[0].mapa_em;      // ainda não respondeu
+}
+export async function getMapa(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT mapa, mapa_bussola, mapa_em, mapa_risco FROM profiles WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+export async function getMapaBussola(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT mapa_bussola FROM profiles WHERE user_id=$1', [userId]);
+  return r.rows[0]?.mapa_bussola || null;
+}
+export async function saveMapaInicial(userId, { escolhidas, bussola, risco }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query(`INSERT INTO profiles (user_id, mapa, mapa_bussola, mapa_em, mapa_risco)
+    VALUES ($1,$2,$3,now(),$4)
+    ON CONFLICT (user_id) DO UPDATE SET mapa=$2, mapa_bussola=$3, mapa_em=now(), mapa_risco=$4`,
+    [userId, JSON.stringify(escolhidas || []), String(bussola || '').slice(0, 4000), !!risco]);
 }
 
 // =========================================================

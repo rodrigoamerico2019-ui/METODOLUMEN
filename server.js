@@ -27,8 +27,10 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg, listOrganizations,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
-         getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan } from './db.js';
+         getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
+         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
+import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
 import jwtLib from 'jsonwebtoken';
 
@@ -332,17 +334,18 @@ app.get('/api/admin/patient', requireAdmin, async (req, res) => {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
     if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
-    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
       triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id),
-      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id)
+      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id), getMapa(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
                diario, esferas, checkins, sessoes, vitorias: extras.vitorias || [],
                notas_mentor: extras.notas_mentor || '', streak, audios,
                escalas: montarEscalasPaciente(escalasRows), plano: plano || null,
-               timeline: montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }) });
+               timeline: montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }),
+               mapa: mapa && mapa.mapa_em ? { respostas: mapa.mapa || [], risco: !!mapa.mapa_risco, em: mapa.mapa_em } : null });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
@@ -623,6 +626,31 @@ app.get('/api/me/plan', requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------
+//  MAPA INICIAL — questionário obrigatório do 1º acesso
+// ---------------------------------------------------------
+app.get('/api/me/mapa', requireAuth, async (req, res) => {
+  try {
+    const need = await mapaNeeded(req.user?.uid);
+    res.json({ done: !need, catalogo: need ? catalogoMapa() : null });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+app.post('/api/me/mapa', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const r = processarMapa((req.body || {}).respostas);   // valida + calcula sinais/risco/bússola
+    await saveMapaInicial(uid, r);
+    // semeia o prontuário com o mapa (só se ainda estiver vazio, para não sobrescrever a jornada)
+    const atual = (await getProntuario(uid).catch(() => null))?.prontuario;
+    if (!atual) {
+      const seed = `JORNADA: início do acompanhamento. ${r.bussola}\nATENÇÃO: ${r.risco ? 'sinais de alerta no mapa inicial (' + r.temas_risco.join(', ') + ') — acolher com cuidado.' : 'sem sinais de alerta no mapa inicial.'}`;
+      await setProntuario(uid, seed).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
 //  PUSH (PWA) — inscrição do aparelho do paciente
 // ---------------------------------------------------------
 app.get('/api/push/key', requireAuth, (req, res) => {
@@ -898,7 +926,7 @@ Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadado
 // Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
 // com cache_control para o prompt caching baratear cada conversa. Nome e prontuário
 // mudam por pessoa e ficam fora do cache.
-function buildSystem(name, prontuario) {
+function buildSystem(name, prontuario, bussola) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
   const conhecimento = KNOWLEDGE
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
@@ -913,6 +941,7 @@ function buildSystem(name, prontuario) {
 ${COLETIVO}
 
 Como usar: isto é só intuição pastoral sobre o que tende a ajudar as pessoas a curar. Deixe informar a sua sensibilidade, com naturalidade. REGRA ABSOLUTA DE PRIVACIDADE: nunca cite, revele ou traga a história, o nome ou a situação de OUTRA pessoa. A pessoa com quem você fala só existe ela — a memória dela é sagrada e separada de todas as outras.` });
+  if (bussola) blocos.push({ type: 'text', text: bussola });
   if (prontuario) blocos.push({ type: 'text', text:
 `PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
 ${prontuario}
@@ -939,10 +968,11 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     }
     // com login, o nome oficial vem da conta (não do que o front mandar)
     const nome = (req.user && req.user.name) || name;
-    // memória viva: o prontuário evolutivo entra no sistema desta conversa
-    let prontuario = null;
+    // memória viva: o prontuário evolutivo + a bússola do mapa inicial entram no sistema desta conversa
+    let prontuario = null, bussola = null;
     if (req.user && req.user.uid) {
       prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
+      bussola = await getMapaBussola(req.user.uid).catch(() => null);
     }
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -954,7 +984,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(nome, prontuario),
+        system: buildSystem(nome, prontuario, bussola),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });

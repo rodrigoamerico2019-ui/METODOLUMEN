@@ -243,6 +243,26 @@
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease; }
   .onboarding.hide { display:none; }
 
+  /* mapa inicial (questionário obrigatório do 1º acesso) */
+  .mapagate { position:absolute; inset:0; z-index:130; overflow-y:auto;
+    background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 24px; animation:fade .4s ease; }
+  .mapagate.hide { display:none; }
+  .mg-wrap { max-width:440px; width:100%; text-align:center; }
+  .mg-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); }
+  .mg-titulo { font-family:'Cormorant Garamond'; font-size:27px; color:var(--ink); margin:8px 0 6px; }
+  .mg-intro { font-size:13px; color:var(--ink-dim); line-height:1.6; margin-bottom:20px; }
+  .mg-prog { height:6px; background:var(--line); border-radius:99px; overflow:hidden; margin-bottom:24px; }
+  .mg-prog i { display:block; height:100%; background:linear-gradient(90deg,#C9A227,#E4C878); transition:width .3s; }
+  .mg-tema { font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold-2); margin-bottom:8px; }
+  .mg-perg { font-size:19px; line-height:1.45; color:var(--ink); margin-bottom:20px; min-height:52px; }
+  .mg-ops { display:flex; flex-direction:column; gap:10px; }
+  .mg-op { text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; font-size:14px; color:var(--ink); cursor:pointer; font-family:inherit; transition:.15s; box-shadow:var(--sh); }
+  .mg-op:hover, .mg-op:active { border-color:var(--gold-2); background:linear-gradient(160deg, rgba(212,175,55,.10), var(--panel) 70%); }
+  .mg-back { background:none; border:none; color:var(--ink-faint); font-size:12.5px; cursor:pointer; margin-top:16px; font-family:inherit; }
+  .mg-passo { font-size:11px; color:var(--ink-faint); margin-top:14px; }
+
   /* porta de entrada (login/cadastro) */
   .authgate { position:absolute; inset:0; z-index:120; text-align:center;
     background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
@@ -485,6 +505,18 @@
     <div class="ag-err hide" id="agErr"></div>
     <div class="ag-foot">Acesso exclusivo para pacientes e mentorados do Método Lúmen™<br>
       <a href="/instalar.html" style="color:var(--gold-soft);text-decoration:none">📲 Instalar o app no celular</a></div>
+  </div>
+
+  <!-- ============ MAPA INICIAL (questionário obrigatório do 1º acesso) ============ -->
+  <div class="mapagate hide" id="mapaGate">
+    <div class="mg-wrap">
+      <div class="mg-eyebrow">🧭 Antes de começarmos</div>
+      <div class="mg-titulo">Seu ponto de partida</div>
+      <div class="mg-intro">São 10 perguntas rápidas para eu te conhecer e caminhar com você desde o primeiro dia. Não existe resposta certa — só a sua verdade.</div>
+      <div class="mg-prog"><i id="mgProg" style="width:0%"></i></div>
+      <div id="mgQuizArea"></div>
+      <div class="mg-passo" id="mgPasso"></div>
+    </div>
   </div>
 
   <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
@@ -1540,6 +1572,15 @@ function afterLogin(){
     const inp = document.getElementById('obNameInput');
     inp.value = AUTH.name; inp.readOnly = true; inp.style.opacity = .8;
   }
+  // MAPA INICIAL obrigatório: se ainda não respondeu, ele bloqueia a entrada
+  fetch(API_BASE + '/api/me/mapa', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : { done: true })
+    .then(d => { if(d && d.done === false && d.catalogo) mostrarMapaGate(d.catalogo); else continuarAposMapa(); })
+    .catch(() => continuarAposMapa());   // se falhar, não trava a pessoa
+}
+
+// segue o fluxo normal do app (histórico, check-in de hoje, cards)
+function continuarAposMapa(){
   fetch(API_BASE + '/api/auth/history', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : { history: [] })
     .then(d => {
@@ -1564,6 +1605,48 @@ function afterLogin(){
     .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});
   // aparelho que já deu permissão: renova a inscrição em silêncio
   if(typeof Notification !== 'undefined' && Notification.permission === 'granted') enablePush(true);
+}
+
+/* ===== MAPA INICIAL — questionário obrigatório do 1º acesso ===== */
+let mapaSt = null;
+function mostrarMapaGate(catalogo){
+  mapaSt = { cat: catalogo, i: 0, resp: [] };
+  document.getElementById('mapaGate').classList.remove('hide');
+  paintMapa();
+}
+function paintMapa(){
+  const c = mapaSt.cat, i = mapaSt.i, tot = c.length, q = c[i];
+  document.getElementById('mgProg').style.width = Math.round((i/tot)*100) + '%';
+  document.getElementById('mgPasso').textContent = (i+1) + ' de ' + tot;
+  document.getElementById('mgQuizArea').innerHTML =
+    `<div class="mg-tema">${q.tema}</div>
+     <div class="mg-perg">${q.pergunta}</div>
+     <div class="mg-ops">${q.opcoes.map((o,idx)=>`<button class="mg-op" onclick="respMapa(${idx})">${o}</button>`).join('')}</div>
+     ${i>0 ? `<button class="mg-back" onclick="voltarMapa()">← voltar</button>` : ''}`;
+}
+function respMapa(idx){
+  mapaSt.resp[mapaSt.i] = idx;
+  if(mapaSt.i < mapaSt.cat.length - 1){ mapaSt.i++; paintMapa(); }
+  else enviarMapa();
+}
+function voltarMapa(){ if(mapaSt.i > 0){ mapaSt.i--; paintMapa(); } }
+function enviarMapa(){
+  document.getElementById('mgProg').style.width = '100%';
+  document.getElementById('mgPasso').textContent = '';
+  document.getElementById('mgQuizArea').innerHTML = '<div class="mg-perg">Guardando com carinho… 💛</div>';
+  fetch(API_BASE + '/api/me/mapa', { method:'POST', headers: authHeaders(), body: JSON.stringify({ respostas: mapaSt.resp }) })
+    .then(r => r.json())
+    .then(d => {
+      if(d.error) throw new Error(d.error);
+      document.getElementById('mapaGate').classList.add('hide');
+      mapaSt = null;
+      continuarAposMapa();
+    })
+    .catch(err => {
+      document.getElementById('mgQuizArea').innerHTML =
+        `<div class="mg-perg">Não consegui guardar agora (${err.message}).</div>
+         <button class="mg-op" onclick="enviarMapa()">Tentar de novo</button>`;
+    });
 }
 
 /* mostra o valor dos controles da tríade enquanto arrasta */

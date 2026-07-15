@@ -168,6 +168,13 @@
   .lic-st.inativa{background:#241214;color:var(--vermelho);border:1px solid #4a2530}
   .lic-st.pend{background:#2a2413;color:var(--amarelo);border:1px solid #4a4020}
   .lic-wrap{overflow-x:auto}
+  /* Mapa inicial (ficha do mentor) */
+  .mp-risco{display:inline-block;font-size:11px;padding:3px 11px;border-radius:999px;background:#2a2413;color:var(--amarelo);border:1px solid #4a4020;margin-left:8px;vertical-align:middle}
+  .mp-item{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+  .mp-item:first-child{border-top:0}
+  .mp-tema{flex:0 0 120px;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold2);padding-top:2px}
+  .mp-b b{color:var(--ink);font-size:13px;font-weight:500}
+  .mp-b small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;font-style:italic}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -352,6 +359,11 @@
         <div id="dCadastro" class="cadastro"></div>
         <div id="dStats"></div>
       </div>
+      <div class="card" id="cardMapa" style="display:none">
+        <div class="h2c">🧭 Mapa Inicial <span id="mapaRisco"></span></div>
+        <p class="subc" id="mapaSub">o ponto de partida que a pessoa respondeu no 1º acesso — direciona a IA na jornada</p>
+        <div id="dMapa"></div>
+      </div>
       <div class="card">
         <div class="h2c">🎙️ Áudios — “Fala como está”</div>
         <p class="subc">a voz da pessoa + a leitura estruturada da IA (apoio, nunca diagnóstico)</p>
@@ -520,6 +532,7 @@ function nivelPrioridade(p){
   if(st==='vermelho')                 return {nivel:'prioridade',ordem:4, motivo:'Último atendimento terminou em estado vermelho'};
   if(dias>=7 && p.mensagens>0)        return {nivel:'atencao',   ordem:3, motivo:`Sem acessar há ${dias} dias — pode ter se afastado da jornada`};
   if(st==='amarelo')                  return {nivel:'atencao',   ordem:3, motivo:'Última conversa em atenção (amarelo) — dor ainda ativa'};
+  if(p.mapa_risco)                    return {nivel:'atencao',   ordem:3, motivo:'Sinais de alerta no Mapa Inicial (passado difícil / desesperança) — acolher com atenção'};
   if(dias>=5)                         return {nivel:'observar',  ordem:2, motivo:`${dias} dias sem acesso`};
   if(!p.ultima_conversa)              return {nivel:'observar',  ordem:2, motivo:'Ainda não iniciou nenhuma conversa'};
   return {nivel:'informativo', ordem:1, motivo:'Acolhido, sem sinais de atenção'};
@@ -786,6 +799,7 @@ async function abrirPaciente(id){
   const foto = $('dFoto');
   if(d.paciente.photo){ foto.src = d.paciente.photo; foto.classList.add('on'); } else { foto.classList.remove('on'); foto.removeAttribute('src'); }
   renderAudios(d.audios || []);
+  renderMapa(d.mapa);
 
   const p = d.paciente;
   const nasc = p.birth_date ? new Date(p.birth_date).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : null;
@@ -936,6 +950,21 @@ function sparkline(serie, cor){
     <polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${x(n-1).toFixed(1)}" cy="${y(last.score).toFixed(1)}" r="2.6" fill="${cor}"/>
   </svg>`;
+}
+
+/* ===== MAPA INICIAL (ficha do mentor) ===== */
+function renderMapa(mapa){
+  const card = $('cardMapa');
+  if(!mapa || !mapa.respostas || !mapa.respostas.length){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  $('mapaRisco').innerHTML = mapa.risco ? '<span class="mp-risco">⚠ atenção redobrada</span>' : '';
+  $('mapaSub').textContent = 'respondido em ' + new Date(mapa.em).toLocaleDateString('pt-BR') +
+    ' · o ponto de partida que direciona a IA (não é diagnóstico)';
+  $('dMapa').innerHTML = mapa.respostas.map(r => `
+    <div class="mp-item">
+      <div class="mp-tema">${r.tema||''}</div>
+      <div class="mp-b"><b>${r.resposta||''}</b><small>${r.sinal||''}</small></div>
+    </div>`).join('');
 }
 
 /* ===== LINHA DO TEMPO ===== */
