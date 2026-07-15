@@ -19,13 +19,16 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
          emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor,
          overviewStats, globalDaily, emotionsPredominant,
-         savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead,
+         savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead, mentorMessagesAll,
          usersForReminders, reminderSent, markReminderSent,
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
          PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg,
-         saveCheckout, getCheckoutBySub, markCheckoutProvisioned } from './db.js';
+         saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
+         saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
+         getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan } from './db.js';
+import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import webpush from 'web-push';
 import jwtLib from 'jsonwebtoken';
 
@@ -99,6 +102,7 @@ app.get('/api/health', (req, res) => res.json({
   audio: AUDIO_ON,
   transcricao: !!process.env.OPENAI_API_KEY,
   palavra: PALAVRA_ON,
+  escalas: dbReady,
   pagamento: ASAAS_ON
 }));
 
@@ -146,6 +150,20 @@ async function updateProntuario(uid) {
       const meta = m.meta ? ` [${m.meta.emocao || ''}/${m.meta.status || ''}]` : '';
       return `${new Date(m.created_at).toLocaleDateString('pt-BR')} ${m.role === 'user' ? 'PACIENTE' : 'LÚMEN'}${meta}: ${String(m.content).replace(/##META\{[\s\S]*?\}##\s*/, '').slice(0, 500)}`;
     }).join('\n');
+    // escalas de acompanhamento mais recentes (0–100) para a IA ler no contexto
+    let blocoEscalas = '';
+    try {
+      const ult = await latestScales(uid);
+      if (ult.length) {
+        blocoEscalas = '\n\nESCALAS MAIS RECENTES (0–100 · o próprio paciente respondeu):\n' +
+          ult.map(u => {
+            const e = escalaByKey(u.scale_key); if (!e) return null;
+            const f = faixaPorChave(u.scale_key, Number(u.score));
+            const dir = e.direcao === 'menor_melhor' ? 'menor=melhor' : 'maior=melhor';
+            return `- ${e.titulo}: ${u.score}/100 (${f ? f.rotulo : ''}; ${dir})`;
+          }).filter(Boolean).join('\n');
+      }
+    } catch (_) {}
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -162,7 +180,7 @@ ATENÇÃO: riscos, sinais de alerta, o que não esquecer na próxima conversa.
 Preserve o que segue válido do prontuário anterior, corrija o que evoluiu, descarte o que ficou obsoleto.
 AO FINAL, depois do prontuário, acrescente UMA linha exatamente neste formato com as vitórias/gratidões NOVAS destas conversas (array vazio se não houver):
 ##VITORIAS[{"data":"dd/mm","texto":"vitória em poucas palavras"}]##`,
-        messages: [{ role: 'user', content: `PRONTUÁRIO ATUAL:\n${atual}\n\nCONVERSAS NOVAS DESDE A ÚLTIMA CONSOLIDAÇÃO:\n${trechos}\n\nEscreva o prontuário atualizado completo.` }]
+        messages: [{ role: 'user', content: `PRONTUÁRIO ATUAL:\n${atual}\n\nCONVERSAS NOVAS DESDE A ÚLTIMA CONSOLIDAÇÃO:\n${trechos}${blocoEscalas}\n\nEscreva o prontuário atualizado completo (considere as escalas ao descrever CORPO/ALMA/ESPÍRITO e ATENÇÃO).` }]
       })
     });
     const data = await r.json();
@@ -178,6 +196,53 @@ AO FINAL, depois do prontuário, acrescente UMA linha exatamente neste formato c
       console.log(`  Prontuário consolidado (paciente ${uid}, ${novas.length} msgs novas).`);
     }
   } finally { emAtualizacao.delete(uid); }
+}
+
+// ---------------------------------------------------------
+//  PLANO DE AÇÃO — a IA propõe um plano semanal ancorado na jornada
+//  (Corpo/Alma/Espírito + prática). O mentor revisa e entrega ao paciente.
+// ---------------------------------------------------------
+async function gerarPlanoAcao(uid) {
+  if (!uid || !dbReady) throw new Error('sem banco');
+  const [pront, ult, triade, extras] = await Promise.all([
+    getProntuario(uid), latestScales(uid), triadAverages(uid, 14), getExtras(uid)
+  ]);
+  const escalasTxt = (ult || []).map(u => {
+    const e = escalaByKey(u.scale_key); if (!e) return null;
+    const f = faixaPorChave(u.scale_key, Number(u.score));
+    return `- ${e.titulo}: ${u.score}/100 (${f ? f.rotulo : ''})`;
+  }).filter(Boolean).join('\n') || '(sem escalas respondidas ainda)';
+  const triTxt = triade && triade.amostras > 0
+    ? `Corpo ${triade.corpo ?? '—'} · Alma ${triade.alma ?? '—'} · Espírito ${triade.espirito ?? '—'} (média /10, 14 dias)`
+    : '(sem leitura da tríade ainda)';
+  const vits = (extras?.vitorias || []).slice(-5).map(v => `- ${v.texto}`).join('\n') || '(ainda não registradas)';
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 900,
+      system: `Você é a Lúmen, apoio emocional cristão do Método Lúmen. Crie um PLANO DE AÇÃO SEMANAL para esta pessoa, prático, gentil e possível de cumprir (nada de metas pesadas). Ancorado na tríade Corpo, Alma e Espírito, com passos concretos do dia a dia e, quando fizer sentido, uma prática relacional. Fale com a pessoa em segunda pessoa (você), com carinho e esperança, sem clichês de terapia. NÃO é prescrição médica.
+Responda SOMENTE com um JSON válido, sem texto fora dele, neste formato exato:
+{"foco":"uma frase-âncora curta da semana (máx 90 caracteres)","passos":[{"dimensao":"Corpo|Alma|Espírito|Relações","titulo":"ação curta (máx 60 caracteres)","descricao":"como fazer, em 1 frase acolhedora (máx 160 caracteres)"}]}
+Gere de 3 a 5 passos, variando as dimensões conforme a necessidade da pessoa (priorize onde ela está mais frágil).`,
+      messages: [{ role: 'user', content:
+`PRONTUÁRIO DA PESSOA:\n${pront?.prontuario || '(ainda em formação)'}\n\nESCALAS RECENTES:\n${escalasTxt}\n\nTRÍADE:\n${triTxt}\n\nVITÓRIAS RECENTES:\n${vits}\n\nGere o plano de ação em JSON.` }]
+    })
+  });
+  const data = await r.json();
+  let txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('a IA não retornou um plano válido');
+  const plano = JSON.parse(m[0]);
+  const passos = Array.isArray(plano.passos) ? plano.passos.map(p => ({
+    dimensao: String(p.dimensao || '').slice(0, 20),
+    titulo: String(p.titulo || '').slice(0, 80),
+    descricao: String(p.descricao || '').slice(0, 220)
+  })).filter(p => p.titulo) : [];
+  if (!passos.length) throw new Error('plano sem passos');
+  return saveActionPlan(uid, { foco: String(plano.foco || '').slice(0, 200), passos });
 }
 
 // ---------------------------------------------------------
@@ -212,20 +277,70 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try { res.json({ pacientes: await listUsers(req.orgId) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// agrupa as respostas de escalas por escala, com metadados, evolução e tendência
+function montarEscalasPaciente(rows) {
+  const porChave = {};
+  for (const r of rows || []) {
+    (porChave[r.scale_key] ||= []).push({ dia: r.dia, score: Number(r.score), em: r.created_at });
+  }
+  return ESCALAS.map(e => {
+    const serie = porChave[e.key] || [];
+    if (!serie.length) return { key: e.key, titulo: e.titulo, cor: e.cor, direcao: e.direcao, respostas: 0 };
+    const ultimo = serie[serie.length - 1];
+    const anterior = serie.length > 1 ? serie[serie.length - 2] : null;
+    // "melhora" respeita a direção da escala (na ansiedade, cair é melhorar)
+    let tendencia = 0;
+    if (anterior) {
+      const delta = ultimo.score - anterior.score;
+      tendencia = e.direcao === 'menor_melhor' ? -delta : delta;
+    }
+    return {
+      key: e.key, titulo: e.titulo, cor: e.cor, direcao: e.direcao,
+      respostas: serie.length, serie,
+      atual: ultimo.score, atual_em: ultimo.em,
+      faixa: faixaPorChave(e.key, ultimo.score),
+      tendencia   // >0 melhorou, <0 piorou, 0 estável/primeira
+    };
+  }).filter(x => x.respostas > 0);
+}
+
+// LINHA DO TEMPO: junta os eventos da jornada num fluxo cronológico único
+function montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }) {
+  const ev = [];
+  const push = (ts, tipo, titulo, detalhe) => { if (ts) ev.push({ ts: new Date(ts).toISOString(), tipo, titulo, detalhe }); };
+  for (const s of sessoes || []) push(s.fim || s.inicio || (s.dia + 'T12:00:00'), 'sessao', 'Conversa com a Lúmen', `${s.perguntas || 0} pergunta(s)`);
+  for (const r of escalasRows || []) {
+    const e = escalaByKey(r.scale_key); const f = faixaPorChave(r.scale_key, Number(r.score));
+    push(r.created_at, 'escala', `Escala · ${e ? e.titulo : r.scale_key}`, `${r.score}/100${f ? ' · ' + f.rotulo : ''}`);
+  }
+  for (const a of audios || []) push(a.created_at, 'audio', 'Áudio — “Fala como está”', a.duration_sec ? `${a.duration_sec}s` : '');
+  for (const c of checkins || []) push((c.dia || '') + 'T12:00:00', 'checkin', 'Check-in do dia',
+    `${c.emocao || '—'} · corpo ${c.corpo}/alma ${c.alma}/espírito ${c.espirito}`);
+  for (const m of mentorMsgs || []) push(m.created_at, 'mensagem', 'Mensagem sua ao paciente', String(m.texto || '').slice(0, 120));
+  if (plano) {
+    if (plano.gerado_em) push(plano.gerado_em, 'plano', 'Plano de ação gerado', plano.foco || '');
+    if (plano.entregue && plano.entregue_em) push(plano.entregue_em, 'plano', 'Plano entregue ao paciente', plano.foco || '');
+  }
+  return ev.sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 80);
+}
+
 // detalhe de um paciente: cadastro, prontuário, séries, esferas, vitórias e notas
 app.get('/api/admin/patient', requireAdmin, async (req, res) => {
   try {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
     if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
-    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
-      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id)
+      triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id),
+      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
                diario, esferas, checkins, sessoes, vitorias: extras.vitorias || [],
-               notas_mentor: extras.notas_mentor || '', streak, audios });
+               notas_mentor: extras.notas_mentor || '', streak, audios,
+               escalas: montarEscalasPaciente(escalasRows), plano: plano || null,
+               timeline: montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
@@ -234,6 +349,30 @@ app.post('/api/admin/notes', requireAdmin, async (req, res) => {
     if (!(await guardPaciente(req, res))) return;
     await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// PLANO DE AÇÃO — gerar com IA, editar e entregar ao paciente
+app.post('/api/admin/plan/generate', requireAdmin, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'IA não configurada' });
+    const plano = await gerarPlanoAcao(Number(req.query.id));
+    res.json({ ok: true, plano });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/plan/save', requireAdmin, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const b = req.body || {};
+    const plano = await saveActionPlan(Number(req.query.id), { foco: b.foco, passos: b.passos });
+    res.json({ ok: true, plano });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/plan/deliver', requireAdmin, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const plano = await setPlanDelivered(Number(req.query.id), !!(req.body || {}).entregue);
+    res.json({ ok: true, plano });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, async (req, res) => {
@@ -426,6 +565,46 @@ app.get('/api/checkin', requireAuth, async (req, res) => {
 });
 app.post('/api/checkin', requireAuth, async (req, res) => {
   try { res.json({ ok: true, checkin: await saveCheckin(req.user?.uid, req.body || {}) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ---------------------------------------------------------
+//  ESCALAS DE ACOMPANHAMENTO — o paciente responde; o servidor pontua
+// ---------------------------------------------------------
+const diasDesde = ts => ts ? (Date.now() - new Date(ts).getTime()) / 86400000 : Infinity;
+
+app.get('/api/me/scales', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const ultimos = await latestScales(uid);
+    const mapa = Object.fromEntries(ultimos.map(u => [u.scale_key, u]));
+    const escalas = catalogoEscalas().map(e => {
+      const u = mapa[e.key];
+      const faltam = diasDesde(u?.created_at);
+      return {
+        ...e,
+        ultimo: u ? { score: Number(u.score), em: u.created_at, faixa: faixaPorChave(e.key, Number(u.score)) } : null,
+        pendente: faltam >= e.cadencia_dias   // nunca respondeu OU passou da recorrência
+      };
+    });
+    res.json({ escalas });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+app.post('/api/me/scales/submit', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const { key, answers } = req.body || {};
+    if (!escalaByKey(key)) return res.status(400).json({ error: 'escala desconhecida' });
+    const r = pontuar(key, answers);                       // pontuação calculada no servidor
+    const saved = await saveScaleResponse(uid, key, r);
+    res.json({ ok: true, score: r.score, faixa: r.faixa, em: saved?.created_at });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// PLANO DE AÇÃO do paciente (só o que o mentor entregou)
+app.get('/api/me/plan', requireAuth, async (req, res) => {
+  try { res.json({ plano: await deliveredPlan(req.user?.uid) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 

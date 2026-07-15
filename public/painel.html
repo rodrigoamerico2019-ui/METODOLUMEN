@@ -112,6 +112,40 @@
   .esf:hover .pct{opacity:1}
   .esf:hover .nomeEsf{fill:var(--gold2)}
   .pront{white-space:pre-wrap;font-size:13px;line-height:1.65;color:var(--ink)}
+  /* Escalas de acompanhamento (painel) */
+  .esc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:6px}
+  .esc-c{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 15px}
+  .esc-c .ec-tit{font-size:12px;color:var(--dim);letter-spacing:.3px;min-height:30px}
+  .esc-c .ec-row{display:flex;align-items:baseline;gap:8px;margin-top:4px}
+  .esc-c .ec-score{font-family:'Cinzel';font-size:32px;line-height:1}
+  .esc-c .ec-de{font-size:10px;color:var(--faint)}
+  .esc-c .ec-trend{font-size:11px;font-weight:600;margin-left:auto}
+  .esc-c .ec-faixa{font-size:11.5px;color:var(--ink);margin-top:6px;font-weight:500}
+  .esc-c .ec-spark{margin-top:8px}
+  .esc-c .ec-n{font-size:10px;color:var(--faint);margin-top:6px}
+  /* Plano de ação (painel) */
+  .plano-foco{font-family:'Cormorant Garamond';font-size:19px;font-style:italic;color:var(--gold2);margin:2px 0 14px}
+  .passo{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line)}
+  .passo:first-child{border-top:0}
+  .pz-dim{flex-shrink:0;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:#0d0d0d;background:var(--gold2);border-radius:6px;padding:4px 8px;height:fit-content;font-weight:600}
+  .pz-b b{color:var(--ink);font-size:13.5px}
+  .pz-b p{color:var(--dim);font-size:12px;margin-top:3px;line-height:1.5}
+  .plano-acoes{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  .plano-badge{display:inline-block;font-size:11px;padding:4px 11px;border-radius:999px}
+  .plano-badge.on{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid #3a5a2e}
+  .plano-badge.off{background:var(--panel2);color:var(--faint);border:1px solid var(--line)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  /* Linha do tempo (painel) */
+  .tl-filtros{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 18px}
+  .tl-chip{font-size:11.5px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer;transition:.15s}
+  .tl-chip.on{background:rgba(212,175,55,.14);color:var(--gold2);border-color:var(--gold)}
+  .tl{position:relative;padding-left:22px}
+  .tl:before{content:'';position:absolute;left:5px;top:4px;bottom:4px;width:2px;background:var(--line)}
+  .tl-item{position:relative;padding:0 0 16px}
+  .tl-item:before{content:'';position:absolute;left:-21px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--dot,#F5C76A);border:2px solid var(--bg)}
+  .tl-when{font-size:10.5px;color:var(--faint);letter-spacing:.3px}
+  .tl-tit{font-size:13.5px;color:var(--ink);font-weight:500;margin-top:1px}
+  .tl-det{font-size:12px;color:var(--dim);margin-top:2px;line-height:1.5}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -282,6 +316,11 @@
         <p class="subc">média dos últimos 7 dias · passe o mouse sobre cada esfera</p>
         <div id="esferas" class="esferas"></div>
       </div>
+      <div class="card">
+        <div class="h2c">🌡️ Escalas de acompanhamento</div>
+        <p class="subc">medição por dados da jornada emocional e espiritual · o paciente responde com recorrência (não é diagnóstico)</p>
+        <div id="dEscalas"></div>
+      </div>
       <div class="grid">
         <div class="card">
           <div class="h2c">Corpo · Alma · Espírito</div>
@@ -319,6 +358,22 @@
           <p class="subc">o que a caminhada já conquistou — celebre com ela</p>
           <div id="dVitorias"></div>
         </div>
+      </div>
+      <div class="card">
+        <div class="h2c">🧭 Plano de Ação da semana <span id="planoBadge"></span></div>
+        <p class="subc">a IA propõe passos práticos ancorados na jornada (tríade + prática) · você revisa e, quando quiser, entrega ao paciente no app</p>
+        <div id="dPlano"></div>
+        <div class="plano-acoes">
+          <button class="btn" style="padding:10px 22px" id="planoGerarBtn" onclick="gerarPlano()">✨ Gerar / atualizar com IA</button>
+          <button class="btn ghost" style="padding:10px 22px" id="planoEntregarBtn" onclick="togglePlano()">Entregar ao paciente</button>
+          <span class="muted" id="planoStatus"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="h2c">🕰️ Linha do tempo da jornada</div>
+        <p class="subc">tudo em ordem cronológica: conversas, escalas, áudios, check-ins, mensagens e plano</p>
+        <div class="tl-filtros" id="tlFiltros"></div>
+        <div id="dTimeline"></div>
       </div>
       <div class="card">
         <div class="h2c">💬 Enviar mensagem ao paciente</div>
@@ -596,6 +651,9 @@ async function abrirPaciente(id){
     (chkHoje ? `<span class="stat"><b>${dia(chkHoje.dia)} · ${chkHoje.emocao||'—'}</b>último check-in (auto): corpo ${chkHoje.corpo} · alma ${chkHoje.alma} · espírito ${chkHoje.espirito}</span>` : '');
 
   desenharEsferas(d.esferas);
+  renderEscalas(d.escalas || []);
+  renderPlano(d.plano);
+  initTimeline(d.timeline || []);
   $('chartTriade').innerHTML = chartLinhas(d.diario);
   $('chartIntensidade').innerHTML = chartBarras(d.diario);
   $('chartConsciencia').innerHTML = chartConsciencia(d.checkins, d.diario);
@@ -677,6 +735,144 @@ function desenharEsferas(e){
     <g pointer-events="none">${flares.map((y,i)=>flare(y, i===1||i===2)).join('')}</g>
   </svg>`;
   $('esferas').innerHTML = svg + (temDados ? '' : '<p class="muted" style="text-align:center">As esferas ganham vida conforme as conversas acontecem.</p>');
+}
+
+/* ===== ESCALAS DE ACOMPANHAMENTO ===== */
+function renderEscalas(escalas){
+  const box = $('dEscalas');
+  if(!escalas.length){
+    box.innerHTML = '<p class="muted">Ainda sem escalas respondidas. Conforme o paciente responde no app (com recorrência), a evolução aparece aqui.</p>';
+    return;
+  }
+  box.innerHTML = '<div class="esc-grid">' + escalas.map(e => {
+    const t = e.tendencia || 0;
+    const trend = e.respostas < 2 ? '<span class="ec-trend" style="color:var(--faint)">1ª medição</span>'
+      : t > 0 ? `<span class="ec-trend" style="color:#7fb069">▲ melhora</span>`
+      : t < 0 ? `<span class="ec-trend" style="color:#d98b5f">▼ atenção</span>`
+      : `<span class="ec-trend" style="color:var(--faint)">estável</span>`;
+    const dir = e.direcao === 'menor_melhor' ? 'menor = melhor' : 'maior = melhor';
+    return `<div class="esc-c">
+      <div class="ec-tit">${e.titulo}</div>
+      <div class="ec-row"><span class="ec-score" style="color:${e.cor}">${e.atual}</span>
+        <span class="ec-de">/100</span>${trend}</div>
+      <div class="ec-faixa">${e.faixa ? e.faixa.rotulo : ''}</div>
+      <div class="ec-spark">${sparkline(e.serie, e.cor)}</div>
+      <div class="ec-n">${e.respostas} resposta(s) · ${dir}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// mini gráfico de linha (0–100) da evolução de uma escala
+function sparkline(serie, cor){
+  if(!serie || serie.length < 2){
+    return '<svg width="100%" height="34" viewBox="0 0 160 34"></svg>';
+  }
+  const w=160, h=34, pad=3, n=serie.length;
+  const x = i => pad + (i/(n-1))*(w-2*pad);
+  const y = v => h-pad - (v/100)*(h-2*pad);
+  const pts = serie.map((s,i) => `${x(i).toFixed(1)},${y(s.score).toFixed(1)}`).join(' ');
+  const last = serie[serie.length-1];
+  return `<svg width="100%" height="34" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line x1="${pad}" y1="${y(50)}" x2="${w-pad}" y2="${y(50)}" stroke="#2b2b28" stroke-width="1" stroke-dasharray="2 3"/>
+    <polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(n-1).toFixed(1)}" cy="${y(last.score).toFixed(1)}" r="2.6" fill="${cor}"/>
+  </svg>`;
+}
+
+/* ===== LINHA DO TEMPO ===== */
+const TL_TIPOS = {
+  sessao:   { rot:'Conversas', cor:'#7ab8d9' },
+  escala:   { rot:'Escalas',   cor:'#F5C76A' },
+  audio:    { rot:'Áudios',    cor:'#d98b5f' },
+  checkin:  { rot:'Check-ins', cor:'#A6A6A6' },
+  mensagem: { rot:'Mensagens', cor:'#7fb069' },
+  plano:    { rot:'Plano',     cor:'#8a7fd9' }
+};
+let timelineAll = [], tlFiltro = 'tudo';
+function initTimeline(eventos){
+  timelineAll = eventos || []; tlFiltro = 'tudo';
+  const presentes = [...new Set(timelineAll.map(e=>e.tipo))];
+  const chips = [`<span class="tl-chip on" data-f="tudo" onclick="filtrarTL('tudo')">Tudo</span>`]
+    .concat(presentes.filter(t=>TL_TIPOS[t]).map(t =>
+      `<span class="tl-chip" data-f="${t}" onclick="filtrarTL('${t}')">${TL_TIPOS[t].rot}</span>`));
+  $('tlFiltros').innerHTML = chips.join('');
+  renderTimeline();
+}
+function filtrarTL(f){
+  tlFiltro = f;
+  document.querySelectorAll('#tlFiltros .tl-chip').forEach(c => c.classList.toggle('on', c.dataset.f===f));
+  renderTimeline();
+}
+function renderTimeline(){
+  const box = $('dTimeline');
+  const evs = tlFiltro==='tudo' ? timelineAll : timelineAll.filter(e=>e.tipo===tlFiltro);
+  if(!evs.length){ box.innerHTML = '<p class="muted">Ainda sem eventos nesta jornada — eles aparecem aqui conforme a pessoa usa o app.</p>'; return; }
+  box.innerHTML = '<div class="tl">' + evs.map(e => {
+    const t = TL_TIPOS[e.tipo] || { cor:'#F5C76A' };
+    return `<div class="tl-item" style="--dot:${t.cor}">
+      <div class="tl-when">${dataHora(e.ts)}</div>
+      <div class="tl-tit">${e.titulo||''}</div>
+      ${e.detalhe ? `<div class="tl-det">${e.detalhe}</div>` : ''}
+    </div>`;
+  }).join('') + '</div>';
+}
+function dataHora(ts){
+  try{ return new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  catch(_){ return ts; }
+}
+
+/* ===== PLANO DE AÇÃO ===== */
+let planoAtual = null;
+function renderPlano(plano){
+  planoAtual = plano || null;
+  const box = $('dPlano'), badge = $('planoBadge'), btn = $('planoEntregarBtn');
+  $('planoStatus').textContent = '';
+  if(!plano || !plano.passos || !plano.passos.length){
+    box.innerHTML = '<p class="muted">Ainda não há plano. Clique em “Gerar / atualizar com IA” para a Lúmen propor passos a partir da jornada desta pessoa.</p>';
+    badge.innerHTML = ''; btn.textContent = 'Entregar ao paciente'; btn.disabled = true; btn.style.opacity = .5;
+    return;
+  }
+  btn.disabled = false; btn.style.opacity = 1;
+  const passos = (plano.passos||[]).map(p => `
+    <div class="passo">
+      <span class="pz-dim">${p.dimensao||'—'}</span>
+      <div class="pz-b"><b>${p.titulo||''}</b><p>${p.descricao||''}</p></div>
+    </div>`).join('');
+  box.innerHTML = (plano.foco ? `<div class="plano-foco">“${plano.foco}”</div>` : '') + passos +
+    (plano.gerado_em ? `<div class="ec-n" style="margin-top:10px">gerado pela IA em ${new Date(plano.gerado_em).toLocaleString('pt-BR')}</div>` : '');
+  if(plano.entregue){
+    badge.innerHTML = '<span class="plano-badge on">entregue ao paciente</span>';
+    btn.textContent = 'Recolher do app'; btn.classList.remove('ghost');
+  } else {
+    badge.innerHTML = '<span class="plano-badge off">rascunho (só você vê)</span>';
+    btn.textContent = 'Entregar ao paciente'; btn.classList.add('ghost');
+  }
+}
+async function postAdmin(path, body){
+  const r = await fetch(path + (path.includes('?')?'&':'?') + 'key=' + encodeURIComponent(KEY), {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+  const j = await r.json(); if(j.error) throw new Error(j.error); return j;
+}
+async function gerarPlano(){
+  if(!pacienteAtual) return;
+  const btn = $('planoGerarBtn'); btn.disabled = true; const txt = btn.textContent; btn.textContent = '✨ A Lúmen está pensando…';
+  $('planoStatus').textContent = '';
+  try{
+    const d = await postAdmin('/api/admin/plan/generate?id='+pacienteAtual.id);
+    renderPlano(d.plano);
+    $('planoStatus').textContent = 'Plano gerado. Revise e, se quiser, entregue ao paciente.';
+  }catch(e){ $('planoStatus').textContent = 'Não consegui gerar agora: ' + e.message; }
+  finally{ btn.disabled = false; btn.textContent = txt; }
+}
+async function togglePlano(){
+  if(!pacienteAtual || !planoAtual) return;
+  const entregar = !planoAtual.entregue;
+  $('planoStatus').textContent = '';
+  try{
+    const d = await postAdmin('/api/admin/plan/deliver?id='+pacienteAtual.id, { entregue: entregar });
+    renderPlano(d.plano);
+    $('planoStatus').textContent = entregar ? 'Entregue! O paciente já vê no app.' : 'Recolhido do app.';
+  }catch(e){ $('planoStatus').textContent = 'Erro: ' + e.message; }
 }
 
 /* ===== GRÁFICOS ===== */

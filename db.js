@@ -158,6 +158,29 @@ export async function initDb() {
       amostras INT DEFAULT 0,
       updated_at TIMESTAMPTZ
     );
+    -- ESCALAS DE ACOMPANHAMENTO: cada resposta do paciente com pontuação (0–100).
+    -- A definição das escalas vive no código (escalas.js); aqui guardamos a evolução.
+    CREATE TABLE IF NOT EXISTS scale_responses (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      scale_key TEXT NOT NULL,
+      answers JSONB NOT NULL,
+      raw INT, max INT,
+      score NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_scale_user ON scale_responses (user_id, scale_key, created_at DESC);
+    -- PLANO DE AÇÃO: um plano por paciente (foco + passos práticos), gerado pela IA,
+    -- revisado pelo mentor e, quando ele quiser, entregue ao paciente no app.
+    CREATE TABLE IF NOT EXISTS action_plans (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      foco TEXT,
+      passos JSONB DEFAULT '[]',
+      entregue BOOLEAN DEFAULT false,
+      gerado_em TIMESTAMPTZ,
+      entregue_em TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -567,6 +590,14 @@ export async function markMentorRead(userId) {
   await pool.query('UPDATE mentor_messages SET read_at=now() WHERE user_id=$1 AND read_at IS NULL', [userId]);
 }
 
+// todas as mensagens já enviadas ao paciente (para a linha do tempo)
+export async function mentorMessagesAll(userId, limit = 40) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`SELECT texto, created_at FROM mentor_messages
+    WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2`, [userId, limit]);
+  return r.rows;
+}
+
 // pacientes com aparelho inscrito + se já fizeram o check-in de hoje (para os lembretes)
 export async function usersForReminders() {
   if (!pool) return [];
@@ -759,6 +790,80 @@ export async function emotionsPredominant(days = 30) {
       AND created_at > now() - ($1 || ' days')::interval
     GROUP BY 1 ORDER BY n DESC LIMIT 6`, [days]);
   return r.rows;
+}
+
+// =========================================================
+//  ESCALAS DE ACOMPANHAMENTO (respostas + evolução)
+// =========================================================
+export async function saveScaleResponse(userId, scaleKey, { answers, raw, max, score }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const r = await pool.query(
+    `INSERT INTO scale_responses (user_id, scale_key, answers, raw, max, score)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
+    [userId, String(scaleKey), JSON.stringify(answers), raw, max, score]);
+  return r.rows[0];
+}
+
+// última resposta de cada escala do paciente (para saber o que já está em dia)
+export async function latestScales(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT DISTINCT ON (scale_key) scale_key, score, raw, max, created_at
+    FROM scale_responses WHERE user_id=$1
+    ORDER BY scale_key, created_at DESC`, [userId]);
+  return r.rows;
+}
+
+// histórico de UMA escala (para a linha de evolução)
+export async function scaleHistory(userId, scaleKey, limit = 24) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT score, created_at,
+           (created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia
+    FROM scale_responses WHERE user_id=$1 AND scale_key=$2
+    ORDER BY created_at DESC LIMIT $3`, [userId, scaleKey, limit]);
+  return r.rows.reverse();
+}
+
+// todas as respostas do paciente agrupadas por escala (para o painel do mentor)
+export async function scalesForPatient(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT scale_key, score,
+           (created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
+           created_at
+    FROM scale_responses WHERE user_id=$1
+    ORDER BY scale_key, created_at`, [userId]);
+  return r.rows;
+}
+
+// =========================================================
+//  PLANO DE AÇÃO (gerado pela IA, revisado e entregue pelo mentor)
+// =========================================================
+export async function getActionPlan(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT foco, passos, entregue, gerado_em, entregue_em FROM action_plans WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+export async function saveActionPlan(userId, { foco, passos }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query(`INSERT INTO action_plans (user_id, foco, passos, gerado_em, updated_at)
+    VALUES ($1,$2,$3,now(),now())
+    ON CONFLICT (user_id) DO UPDATE SET foco=$2, passos=$3, gerado_em=now(), updated_at=now()`,
+    [userId, String(foco || '').slice(0, 400), JSON.stringify(Array.isArray(passos) ? passos.slice(0, 8) : [])]);
+  return getActionPlan(userId);
+}
+export async function setPlanDelivered(userId, entregue) {
+  if (!pool || !userId) return;
+  await pool.query(`UPDATE action_plans SET entregue=$2, entregue_em=CASE WHEN $2 THEN now() ELSE entregue_em END, updated_at=now()
+    WHERE user_id=$1`, [userId, !!entregue]);
+  return getActionPlan(userId);
+}
+// plano visível ao paciente (só se o mentor entregou)
+export async function deliveredPlan(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT foco, passos, entregue_em FROM action_plans WHERE user_id=$1 AND entregue=true', [userId]);
+  return r.rows[0] || null;
 }
 
 // médias da tríade nos últimos N dias (para as esferas do painel)

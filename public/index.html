@@ -327,6 +327,47 @@
   .pv-versiculo { font-family:'Cormorant Garamond'; font-style:italic; font-size:20px; line-height:1.4; color:var(--ink); }
   .pv-ref { font-family:'Cinzel'; font-size:12px; letter-spacing:1px; color:var(--gold-2); margin:8px 0 14px; }
   .pv-reflexao { font-size:13.5px; line-height:1.7; color:var(--ink-dim); }
+  /* Escalas de acompanhamento */
+  .escalas { max-width:440px; margin:0 auto 22px; background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
+  .escalas.hide { display:none; }
+  .esc-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:4px; }
+  .esc-titulo { font-family:'Cormorant Garamond'; font-size:20px; color:var(--ink); margin-bottom:12px; }
+  .esc-item { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line); }
+  .esc-item:first-of-type { border-top:0; }
+  .esc-item .ei-info { flex:1; min-width:0; }
+  .esc-item .ei-nome { font-size:13.5px; color:var(--ink); font-weight:600; }
+  .esc-item .ei-desc { font-size:11.5px; color:var(--ink-faint); margin-top:2px; }
+  .esc-item .ei-last { font-size:11px; color:var(--gold-soft); margin-top:3px; }
+  .esc-btn { flex-shrink:0; background:linear-gradient(135deg,#C9A227,#E4C878); color:#2a2208; border:none;
+    border-radius:999px; padding:9px 16px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .esc-btn.done { background:transparent; color:var(--gold-2); border:1px solid var(--line); cursor:default; }
+  .esc-score { flex-shrink:0; text-align:center; min-width:52px; }
+  .esc-score b { font-family:'Cinzel'; font-size:20px; display:block; line-height:1; }
+  .esc-score small { font-size:9.5px; color:var(--ink-faint); letter-spacing:.5px; }
+  /* questionário */
+  .esc-quiz { animation:fade .3s ease; }
+  .eq-prog { font-size:11px; color:var(--gold-soft); letter-spacing:1px; margin-bottom:10px; }
+  .eq-perg { font-size:16px; line-height:1.45; color:var(--ink); margin-bottom:16px; min-height:46px; }
+  .eq-ops { display:flex; flex-direction:column; gap:8px; }
+  .eq-op { text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:12px 15px; font-size:13.5px; color:var(--ink); cursor:pointer; font-family:inherit; transition:.15s; }
+  .eq-op:hover, .eq-op:active { border-color:var(--gold-2); background:linear-gradient(160deg, rgba(212,175,55,.10), var(--panel) 70%); }
+  .eq-back { background:none; border:none; color:var(--ink-faint); font-size:12px; cursor:pointer; margin-top:14px; font-family:inherit; }
+  .eq-result { text-align:center; padding:8px 0; }
+  .eq-result .er-num { font-family:'Cinzel'; font-size:40px; color:var(--gold-2); line-height:1; }
+  .eq-result .er-faixa { font-size:14px; font-weight:600; color:var(--ink); margin:10px 0 6px; }
+  .eq-result .er-nota { font-size:12.5px; line-height:1.6; color:var(--ink-dim); max-width:320px; margin:0 auto; }
+  /* Plano de ação (paciente) */
+  .plano-p { max-width:440px; margin:0 auto 22px; background:linear-gradient(160deg, rgba(212,175,55,.10), var(--panel) 60%);
+    border:1px solid var(--line); border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
+  .plano-p.hide { display:none; }
+  .pp-foco { font-family:'Cormorant Garamond'; font-style:italic; font-size:19px; color:var(--ink); margin:6px 0 14px; }
+  .pp-passo { display:flex; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .pp-passo:first-of-type { border-top:0; }
+  .pp-dim { flex-shrink:0; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:#2a2208; background:var(--gold-2); border-radius:6px; padding:4px 8px; height:fit-content; font-weight:600; }
+  .pp-b b { font-size:13.5px; color:var(--ink); }
+  .pp-b p { font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.6; }
   .ob-logo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:10px; }
   .ob-logo svg { width:58px; height:auto; }
   .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:6px; font-size:22px; color:var(--ink); }
@@ -516,6 +557,21 @@
         <div class="pv-versiculo" id="pvVersiculo"></div>
         <div class="pv-ref" id="pvRef"></div>
         <div class="pv-reflexao" id="pvReflexao"></div>
+      </div>
+
+      <!-- ESCALAS DE ACOMPANHAMENTO (espelho da caminhada, com recorrência) -->
+      <div class="escalas hide" id="escalas">
+        <div class="esc-eyebrow">🌡️ Escalas de acompanhamento</div>
+        <div class="esc-titulo" id="escTitulo">Um espelho suave da sua caminhada</div>
+        <div id="escLista"></div>
+        <div class="esc-quiz hide" id="escQuiz"></div>
+      </div>
+
+      <!-- PLANO DE AÇÃO DA SEMANA (entregue pelo mentor) -->
+      <div class="plano-p hide" id="planoP">
+        <div class="esc-eyebrow">🧭 Seu plano da semana</div>
+        <div class="pp-foco" id="ppFoco"></div>
+        <div id="ppPassos"></div>
       </div>
 
       <!-- MINHA JORNADA (só aparece logado, com dados reais) -->
@@ -1501,6 +1557,8 @@ function afterLogin(){
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
   loadPalavra();          // Palavra Viva do dia (personalizada)
+  loadScales();           // escalas de acompanhamento (recorrência)
+  loadPlan();             // plano de ação entregue pelo mentor
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});
@@ -1589,6 +1647,122 @@ function loadPalavra(){
       document.getElementById('pvReflexao').textContent = p.reflexao || '';
       document.getElementById('palavra').classList.remove('hide');
     }).catch(()=>{});
+}
+
+/* ===== ESCALAS DE ACOMPANHAMENTO ===== */
+let ESC = [];            // catálogo vindo do servidor
+function loadScales(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/scales', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if(!d || !d.escalas || !d.escalas.length) return;
+      ESC = d.escalas;
+      renderScales();
+      document.getElementById('escalas').classList.remove('hide');
+    }).catch(()=>{});
+}
+
+function renderScales(){
+  const pend = ESC.filter(e => e.pendente);
+  const feitas = ESC.filter(e => !e.pendente && e.ultimo);
+  document.getElementById('escTitulo').textContent = pend.length
+    ? 'Como você tem estado? Leva 1 minutinho.'
+    : 'Seu espelho da semana — obrigado por se olhar com carinho';
+  const linha = e => {
+    if(e.pendente){
+      return `<div class="esc-item">
+        <div class="ei-info"><div class="ei-nome">${e.titulo}</div>
+          <div class="ei-desc">${e.descricao}</div>
+          ${e.ultimo ? `<div class="ei-last">última vez: ${e.ultimo.score} · ${e.ultimo.faixa? e.ultimo.faixa.rotulo : ''}</div>` : ''}
+        </div>
+        <button class="esc-btn" onclick="startQuiz('${e.key}')">Responder</button>
+      </div>`;
+    }
+    return `<div class="esc-item">
+      <div class="ei-info"><div class="ei-nome">${e.titulo}</div>
+        <div class="ei-desc">${e.ultimo && e.ultimo.faixa ? e.ultimo.faixa.rotulo : ''}</div></div>
+      <div class="esc-score"><b style="color:${e.cor}">${e.ultimo.score}</b><small>DE 100</small></div>
+    </div>`;
+  };
+  document.getElementById('escLista').innerHTML = pend.map(linha).join('') + feitas.map(linha).join('');
+  document.getElementById('escLista').classList.remove('hide');
+  document.getElementById('escQuiz').classList.add('hide');
+}
+
+/* plano de ação entregue pelo mentor */
+function loadPlan(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/plan', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      const p = d && d.plano;
+      if(!p || !p.passos || !p.passos.length) return;
+      document.getElementById('ppFoco').textContent = p.foco ? '“' + p.foco + '”' : '';
+      document.getElementById('ppPassos').innerHTML = p.passos.map(s => `
+        <div class="pp-passo">
+          <span class="pp-dim">${s.dimensao||'—'}</span>
+          <div class="pp-b"><b>${s.titulo||''}</b><p>${s.descricao||''}</p></div>
+        </div>`).join('');
+      document.getElementById('planoP').classList.remove('hide');
+    }).catch(()=>{});
+}
+
+let quiz = null;   // {escala, i, answers:[]}
+function startQuiz(key){
+  const e = ESC.find(x => x.key === key);
+  if(!e) return;
+  quiz = { escala: e, i: 0, answers: [] };
+  document.getElementById('escLista').classList.add('hide');
+  document.getElementById('escQuiz').classList.remove('hide');
+  document.getElementById('escTitulo').textContent = e.titulo;
+  paintQuestion();
+}
+function paintQuestion(){
+  const e = quiz.escala, i = quiz.i, tot = e.perguntas.length;
+  const ops = e.opcoes.map((op,idx) =>
+    `<button class="eq-op" onclick="answer(${idx})">${op}</button>`).join('');
+  document.getElementById('escQuiz').innerHTML = `
+    <div class="eq-prog">PERGUNTA ${i+1} DE ${tot}</div>
+    <div class="eq-perg">${e.perguntas[i]}</div>
+    <div class="eq-ops">${ops}</div>
+    <button class="eq-back" onclick="${i>0?'backQuestion()':'cancelQuiz()'}">${i>0?'← voltar':'cancelar'}</button>`;
+}
+function answer(idx){
+  quiz.answers[quiz.i] = idx;
+  if(quiz.i < quiz.escala.perguntas.length - 1){ quiz.i++; paintQuestion(); }
+  else submitQuiz();
+}
+function backQuestion(){ if(quiz.i>0){ quiz.i--; paintQuestion(); } }
+function cancelQuiz(){ quiz = null; renderScales(); }
+
+function submitQuiz(){
+  const e = quiz.escala;
+  document.getElementById('escQuiz').innerHTML = '<div class="eq-prog">Guardando com carinho…</div>';
+  fetch(API_BASE + '/api/me/scales/submit', {
+    method:'POST', headers: authHeaders(),
+    body: JSON.stringify({ key: e.key, answers: quiz.answers })
+  }).then(r => r.json()).then(d => {
+    if(d.error) throw new Error(d.error);
+    document.getElementById('escTitulo').textContent = 'Recebido 💛';
+    document.getElementById('escQuiz').innerHTML = `
+      <div class="eq-result">
+        <div class="er-num" style="color:${e.cor}">${d.score}</div>
+        <div class="er-faixa">${d.faixa ? d.faixa.rotulo : ''}</div>
+        <div class="er-nota">${d.faixa ? d.faixa.nota : ''}</div>
+        <button class="esc-btn" style="margin-top:18px" onclick="afterSubmit('${e.key}',${d.score})">Continuar</button>
+      </div>`;
+  }).catch(err => {
+    document.getElementById('escQuiz').innerHTML =
+      `<div class="eq-prog">Não consegui guardar agora (${err.message}).</div>
+       <button class="eq-back" onclick="cancelQuiz()">voltar</button>`;
+  });
+}
+function afterSubmit(key, score){
+  const e = ESC.find(x => x.key === key);
+  if(e){ e.pendente = false; e.ultimo = { score, faixa: e.ultimo?.faixa || null }; }
+  quiz = null;
+  renderScales();
 }
 
 /* ===== GRAVADOR DE ÁUDIO — "Fala como está" ===== */
