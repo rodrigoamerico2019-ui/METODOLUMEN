@@ -25,6 +25,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
          PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg, listOrganizations,
+         provisionarManual, setOrgStatus, setOrgLimite, markOrgPagamento,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
@@ -269,6 +270,12 @@ function requireAdmin(req, res, next) {
 function jwtVerify(token) {
   const jwt = jwtLib; return jwt.verify(token, process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env');
 }
+// O painel ADM (super-admin) NÃO acessa pacientes — só negócio/licenças.
+// Estas rotas exigem uma conta de mentor (com organização).
+function soMentor(req, res, next) {
+  if (req.superAdmin) return res.status(403).json({ error: 'O painel administrativo não acessa pacientes dos clientes.' });
+  next();
+}
 
 app.get('/api/admin/invite', requireAdmin, async (req, res) => {
   try {
@@ -277,7 +284,7 @@ app.get('/api/admin/invite', requireAdmin, async (req, res) => {
     res.json({ ok: true, code, note: req.query.note || '', usos: Number(req.query.uses || 1) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
-app.get('/api/admin/users', requireAdmin, async (req, res) => {
+app.get('/api/admin/users', requireAdmin, soMentor, async (req, res) => {
   try { res.json({ pacientes: await listUsers(req.orgId) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -329,7 +336,7 @@ function montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, pl
 }
 
 // detalhe de um paciente: cadastro, prontuário, séries, esferas, vitórias e notas
-app.get('/api/admin/patient', requireAdmin, async (req, res) => {
+app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
   try {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
@@ -396,7 +403,7 @@ app.post('/api/admin/message', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // sabedoria coletiva anônima (transparência para o mentor conferir)
-app.get('/api/admin/collective', requireAdmin, async (req, res) => {
+app.get('/api/admin/collective', requireAdmin, soMentor, async (req, res) => {
   try {
     if (req.query.refresh === '1') { await updateColetivo(); }
     const c = await getCollectiveWisdom();
@@ -405,7 +412,7 @@ app.get('/api/admin/collective', requireAdmin, async (req, res) => {
 });
 
 // visão geral da plataforma (dashboard TriLumen)
-app.get('/api/admin/overview', requireAdmin, async (req, res) => {
+app.get('/api/admin/overview', requireAdmin, soMentor, async (req, res) => {
   try {
     const [stats, evolucao, emocoes] = await Promise.all([
       overviewStats(), globalDaily(30), emotionsPredominant(30)
@@ -456,6 +463,30 @@ app.get('/api/admin/orgs', requireAdmin, async (req, res) => {
     });
     res.json({ orgs });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// criar cliente MANUALMENTE (super-admin) — gera usuário + senha + limite, sem Asaas
+app.post('/api/admin/orgs/create', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const acesso = await provisionarManual(req.body || {});
+    res.json({ ok: true, acesso });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// suspender / reativar uma licença
+app.post('/api/admin/orgs/status', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const b = req.body || {};
+    res.json(await setOrgStatus(Number(b.orgId), b.status));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// alterar o limite de pacientes do cliente
+app.post('/api/admin/orgs/limite', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const b = req.body || {};
+    res.json(await setOrgLimite(Number(b.orgId), b.limite));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // ---------------------------------------------------------
@@ -523,6 +554,10 @@ app.post('/api/webhook/asaas', async (req, res) => {
     const ev = req.body || {};
     const pay = ev.payment || {};
     if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(ev.event) && pay.subscription) {
+      // financeiro do painel ADM: registra pagamento + próximo vencimento (toda cobrança)
+      let prox = null;
+      if (pay.dueDate) { const d = new Date(pay.dueDate); d.setMonth(d.getMonth() + 1); prox = d.toISOString().slice(0, 10); }
+      await markOrgPagamento(pay.subscription, prox).catch(() => {});
       const ck = await getCheckoutBySub(pay.subscription);
       if (ck && !ck.provisioned_at) {
         const acesso = await provisionarAssinatura({

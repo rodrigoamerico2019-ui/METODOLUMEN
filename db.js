@@ -45,6 +45,10 @@ export async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_login BOOLEAN DEFAULT false;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (lower(username)) WHERE username IS NOT NULL;
     ALTER TABLE invite_codes ADD COLUMN IF NOT EXISTS org_id BIGINT;
+    -- controle financeiro da licença (painel ADM): vencimento e último pagamento
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS proximo_vencimento DATE;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ultimo_pagamento TIMESTAMPTZ;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'asaas';
     -- organização padrão (Método Lúmen) para todos os dados atuais
     INSERT INTO organizations (id, nome, plano, limite_pessoas)
       VALUES (1, 'Método Lúmen', 'prime', 250) ON CONFLICT (id) DO NOTHING;
@@ -335,6 +339,59 @@ export async function provisionarAssinatura({ plano, nome, email, asaasCustomer,
            email, username, senha_temp: senhaTemp, limite: p.limite };
 }
 
+// criação MANUAL de cliente pelo painel ADM (sem Asaas): gera usuário + senha temporária
+export async function provisionarManual({ nome, email, plano, limite, vencimento }) {
+  if (!pool) throw new Error('banco não configurado');
+  email = norm(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('e-mail inválido');
+  const p = PLANOS[String(plano || '').toLowerCase()] || PLANOS.essencial;
+  const lim = Math.max(1, Math.min(2000, Number(limite) || p.limite));
+  const nomeOrg = String(nome || email.split('@')[0]).trim();
+  if ((await pool.query('SELECT 1 FROM users WHERE email=$1', [email])).rows[0])
+    throw new Error('Já existe uma conta com este e-mail.');
+  const venc = (vencimento && /^\d{4}-\d{2}-\d{2}$/.test(vencimento)) ? vencimento : null;
+  const org = await pool.query(
+    `INSERT INTO organizations (nome, plano, limite_pessoas, status, origem, proximo_vencimento)
+     VALUES ($1,$2,$3,'ativa','manual',$4) RETURNING id`,
+    [nomeOrg, String(plano || 'essencial').toLowerCase(), lim, venc]);
+  const orgId = org.rows[0].id;
+  const username = slugUser(email);
+  const senhaTemp = Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  const hash = await bcrypt.hash(senhaTemp, 10);
+  await pool.query(
+    `INSERT INTO users (email, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
+     VALUES ($1,$2,$3,'mentor',$4,$5,true,now(),now())`,
+    [email, nomeOrg, hash, orgId, username]);
+  return { org_id: orgId, nome: nomeOrg, email, username, senha_temp: senhaTemp,
+           plano: String(plano || 'essencial').toLowerCase(), plano_nome: p.nome, limite: lim };
+}
+
+// suspender / reativar uma licença
+export async function setOrgStatus(orgId, status) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const st = status === 'ativa' ? 'ativa' : 'inativa';
+  await pool.query('UPDATE organizations SET status=$2 WHERE id=$1', [orgId, st]);
+  return { ok: true, status: st };
+}
+
+// alterar o limite de pacientes de um cliente
+export async function setOrgLimite(orgId, limite) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const lim = Math.max(1, Math.min(2000, Number(limite) || 0));
+  if (!lim) throw new Error('limite inválido');
+  await pool.query('UPDATE organizations SET limite_pessoas=$2 WHERE id=$1', [orgId, lim]);
+  return { ok: true, limite: lim };
+}
+
+// webhook: registra pagamento recebido + próximo vencimento na organização
+export async function markOrgPagamento(subscription, proximoVencimento) {
+  if (!pool || !subscription) return;
+  if (proximoVencimento)
+    await pool.query(`UPDATE organizations SET ultimo_pagamento=now(), status='ativa', proximo_vencimento=$2 WHERE asaas_subscription=$1`, [subscription, proximoVencimento]);
+  else
+    await pool.query(`UPDATE organizations SET ultimo_pagamento=now(), status='ativa' WHERE asaas_subscription=$1`, [subscription]);
+}
+
 // login do mentor (por e-mail OU usuário)
 export async function mentorLogin({ login, password }) {
   if (!pool) throw new Error('banco não configurado');
@@ -380,6 +437,7 @@ export async function listOrganizations() {
   const r = await pool.query(`
     SELECT o.id, o.nome, o.plano, o.limite_pessoas, o.status,
            o.asaas_subscription, o.asaas_customer, o.created_at,
+           o.proximo_vencimento, o.ultimo_pagamento, COALESCE(o.origem,'asaas') AS origem,
            (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas,
            (SELECT u.email    FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_email,
            (SELECT u.username FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_username,

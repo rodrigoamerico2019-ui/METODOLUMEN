@@ -168,6 +168,14 @@
   .lic-st.inativa{background:#241214;color:var(--vermelho);border:1px solid #4a2530}
   .lic-st.pend{background:#2a2413;color:var(--amarelo);border:1px solid #4a4020}
   .lic-wrap{overflow-x:auto}
+  .cc-form{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .cc-form input,.cc-form select{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);padding:10px 12px;font-size:13px;font-family:inherit}
+  .cc-form input:focus,.cc-form select:focus{outline:none;border-color:var(--gold)}
+  .cc-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid #3a5a2e;border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7;margin-top:6px}
+  .cc-ok b{color:var(--gold2)}
+  .lic-act{display:flex;gap:6px;flex-wrap:wrap}
+  .lic-act button{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit}
+  .lic-act button:hover{border-color:var(--gold);color:var(--gold2)}
   /* Mapa inicial (ficha do mentor) */
   .mp-risco{display:inline-block;font-size:11px;padding:3px 11px;border-radius:999px;background:#2a2413;color:var(--amarelo);border:1px solid #4a4020;margin-left:8px;vertical-align:middle}
   .mp-item{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
@@ -283,7 +291,7 @@
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
-    <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Licenças</div>
+    <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Clientes</div>
     <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
     <div class="foot"><span id="footWho"></span>TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
   </aside>
@@ -462,11 +470,13 @@
 
     <!-- ===== CENTRAL DE LICENÇAS (super-admin) ===== -->
     <section id="view-licencas" class="hide">
-      <div class="topline"><h2>Central de Licenças</h2><span class="sub">cada cliente, seu plano e o uso da assinatura</span></div>
+      <div class="topline"><h2>Central de Clientes</h2><span class="sub">licenças, uso e financeiro — este painel não acessa os pacientes</span></div>
       <div class="lic-stats" id="licStats"></div>
       <div class="card">
-        <div class="h2c">Clientes e planos</div>
-        <p class="subc">todas as organizações da plataforma · uso vs. limite do plano</p>
+        <div class="h2c">Clientes e planos
+          <button class="btn" style="float:right;padding:8px 18px" onclick="abrirCriarCliente()">+ Criar cliente</button></div>
+        <p class="subc">todas as organizações · uso vs. limite · situação financeira</p>
+        <div id="criarClienteBox" style="display:none"></div>
         <div class="lic-wrap"><table class="lic-tabela" id="licTabela"></table></div>
       </div>
     </section>
@@ -635,6 +645,11 @@ async function bootAfterAuth(){
   try{
     const me = await api('/api/mentor/me');
     IS_SUPER = !!me.super;
+    // ADM (super): só Clientes, SEM acesso aos pacientes → esconde os menus de pacientes
+    ['prioridades','geral','jornadas','alertas'].forEach(v => {
+      const it = document.querySelector('.nav-item[data-v="'+v+'"]');
+      if(it) it.classList.toggle('hide', IS_SUPER);
+    });
     $('navLicencas').classList.toggle('hide', !IS_SUPER);
     $('footWho').innerHTML = IS_SUPER ? 'Administrador · <b>todas as licenças</b><br>' :
       (me.org ? (me.org.nome + '<br>') : '');
@@ -646,18 +661,31 @@ async function bootAfterAuth(){
 }
 
 async function boot(){
+  $('gate').classList.add('hide'); $('shell').classList.add('on');
+  if(IS_SUPER){ nav('licencas'); return; }   // ADM: nada de pacientes
   try{
     const [ov, us] = await Promise.all([ api('/api/admin/overview'), api('/api/admin/users') ]);
     pacientes = us.pacientes;
-    $('gate').classList.add('hide'); $('shell').classList.add('on');
     nav('prioridades'); renderGeral(ov);
   }catch(e){
     $('keyErr').textContent = 'Erro ao carregar: ' + e.message;
-    $('gate').classList.remove('hide');
+    $('gate').classList.remove('hide'); $('shell').classList.remove('on');
   }
 }
 
-/* ===== CENTRAL DE LICENÇAS (super-admin) ===== */
+/* ===== CENTRAL DE CLIENTES (super-admin) ===== */
+const brl = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
+function statusFinanceiro(o){
+  if(o.status!=='ativa') return { txt:'suspenso', cls:'inativa', venc:'' };
+  if(!o.proximo_vencimento) return { txt: o.origem==='manual'?'manual':'—', cls:'pend', venc:'' };
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const venc=new Date(o.proximo_vencimento+'T00:00:00');
+  const dias=Math.round((venc-hoje)/86400000);
+  const vTxt='vence '+venc.toLocaleDateString('pt-BR');
+  if(dias<0) return { txt:'vencido', cls:'inativa', venc:vTxt };
+  if(dias<=5) return { txt:'a vencer', cls:'pend', venc:vTxt };
+  return { txt:'em dia', cls:'ativa', venc:vTxt };
+}
 async function carregarLicencas(){
   try{
     const d = await api('/api/admin/orgs');
@@ -665,29 +693,75 @@ async function carregarLicencas(){
     const totalPessoas = orgs.reduce((s,o)=>s+(o.pessoas||0),0);
     const ativas = orgs.filter(o=>o.status==='ativa').length;
     const receita = orgs.filter(o=>o.status==='ativa').reduce((s,o)=>s+(o.preco||0),0);
-    const brl = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
+    const aVencer = orgs.filter(o=>['a vencer','vencido'].includes(statusFinanceiro(o).txt)).length;
     $('licStats').innerHTML = `
       <div class="lic-card"><div class="k">Clientes</div><div class="v">${orgs.length}</div></div>
       <div class="lic-card"><div class="k">Licenças ativas</div><div class="v">${ativas}</div></div>
-      <div class="lic-card"><div class="k">Pessoas atendidas</div><div class="v">${totalPessoas}</div></div>
-      <div class="lic-card"><div class="k">Receita recorrente/mês</div><div class="v"><small>${brl(receita)}</small></div></div>`;
+      <div class="lic-card"><div class="k">A vencer / vencidas</div><div class="v">${aVencer}</div></div>
+      <div class="lic-card"><div class="k">Receita/mês</div><div class="v"><small>${brl(receita)}</small></div></div>`;
     const linhas = orgs.map(o=>{
       const pct = o.limite_pessoas ? Math.min(100, Math.round((o.pessoas/o.limite_pessoas)*100)) : 0;
-      const st = o.status!=='ativa' ? '<span class="lic-st inativa">inativa</span>'
-        : (o.primeiro_acesso_pendente ? '<span class="lic-st pend">aguardando 1º acesso</span>' : '<span class="lic-st ativa">ativa</span>');
+      const fin = statusFinanceiro(o);
+      const primeiro = o.primeiro_acesso_pendente ? ' · <span style="color:var(--gold2)">aguarda 1º acesso</span>' : '';
+      const acoes = o.id==1 ? '<small class="muted">—</small>' : `<div class="lic-act">
+        <button onclick="toggleCliente(${o.id},'${o.status==='ativa'?'inativa':'ativa'}')">${o.status==='ativa'?'Suspender':'Reativar'}</button>
+        <button onclick="editarLimite(${o.id},${o.limite_pessoas})">Limite</button></div>`;
       return `<tr>
-        <td class="lic-cliente"><b>${o.nome||'—'}</b><small>${o.mentor_email||''}${o.mentor_username?(' · @'+o.mentor_username):''}</small></td>
+        <td class="lic-cliente"><b>${o.nome||'—'}</b><small>${o.mentor_username?('@'+o.mentor_username):(o.mentor_email||'')}${o.origem==='manual'?' · manual':''}${primeiro}</small></td>
         <td><span class="lic-plano">${o.plano_nome||o.plano}</span><br><small style="color:var(--faint)">${o.preco?brl(o.preco)+'/mês':'—'}</small></td>
-        <td class="lic-uso">${o.pessoas}/${o.limite_pessoas} pessoas<div class="lic-bar"><i style="width:${pct}%"></i></div></td>
-        <td>${st}</td>
-        <td><small>${o.asaas_subscription||'—'}</small></td>
-        <td><small>${o.created_at?new Date(o.created_at).toLocaleDateString('pt-BR'):'—'}</small></td>
+        <td class="lic-uso">${o.pessoas}/${o.limite_pessoas}<div class="lic-bar"><i style="width:${pct}%"></i></div></td>
+        <td><span class="lic-st ${fin.cls}">${fin.txt}</span>${fin.venc?`<br><small style="color:var(--faint)">${fin.venc}</small>`:''}</td>
+        <td>${acoes}</td>
       </tr>`;
     }).join('');
     $('licTabela').innerHTML = `<thead><tr>
-      <th>Cliente</th><th>Plano</th><th>Uso</th><th>Status</th><th>Assinatura</th><th>Desde</th>
-    </tr></thead><tbody>${linhas || '<tr><td colspan="6" class="muted">Nenhuma organização ainda.</td></tr>'}</tbody>`;
-  }catch(e){ $('licTabela').innerHTML = '<tbody><tr><td class="muted">Erro ao carregar licenças: '+e.message+'</td></tr></tbody>'; }
+      <th>Cliente</th><th>Plano</th><th>Uso</th><th>Financeiro</th><th>Ações</th>
+    </tr></thead><tbody>${linhas || '<tr><td colspan="5" class="muted">Nenhum cliente ainda.</td></tr>'}</tbody>`;
+  }catch(e){ $('licTabela').innerHTML = '<tbody><tr><td class="muted">Erro ao carregar: '+e.message+'</td></tr></tbody>'; }
+}
+/* criar cliente manualmente */
+function abrirCriarCliente(){
+  const box=$('criarClienteBox');
+  if(box.style.display!=='none'){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML = `<div class="cc-form">
+    <input id="ccNome" placeholder="Nome do cliente / clínica" style="flex:1;min-width:180px"/>
+    <input id="ccEmail" type="email" placeholder="E-mail do cliente" style="flex:1;min-width:180px"/>
+    <select id="ccPlano">
+      <option value="essencial">Essencial · 30</option>
+      <option value="profissional">Profissional · 100</option>
+      <option value="clinica">Clínica · 250</option>
+      <option value="premium">Premium · 500</option>
+    </select>
+    <input id="ccLimite" type="number" min="1" placeholder="Limite (opcional)" style="width:130px"/>
+    <input id="ccVenc" type="date" title="Próximo vencimento (opcional)"/>
+    <button class="btn" style="padding:10px 20px" onclick="criarCliente()">Criar e gerar acesso</button>
+    <div id="ccResult" style="width:100%"></div></div>`;
+}
+async function criarCliente(){
+  const body={ nome:$('ccNome').value.trim(), email:$('ccEmail').value.trim(), plano:$('ccPlano').value,
+    limite:$('ccLimite').value||undefined, vencimento:$('ccVenc').value||undefined };
+  if(!body.nome||!body.email){ $('ccResult').innerHTML='<span style="color:var(--amarelo)">Informe nome e e-mail.</span>'; return; }
+  $('ccResult').innerHTML='criando…';
+  try{
+    const d=await postAdmin('/api/admin/orgs/create', body);
+    const a=d.acesso;
+    $('ccResult').innerHTML=`<div class="cc-ok">✅ Cliente <b>${a.nome}</b> criado!<br>
+      Usuário: <b>${a.username}</b> &nbsp;·&nbsp; Senha temporária: <b>${a.senha_temp}</b><br>
+      Plano: ${a.plano_nome} · limite de <b>${a.limite}</b> pacientes<br>
+      <small>Envie esses dados ao cliente. Ele troca usuário e senha no 1º acesso.</small></div>`;
+    carregarLicencas();
+  }catch(e){ $('ccResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
+}
+async function toggleCliente(orgId, status){
+  try{ await postAdmin('/api/admin/orgs/status', {orgId, status}); carregarLicencas(); }
+  catch(e){ alert('Erro: '+e.message); }
+}
+async function editarLimite(orgId, atual){
+  const v=prompt('Novo limite de pacientes deste cliente:', atual);
+  if(!v) return;
+  try{ await postAdmin('/api/admin/orgs/limite', {orgId, limite:Number(v)}); carregarLicencas(); }
+  catch(e){ alert('Erro: '+e.message); }
 }
 
 /* ===== VISÃO GERAL ===== */
