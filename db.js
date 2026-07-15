@@ -151,6 +151,7 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now(),
       provisioned_at TIMESTAMPTZ
     );
+    ALTER TABLE checkouts ADD COLUMN IF NOT EXISTS ciclo TEXT DEFAULT 'mensal';
     -- PALAVRA VIVA do dia: versículo + reflexão personalizados por jornada (1 por pessoa/dia)
     CREATE TABLE IF NOT EXISTS palavra_viva (
       user_id INT REFERENCES users(id) ON DELETE CASCADE,
@@ -199,14 +200,14 @@ const norm = e => String(e || '').trim().toLowerCase();
 
 // planos comerciais TriLumen
 export const PLANOS = {
-  essencial:    { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90 },
-  profissional: { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90 },
-  clinica:      { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90 },
-  premium:      { nome: 'TRILUMEN PREMIUM',      limite: 500, preco: 549.90 },
+  essencial:    { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90,  preco_anual: 989.00 },
+  profissional: { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90, preco_anual: 1890.00 },
+  clinica:      { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.90 },
+  premium:      { nome: 'TRILUMEN PREMIUM',      limite: 500, preco: 549.90, preco_anual: 5490.00 },
   // aliases legados (compatibilidade com organizações/links antigos)
-  one:   { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90 },
-  plus:  { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90 },
-  prime: { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90 }
+  one:   { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90,  preco_anual: 989.00 },
+  plus:  { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90, preco_anual: 1890.00 },
+  prime: { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.90 }
 };
 
 // --- cadastro com código de convite + consentimento LGPD ---
@@ -448,11 +449,11 @@ export async function listOrganizations() {
 }
 
 // checkouts do Asaas (assinatura → provisionamento)
-export async function saveCheckout({ sub, customer, email, nome, plano }) {
+export async function saveCheckout({ sub, customer, email, nome, plano, ciclo }) {
   if (!pool) return;
-  await pool.query(`INSERT INTO checkouts (asaas_subscription, asaas_customer, email, nome, plano)
-    VALUES ($1,$2,$3,$4,$5) ON CONFLICT (asaas_subscription) DO NOTHING`,
-    [sub, customer, norm(email), nome, plano]);
+  await pool.query(`INSERT INTO checkouts (asaas_subscription, asaas_customer, email, nome, plano, ciclo)
+    VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (asaas_subscription) DO NOTHING`,
+    [sub, customer, norm(email), nome, plano, ciclo === 'anual' ? 'anual' : 'mensal']);
 }
 export async function getCheckoutBySub(sub) {
   if (!pool) return null;

@@ -522,9 +522,11 @@ async function asaas(path, method = 'GET', body) {
 app.post('/api/checkout', async (req, res) => {
   try {
     if (!ASAAS_ON) return res.status(503).json({ error: 'pagamento ainda não configurado' });
-    const { plano, nome, email, cpfCnpj, phone } = req.body || {};
+    const { plano, nome, email, cpfCnpj, phone, ciclo } = req.body || {};
     const p = PLANOS[String(plano || '').toLowerCase()];
     if (!p) return res.status(400).json({ error: 'plano inválido' });
+    const anual = String(ciclo || '').toLowerCase() === 'anual';
+    const valor = anual ? (p.preco_anual || p.preco * 12) : p.preco;
     if (!String(nome || '').trim()) return res.status(400).json({ error: 'informe seu nome' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ''))) return res.status(400).json({ error: 'e-mail inválido' });
     const doc = String(cpfCnpj || '').replace(/\D/g, '');
@@ -536,12 +538,14 @@ app.post('/api/checkout', async (req, res) => {
     });
     const hoje = new Date().toISOString().slice(0, 10);
     const sub = await asaas('/subscriptions', 'POST', {
-      customer: cust.id, billingType: 'UNDEFINED', value: p.preco, nextDueDate: hoje,
-      cycle: 'MONTHLY', description: 'Assinatura ' + p.nome, externalReference: String(plano).toLowerCase()
+      customer: cust.id, billingType: 'UNDEFINED', value: valor, nextDueDate: hoje,
+      cycle: anual ? 'YEARLY' : 'MONTHLY',
+      description: 'Assinatura ' + p.nome + (anual ? ' (anual)' : ' (mensal)'),
+      externalReference: String(plano).toLowerCase()
     });
     const pays = await asaas('/subscriptions/' + sub.id + '/payments');
     const url = pays.data?.[0]?.invoiceUrl || null;
-    await saveCheckout({ sub: sub.id, customer: cust.id, email, nome, plano: String(plano).toLowerCase() });
+    await saveCheckout({ sub: sub.id, customer: cust.id, email, nome, plano: String(plano).toLowerCase(), ciclo: anual ? 'anual' : 'mensal' });
     res.json({ ok: true, url });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
@@ -554,11 +558,15 @@ app.post('/api/webhook/asaas', async (req, res) => {
     const ev = req.body || {};
     const pay = ev.payment || {};
     if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(ev.event) && pay.subscription) {
-      // financeiro do painel ADM: registra pagamento + próximo vencimento (toda cobrança)
-      let prox = null;
-      if (pay.dueDate) { const d = new Date(pay.dueDate); d.setMonth(d.getMonth() + 1); prox = d.toISOString().slice(0, 10); }
-      await markOrgPagamento(pay.subscription, prox).catch(() => {});
       const ck = await getCheckoutBySub(pay.subscription);
+      // financeiro do painel ADM: registra pagamento + próximo vencimento (mensal +1 mês, anual +1 ano)
+      let prox = null;
+      if (pay.dueDate) {
+        const d = new Date(pay.dueDate);
+        if (ck?.ciclo === 'anual') d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1);
+        prox = d.toISOString().slice(0, 10);
+      }
+      await markOrgPagamento(pay.subscription, prox).catch(() => {});
       if (ck && !ck.provisioned_at) {
         const acesso = await provisionarAssinatura({
           plano: ck.plano, nome: ck.nome, email: ck.email,
