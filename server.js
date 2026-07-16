@@ -32,7 +32,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          mapaNeeded, getMapa, getMapaBussola, saveMapaInicial,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
-         generateMonthlyReceivables, receivablesForReminder, markReceivableReminded } from './db.js';
+         generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
+         listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment,
+         appointmentsForReminder, markAppointmentReminded } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -344,10 +346,11 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
     if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
-    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa, planoFin, receberFin] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa, planoFin, receberFin, consultasPac] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
       triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id),
-      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id), getMapa(id), getPatientPlan(id), patientReceivables(id)
+      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id), getMapa(id), getPatientPlan(id), patientReceivables(id),
+      patientAppointments(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
@@ -356,7 +359,8 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
                escalas: montarEscalasPaciente(escalasRows), plano: plano || null,
                timeline: montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }),
                mapa: mapa && mapa.mapa_em ? { respostas: mapa.mapa || [], risco: !!mapa.mapa_risco, em: mapa.mapa_em } : null,
-               financeiro: { plano: planoFin || null, receber: receberFin || [] } });
+               financeiro: { plano: planoFin || null, receber: receberFin || [] },
+               consultas: consultasPac || [] });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
@@ -431,6 +435,28 @@ app.post('/api/admin/finance/plan', requireAdmin, soMentor, async (req, res) => 
     const plano = await setPatientPlan(Number(req.query.id), req.body || {});
     res.json({ ok: true, plano });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== AGENDA DE CONSULTAS (mentor) =====
+app.get('/api/admin/agenda', requireAdmin, soMentor, async (req, res) => {
+  try { res.json({ consultas: await listAppointments(req.orgId) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/agenda', requireAdmin, soMentor, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.userId && req.orgId && (await patientOrg(Number(b.userId))) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
+    const r = await addAppointment({ orgId: req.orgId, userId: Number(b.userId), quando: b.quando, duracao_min: b.duracao_min, modalidade: b.modalidade, local: b.local, obs: b.obs });
+    res.json({ ok: true, id: r.id });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/agenda/status', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await setAppointmentStatus(Number(req.query.id), req.orgId, (req.body || {}).status)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/agenda/delete', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await deleteAppointment(Number(req.query.id), req.orgId)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, soMentor, async (req, res) => {
@@ -950,6 +976,39 @@ setInterval(rodarLembretesFinanceiros, 6 * 60 * 60 * 1000); // a cada 6h
 setTimeout(rodarLembretesFinanceiros, 60 * 1000);
 
 // ---------------------------------------------------------
+//  LEMBRETES DE CONSULTA — 1 dia antes e 1h antes (WhatsApp + e-mail)
+// ---------------------------------------------------------
+function detalheModalidade(c) {
+  if (c.modalidade === 'presencial') return c.local ? `\n📍 Endereço: ${c.local}` : '';
+  return c.local ? `\n💻 Link da sessão online: ${c.local}` : '\n💻 Nossa sessão será online.';
+}
+async function enviarLembretesConsulta(kind) {
+  const lista = await appointmentsForReminder(kind);
+  if (!lista.length) return;
+  const t = mailer();
+  const whatsOn = (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase().trim() !== 'none';
+  for (const c of lista) {
+    const primeiro = String(c.paciente || '').trim().split(' ')[0] || 'você';
+    const hora = String(c.quando_local || '').slice(11, 16);
+    const dia = String(c.quando_local || '').slice(8, 10) + '/' + String(c.quando_local || '').slice(5, 7);
+    const quandoTxt = kind === '1h' ? `hoje às ${hora}` : `dia ${dia} às ${hora}`;
+    const abertura = kind === '1h' ? 'Nossa consulta é daqui a pouco' : 'Passando com carinho pra lembrar da nossa consulta';
+    const texto = `Oi ${primeiro}, tudo bem? 🌿\n\n${abertura} — ${quandoTxt} (${c.modalidade}).${detalheModalidade(c)}\n\nTe espero com carinho. 💛`;
+    if (t && c.email) { try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: c.email, subject: kind === '1h' ? 'Sua consulta é daqui a pouco 🌿' : 'Lembrete da sua consulta 🌿', text: texto }); } catch (_) {} }
+    if (whatsOn && c.phone) { try { await sendWhatsApp(c.phone, texto); } catch (_) {} }
+    await markAppointmentReminded(c.id, kind);
+  }
+  console.log(`  Lembretes de consulta (${kind}) enviados: ${lista.length}.`);
+}
+async function rodarLembretesConsulta() {
+  if (!dbReady) return;
+  try { await enviarLembretesConsulta('1d'); await enviarLembretesConsulta('1h'); }
+  catch (e) { console.error('lembretes consulta:', e.message); }
+}
+setInterval(rodarLembretesConsulta, 15 * 60 * 1000); // a cada 15 min
+setTimeout(rodarLembretesConsulta, 75 * 1000);
+
+// ---------------------------------------------------------
 //  MINHA JORNADA — o paciente vê a própria evolução
 // ---------------------------------------------------------
 app.get('/api/me/journey', requireAuth, async (req, res) => {
@@ -1158,10 +1217,11 @@ function normPhone(raw) {
 }
 
 async function sendWhatsApp(to, body) {
-  const provider = (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase();
+  // tolerante a espaços/lixo colado por engano no valor da variável
+  const provider = (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase().trim();
   const phone = normPhone(to || process.env.GUARDIAN_PHONE);
 
-  if (provider === 'twilio') {
+  if (provider.startsWith('twilio')) {
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const token = process.env.TWILIO_AUTH_TOKEN;
     const from = process.env.TWILIO_WHATSAPP_FROM;
@@ -1176,9 +1236,9 @@ async function sendWhatsApp(to, body) {
     return { sent: r.ok, provider, id: d.sid, detail: d.message || null };
   }
 
-  if (provider === 'zapi') {
-    const inst = process.env.ZAPI_INSTANCE;
-    const token = process.env.ZAPI_TOKEN;
+  if (provider.startsWith('zapi')) {
+    const inst = String(process.env.ZAPI_INSTANCE || '').trim();
+    const token = String(process.env.ZAPI_TOKEN || '').trim();
     const r = await fetch(`https://api.z-api.io/instances/${inst}/token/${token}/send-text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Client-Token': process.env.ZAPI_CLIENT_TOKEN || '' },

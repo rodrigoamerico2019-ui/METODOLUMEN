@@ -200,6 +200,20 @@
   .fin-plan input[type=number]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:7px 9px;font-family:inherit;font-size:13px}
   .fin-plan input:focus{outline:none;border-color:var(--gold)}
   .fin-chk{display:flex;align-items:center;gap:5px}
+  /* Agenda */
+  .ag-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ag-form select,.ag-form input{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font-size:12.5px;font-family:inherit}
+  .ag-form select:focus,.ag-form input:focus{outline:none;border-color:var(--gold)}
+  .ag-form #agPac,.ag-form #agLocal{flex:1;min-width:150px}
+  .ag-item{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .ag-item:first-child{border-top:0}
+  .ag-item.done{opacity:.55}
+  .ag-when{flex:0 0 120px;font-weight:600;color:var(--gold2);font-size:13px}
+  .ag-when small{display:block;color:var(--faint);font-weight:400;font-size:11px}
+  .ag-info{flex:1;min-width:150px;font-size:13px;color:var(--ink)}
+  .ag-info small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;word-break:break-word}
+  .ag-mod{font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .ag-mod.online{color:#7ab8d9;border-color:#2e4a57} .ag-mod.presencial{color:#7fb069;border-color:#3a5a2e}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -308,6 +322,7 @@
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
+    <div class="nav-item" data-v="agenda" onclick="nav('agenda')"><span class="ic">◷</span> Agenda</div>
     <div class="nav-item" data-v="financeiro" onclick="nav('financeiro')"><span class="ic">₪</span> Financeiro</div>
     <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Clientes</div>
     <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
@@ -473,6 +488,12 @@
         <div class="fin-wrap"><div id="pfHist"></div></div>
       </div>
       <div class="card">
+        <div class="h2c">◷ Consultas do paciente</div>
+        <p class="subc">agende uma nova ou veja o histórico · o lembrete sai sozinho no WhatsApp/e-mail (1 dia e 1h antes)</p>
+        <button class="btn ghost" style="padding:8px 16px;margin-bottom:12px" onclick="agendarPaciente()">＋ Agendar consulta</button>
+        <div id="pcHist"></div>
+      </div>
+      <div class="card">
         <div class="h2c">💬 Enviar mensagem ao paciente</div>
         <p class="subc">chega como notificação no celular e aparece na conversa do app</p>
         <textarea id="dMsg" class="notas" style="min-height:70px" placeholder="Ex.: Estou orando por você essa semana. Não esqueça do seu check-in de hoje. 🙏"></textarea>
@@ -542,6 +563,28 @@
       </div>
     </section>
 
+    <!-- ===== AGENDA DE CONSULTAS (mentor) ===== -->
+    <section id="view-agenda" class="hide">
+      <div class="topline"><h2>Agenda de Consultas</h2><span class="sub">o paciente recebe lembrete carinhoso no WhatsApp e e-mail — 1 dia antes e 1h antes</span></div>
+      <div class="card">
+        <div class="h2c">＋ Nova consulta</div>
+        <p class="subc">escolha o paciente, data/hora e se é online ou presencial</p>
+        <div class="ag-form">
+          <select id="agPac"><option value="">Paciente…</option></select>
+          <input id="agData" type="datetime-local"/>
+          <select id="agMod" onchange="agLocalHint()"><option value="online">Online</option><option value="presencial">Presencial</option></select>
+          <input id="agLocal" placeholder="Link da sessão online"/>
+          <input id="agDur" type="number" value="50" title="Duração (min)" style="width:80px"/>
+          <button class="btn" style="padding:9px 18px" onclick="addConsulta()">Agendar</button>
+        </div>
+        <span class="muted" id="agStatus"></span>
+      </div>
+      <div class="card">
+        <div class="h2c">Próximas consultas</div>
+        <div id="agLista"></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -574,7 +617,7 @@ $('sideEmblema').innerHTML = emblema(13);
 
 /* ===== navegação ===== */
 function nav(v){
-  ['prioridades','geral','jornadas','detalhe','licencas','financeiro'].forEach(x=>$('view-'+x).classList.add('hide'));
+  ['prioridades','geral','jornadas','detalhe','licencas','financeiro','agenda'].forEach(x=>$('view-'+x).classList.add('hide'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   if(v==='alertas'){
     $('view-jornadas').classList.remove('hide');
@@ -591,6 +634,7 @@ function nav(v){
     if(v==='geral') carregarColetivo();
     if(v==='licencas') carregarLicencas();
     if(v==='financeiro') carregarFinanceiro();
+    if(v==='agenda') carregarAgenda();
   }
   window.scrollTo(0,0);
 }
@@ -708,7 +752,7 @@ async function bootAfterAuth(){
     const me = await api('/api/mentor/me');
     IS_SUPER = !!me.super;
     // ADM (super): só Clientes, SEM acesso aos pacientes → esconde os menus de pacientes
-    ['prioridades','geral','jornadas','alertas','financeiro'].forEach(v => {
+    ['prioridades','geral','jornadas','alertas','financeiro','agenda'].forEach(v => {
       const it = document.querySelector('.nav-item[data-v="'+v+'"]');
       if(it) it.classList.toggle('hide', IS_SUPER);
     });
@@ -900,6 +944,65 @@ async function salvarPlanoFin(){
   catch(e){ $('pfStatus').textContent='erro: '+e.message; }
 }
 
+/* ===== AGENDA DE CONSULTAS (mentor) ===== */
+function fmtWhen(local){
+  if(!local) return {d:'—',h:''};
+  return { d: local.slice(8,10)+'/'+local.slice(5,7), h: local.slice(11,16) };
+}
+function agLocalHint(){ $('agLocal').placeholder = $('agMod').value==='presencial' ? 'Endereço do consultório' : 'Link da sessão online'; }
+function preencheAgPac(){
+  $('agPac').innerHTML = '<option value="">Paciente…</option>' + (pacientes||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+}
+async function carregarAgenda(){
+  preencheAgPac();
+  try{ const d = await api('/api/admin/agenda'); renderAgLista($('agLista'), d.consultas||[], true); }
+  catch(e){ $('agLista').innerHTML = '<p class="muted">Erro ao carregar: '+e.message+'</p>'; }
+}
+function renderAgLista(box, consultas, comPaciente){
+  if(!consultas.length){ box.innerHTML = '<p class="muted">Nenhuma consulta ainda.</p>'; return; }
+  box.innerHTML = consultas.map(c=>{
+    const w = fmtWhen(c.quando_local);
+    const st = c.status==='realizada' ? '<span class="lic-st ativa">realizada</span>'
+      : c.status==='cancelada' ? '<span class="lic-st inativa">cancelada</span>'
+      : '<span class="lic-st pend">agendada</span>';
+    const acoes = c.status==='agendada'
+      ? `<div class="fin-act"><button onclick="statusConsulta(${c.id},'realizada')">✓ feita</button><button onclick="statusConsulta(${c.id},'cancelada')">cancelar</button><button onclick="delConsulta(${c.id})">excluir</button></div>`
+      : `<div class="fin-act"><button onclick="delConsulta(${c.id})">excluir</button></div>`;
+    return `<div class="ag-item ${c.status!=='agendada'?'done':''}">
+      <div class="ag-when">${w.h}<small>${w.d}</small></div>
+      <div class="ag-info">${comPaciente?(c.paciente||'—'):''}${c.local?`<small>${c.local}</small>`:''}</div>
+      <span class="ag-mod ${c.modalidade}">${c.modalidade}</span>${st}${acoes}</div>`;
+  }).join('');
+}
+async function addConsulta(){
+  const userId=$('agPac').value, quando=$('agData').value;
+  if(!userId||!quando){ $('agStatus').textContent='Escolha o paciente e a data/hora.'; return; }
+  $('agStatus').textContent='agendando…';
+  try{
+    await postAdmin('/api/admin/agenda', { userId, quando, modalidade:$('agMod').value, local:$('agLocal').value.trim(), duracao_min:$('agDur').value });
+    $('agData').value=''; $('agLocal').value='';
+    $('agStatus').textContent='consulta agendada ✓ — o paciente será lembrado 1 dia e 1h antes';
+    carregarAgenda();
+  }catch(e){ $('agStatus').textContent='erro: '+e.message; }
+}
+async function statusConsulta(id, status){
+  try{ await postAdmin('/api/admin/agenda/status?id='+id, {status});
+    if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
+  }catch(e){ alert('Erro: '+e.message); }
+}
+async function delConsulta(id){
+  if(!confirm('Excluir esta consulta?')) return;
+  try{ await postAdmin('/api/admin/agenda/delete?id='+id, {});
+    if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
+  }catch(e){ alert('Erro: '+e.message); }
+}
+function renderConsultasPaciente(consultas){ renderAgLista($('pcHist'), consultas, false); }
+function agendarPaciente(){
+  const pid = pacienteAtual && pacienteAtual.id;
+  nav('agenda');
+  if(pid) setTimeout(()=>{ preencheAgPac(); $('agPac').value=pid; $('agData').focus(); }, 60);
+}
+
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){
   const s = d.stats || {};
@@ -1011,6 +1114,7 @@ async function abrirPaciente(id){
   renderAudios(d.audios || []);
   renderMapa(d.mapa);
   renderFinanceiroPaciente(d.financeiro);
+  renderConsultasPaciente(d.consultas || []);
 
   const p = d.paciente;
   const nasc = p.birth_date ? new Date(p.birth_date).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : null;

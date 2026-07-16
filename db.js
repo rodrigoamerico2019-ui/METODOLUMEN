@@ -218,6 +218,23 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_pay_org ON payables (org_id, vencimento);
+    -- AGENDA de consultas (online/presencial) + lembretes automáticos
+    CREATE TABLE IF NOT EXISTS appointments (
+      id BIGSERIAL PRIMARY KEY,
+      org_id BIGINT,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      quando TIMESTAMPTZ NOT NULL,
+      duracao_min INT DEFAULT 50,
+      modalidade TEXT DEFAULT 'online',     -- online | presencial
+      local TEXT,                            -- link (online) ou endereço (presencial)
+      obs TEXT,
+      status TEXT DEFAULT 'agendada',        -- agendada | realizada | cancelada
+      lembrete_1d_em TIMESTAMPTZ,
+      lembrete_1h_em TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_appt_org ON appointments (org_id, quando);
+    CREATE INDEX IF NOT EXISTS idx_appt_user ON appointments (user_id, quando);
     -- PLANO DE AÇÃO: um plano por paciente (foco + passos práticos), gerado pela IA,
     -- revisado pelo mentor e, quando ele quiser, entregue ao paciente no app.
     CREATE TABLE IF NOT EXISTS action_plans (
@@ -1138,6 +1155,72 @@ export async function receivablesForReminder() {
 export async function markReceivableReminded(id) {
   if (!pool) return;
   await pool.query('UPDATE receivables SET lembrete_em=now() WHERE id=$1', [id]);
+}
+
+// =========================================================
+//  AGENDA DE CONSULTAS (mentor, escopo por org)
+// =========================================================
+const FMT_LOCAL = `to_char(quando AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD"T"HH24:MI')`;
+export async function listAppointments(orgId, days = 45) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT a.id, a.user_id, u.name AS paciente, a.quando, ${FMT_LOCAL} AS quando_local,
+           a.duracao_min, a.modalidade, a.local, a.obs, a.status,
+           (a.quando < now()) AS passou
+    FROM appointments a LEFT JOIN users u ON u.id=a.user_id
+    WHERE ($1::bigint IS NULL OR a.org_id=$1)
+      AND a.quando > now() - interval '7 days' AND a.quando < now() + ($2 || ' days')::interval
+    ORDER BY a.quando`, [orgId, days]);
+  return r.rows;
+}
+export async function patientAppointments(userId, limit = 20) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT id, ${FMT_LOCAL} AS quando_local, modalidade, local, status, (quando < now()) AS passou
+    FROM appointments WHERE user_id=$1 ORDER BY quando DESC LIMIT $2`, [userId, limit]);
+  return r.rows;
+}
+export async function addAppointment({ orgId, userId, quando, duracao_min, modalidade, local, obs }) {
+  if (!pool) throw new Error('banco não configurado');
+  if (!userId) throw new Error('escolha o paciente');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(quando || ''))) throw new Error('data/hora inválida');
+  const mod = modalidade === 'presencial' ? 'presencial' : 'online';
+  const r = await pool.query(`
+    INSERT INTO appointments (org_id, user_id, quando, duracao_min, modalidade, local, obs)
+    VALUES ($1,$2, ($3::timestamp AT TIME ZONE 'America/Sao_Paulo'), $4,$5,$6,$7) RETURNING id`,
+    [orgId, userId, quando, Math.max(10, Math.min(240, Number(duracao_min) || 50)), mod,
+     String(local || '').slice(0, 300), String(obs || '').slice(0, 400)]);
+  return r.rows[0];
+}
+export async function setAppointmentStatus(id, orgId, status) {
+  if (!pool) throw new Error('banco não configurado');
+  const st = ['realizada', 'cancelada', 'agendada'].includes(status) ? status : 'agendada';
+  await pool.query('UPDATE appointments SET status=$3 WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId, st]);
+  return { ok: true, status: st };
+}
+export async function deleteAppointment(id, orgId) {
+  if (!pool) return;
+  await pool.query('DELETE FROM appointments WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId]);
+  return { ok: true };
+}
+// consultas que precisam de lembrete: kind '1d' (dentro de 24h, >90min) ou '1h' (dentro de 90min)
+export async function appointmentsForReminder(kind) {
+  if (!pool) return [];
+  const col = kind === '1h' ? 'lembrete_1h_em' : 'lembrete_1d_em';
+  const janela = kind === '1h'
+    ? "a.quando BETWEEN now() AND now() + interval '90 minutes'"
+    : "a.quando BETWEEN now() + interval '90 minutes' AND now() + interval '24 hours'";
+  const r = await pool.query(`
+    SELECT a.id, a.modalidade, a.local, ${FMT_LOCAL} AS quando_local,
+           u.name AS paciente, u.email, u.phone
+    FROM appointments a JOIN users u ON u.id=a.user_id
+    WHERE a.status='agendada' AND a.${col} IS NULL AND ${janela}`);
+  return r.rows;
+}
+export async function markAppointmentReminded(id, kind) {
+  if (!pool) return;
+  const col = kind === '1h' ? 'lembrete_1h_em' : 'lembrete_1d_em';
+  await pool.query(`UPDATE appointments SET ${col}=now() WHERE id=$1`, [id]);
 }
 
 // médias da tríade nos últimos N dias (para as esferas do painel)
