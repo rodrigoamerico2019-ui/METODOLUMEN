@@ -26,6 +26,9 @@
   input:focus{outline:none;border-color:var(--gold)}
   .btn{width:100%;background:var(--grad);color:#2a2208;border:none;border-radius:12px;padding:15px;font-weight:600;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-top:20px;box-shadow:0 4px 14px rgba(201,162,39,.28)}
   .btn:disabled{opacity:.6;cursor:wait}
+  .btn.alt{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:none;margin-top:10px}
+  .btn small{display:block;font-weight:500;font-size:11px;opacity:.85;margin-top:2px;letter-spacing:0}
+  .pay-nota{font-size:11.5px;color:var(--dim);text-align:center;margin-top:14px;line-height:1.5}
   .pgs{display:flex;gap:8px;justify-content:center;font-size:11px;color:var(--dim);margin-top:14px}
   .pgs span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
   .err{color:#c0442f;font-size:12.5px;margin-top:12px;text-align:center;line-height:1.5}
@@ -54,8 +57,7 @@
     <input id="doc" inputmode="numeric" placeholder="Somente números" />
     <label>WhatsApp com DDD</label>
     <input id="phone" type="tel" placeholder="(11) 99999-9999" autocomplete="tel" />
-    <button class="btn" id="btn" onclick="pagar()">Ir para o pagamento →</button>
-    <div class="pgs"><span>💳 Cartão</span><span>⚡ Pix</span><span>🧾 Boleto</span></div>
+    <div id="payArea"></div>
     <div class="err" id="err" style="display:none"></div>
   </div>
   <div class="foot">Pagamento seguro processado pelo Asaas.<br>Você recebe o acesso no e-mail assim que o pagamento for confirmado.<br><a href="/vendas.html">← ver os planos</a></div>
@@ -63,14 +65,14 @@
 
 <script>
 const PLANOS = {
-  essencial:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90'},
-  profissional:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00'},
-  clinica:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,09'},
-  premium:{nome:'TRILUMEN PREMIUM',lim:'até 500 pacientes',preco:'549,90',parc:'549,00'},
+  essencial:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90',avista:'989,00'},
+  profissional:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00',avista:'1.890,00'},
+  clinica:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,00',avista:'3.490,00'},
+  premium:{nome:'TRILUMEN PREMIUM',lim:'até 500 pacientes',preco:'549,90',parc:'549,00',avista:'5.490,00'},
   // aliases legados
-  one:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90'},
-  plus:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00'},
-  prime:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,09'}
+  one:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90',avista:'989,00'},
+  plus:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00',avista:'1.890,00'},
+  prime:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,00',avista:'3.490,00'}
 };
 const qs = new URLSearchParams(location.search);
 const plano = (qs.get('plano')||'essencial').toLowerCase();
@@ -79,30 +81,48 @@ const p = PLANOS[plano] || PLANOS.essencial;
 document.getElementById('pNome').textContent = p.nome;
 document.getElementById('pLim').textContent = p.lim + (ciclo==='anual' ? ' · plano anual' : '');
 document.getElementById('pPreco').innerHTML = ciclo==='anual'
-  ? '10x de R$ '+p.parc+' <small>no cartão · ou à vista no Pix</small>'
+  ? '10x de R$ '+p.parc+' <small>no cartão</small>'
   : 'R$ '+p.preco+' <small>/mês</small>';
 document.getElementById('emb').innerHTML = `<svg width="42" height="92" viewBox="0 0 100 210">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C9A227"/><stop offset="55%" stop-color="#E4C878"/><stop offset="100%" stop-color="#C9A227"/></linearGradient></defs>
   ${[36,105,174].map(cy=>`<circle cx="50" cy="${cy}" r="31" fill="none" stroke="url(#g)" stroke-width="4"/>`).join('')}
   <line x1="50" y1="4" x2="50" y2="206" stroke="#E4C878" stroke-width="2.4"/></svg>`;
 
-async function pagar(){
-  const err = document.getElementById('err'), btn = document.getElementById('btn');
+// monta os botões conforme o ciclo (anual = escolha de método; mensal = 1 botão)
+function renderPayArea(){
+  const area = document.getElementById('payArea');
+  if(ciclo==='anual'){
+    area.innerHTML =
+      `<button class="btn" onclick="pagar('cartao')">💳 Cartão de crédito<small>em até 10x de R$ ${p.parc}</small></button>
+       <button class="btn alt" onclick="pagar('pix')">⚡ Pix à vista<small>pagamento único de R$ ${p.avista}</small></button>
+       <button class="btn alt" onclick="pagar('boleto')">🧾 Boleto à vista<small>pagamento único de R$ ${p.avista}</small></button>
+       <div class="pay-nota">Escolha como prefere pagar o plano anual.</div>`;
+  } else {
+    area.innerHTML =
+      `<button class="btn" onclick="pagar()">Ir para o pagamento →</button>
+       <div class="pgs"><span>💳 Cartão</span><span>⚡ Pix</span><span>🧾 Boleto</span></div>`;
+  }
+}
+renderPayArea();
+
+async function pagar(metodo){
+  const err = document.getElementById('err');
   err.style.display='none';
-  const body = {
-    plano, ciclo,
-    nome: document.getElementById('nome').value.trim(),
-    email: document.getElementById('email').value.trim(),
+  const nome = document.getElementById('nome').value.trim();
+  const email = document.getElementById('email').value.trim();
+  if(!nome || !email){ err.textContent='Preencha nome e e-mail para continuar.'; err.style.display='block'; return; }
+  const botoes = document.getElementById('payArea').querySelectorAll('button');
+  botoes.forEach(b=>b.disabled=true);
+  const body = { plano, ciclo, metodo,
+    nome, email,
     cpfCnpj: document.getElementById('doc').value,
-    phone: document.getElementById('phone').value
-  };
-  btn.disabled = true; btn.textContent = 'Gerando pagamento…';
+    phone: document.getElementById('phone').value };
   try{
     const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const d = await r.json();
     if(d.ok && d.url){ window.location.href = d.url; return; }
     throw new Error(d.error || 'Não foi possível gerar o pagamento.');
-  }catch(e){ err.textContent = e.message; err.style.display='block'; btn.disabled=false; btn.textContent='Ir para o pagamento →'; }
+  }catch(e){ err.textContent = e.message; err.style.display='block'; botoes.forEach(b=>b.disabled=false); }
 }
 </script>
 </body>

@@ -522,7 +522,7 @@ async function asaas(path, method = 'GET', body) {
 app.post('/api/checkout', async (req, res) => {
   try {
     if (!ASAAS_ON) return res.status(503).json({ error: 'pagamento ainda não configurado' });
-    const { plano, nome, email, cpfCnpj, phone, ciclo } = req.body || {};
+    const { plano, nome, email, cpfCnpj, phone, ciclo, metodo } = req.body || {};
     const p = PLANOS[String(plano || '').toLowerCase()];
     if (!p) return res.status(400).json({ error: 'plano inválido' });
     const anual = String(ciclo || '').toLowerCase() === 'anual';
@@ -539,13 +539,19 @@ app.post('/api/checkout', async (req, res) => {
     const hoje = new Date().toISOString().slice(0, 10);
     let url, ref;
     if (anual) {
-      // ANUAL: cobrança única parcelável em até 10x no cartão (Pix/boleto também)
-      const pg = await asaas('/payments', 'POST', {
-        customer: cust.id, billingType: 'UNDEFINED',
-        installmentCount: 10, totalValue: valor, dueDate: hoje,
-        description: 'TriLumen ' + p.nome + ' — anual (em até 10x no cartão)',
-        externalReference: String(plano).toLowerCase()
-      });
+      // ANUAL: o cliente escolhe o método no checkout — cada um vira uma cobrança limpa
+      const m = String(metodo || 'cartao').toLowerCase();
+      let corpo;
+      if (m === 'pix')
+        corpo = { customer: cust.id, billingType: 'PIX', value: valor, dueDate: hoje,
+                  description: 'TriLumen ' + p.nome + ' — anual à vista (Pix)', externalReference: String(plano).toLowerCase() };
+      else if (m === 'boleto')
+        corpo = { customer: cust.id, billingType: 'BOLETO', value: valor, dueDate: hoje,
+                  description: 'TriLumen ' + p.nome + ' — anual à vista (Boleto)', externalReference: String(plano).toLowerCase() };
+      else // cartão em até 10x (sem Pix junto)
+        corpo = { customer: cust.id, billingType: 'CREDIT_CARD', installmentCount: 10, totalValue: valor, dueDate: hoje,
+                  description: 'TriLumen ' + p.nome + ' — anual em até 10x no cartão', externalReference: String(plano).toLowerCase() };
+      const pg = await asaas('/payments', 'POST', corpo);
       ref = pg.installment || pg.id;
       url = pg.invoiceUrl || null;
     } else {

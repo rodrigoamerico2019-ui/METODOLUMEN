@@ -202,12 +202,12 @@ const norm = e => String(e || '').trim().toLowerCase();
 export const PLANOS = {
   essencial:    { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90,  preco_anual: 989.00 },
   profissional: { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90, preco_anual: 1890.00 },
-  clinica:      { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.90 },
+  clinica:      { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.00 },
   premium:      { nome: 'TRILUMEN PREMIUM',      limite: 500, preco: 549.90, preco_anual: 5490.00 },
   // aliases legados (compatibilidade com organizações/links antigos)
   one:   { nome: 'TRILUMEN ESSENCIAL',    limite: 30,  preco: 99.90,  preco_anual: 989.00 },
   plus:  { nome: 'TRILUMEN PROFISSIONAL', limite: 100, preco: 179.90, preco_anual: 1890.00 },
-  prime: { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.90 }
+  prime: { nome: 'TRILUMEN CLÍNICA',      limite: 250, preco: 329.90, preco_anual: 3490.00 }
 };
 
 // --- cadastro com código de convite + consentimento LGPD ---
