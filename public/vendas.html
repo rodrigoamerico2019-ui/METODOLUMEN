@@ -91,6 +91,10 @@
   .plano .preco .c{font-size:14px;color:var(--gold2)}
   .plano .preco .n{font-family:'Cinzel';font-size:34px;color:var(--gold2);line-height:1}
   .plano .preco .p{font-size:13px;color:#8a8168}
+  /* parcela do anual: "10x de" em cima, valor grande, "no cartão" embaixo — alinhado nos 4 */
+  .plano .preco.parcelado{flex-wrap:wrap}
+  .plano .preco .parc-pre{flex-basis:100%;font-size:12px;letter-spacing:.5px;color:var(--gold2);margin-bottom:2px}
+  .plano .preco .parc-suf{flex-basis:100%;font-size:12px;color:#8a8168;margin-top:3px}
   .plano ul{list-style:none;margin:20px 0 24px;flex:1}
   .plano li{font-size:13px;color:#d8cfba;padding:7px 0 7px 24px;position:relative;border-top:1px solid #262218}
   .plano li:before{content:'✦';position:absolute;left:2px;color:var(--gold)}
@@ -317,8 +321,10 @@ function setCiclo(c){
     const preco = card.querySelector('.preco'); if(!preco) return;
     if(c==='anual'){
       const v = PRECOS[k].parc.split(',');
-      preco.innerHTML = `<span class="c">10x de R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="p">no cartão</span>`;
+      preco.classList.add('parcelado');
+      preco.innerHTML = `<span class="parc-pre">10x de</span><span class="c">R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="parc-suf">no cartão</span>`;
     } else {
+      preco.classList.remove('parcelado');
       const v = PRECOS[k].mes.split(',');
       preco.innerHTML = `<span class="c">R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="p">/mês</span>`;
     }
