@@ -29,7 +29,10 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
-         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial } from './db.js';
+         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial,
+         getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
+         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
+         generateMonthlyReceivables, receivablesForReminder, markReceivableReminded } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -341,10 +344,10 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
     if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
-    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa] = await Promise.all([
+    const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa, planoFin, receberFin] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
       triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id),
-      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id), getMapa(id)
+      scalesForPatient(id), getActionPlan(id), mentorMessagesAll(id), getMapa(id), getPatientPlan(id), patientReceivables(id)
     ]);
     if (!basico) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json({ paciente: basico, prontuario: pront?.prontuario || '', prontuario_em: pront?.updated_at || null,
@@ -352,7 +355,8 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
                notas_mentor: extras.notas_mentor || '', streak, audios,
                escalas: montarEscalasPaciente(escalasRows), plano: plano || null,
                timeline: montarTimeline({ sessoes, escalasRows, audios, checkins, mentorMsgs, plano }),
-               mapa: mapa && mapa.mapa_em ? { respostas: mapa.mapa || [], risco: !!mapa.mapa_risco, em: mapa.mapa_em } : null });
+               mapa: mapa && mapa.mapa_em ? { respostas: mapa.mapa || [], risco: !!mapa.mapa_risco, em: mapa.mapa_em } : null,
+               financeiro: { plano: planoFin || null, receber: receberFin || [] } });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
@@ -383,6 +387,48 @@ app.post('/api/admin/plan/deliver', requireAdmin, soMentor, async (req, res) => 
   try {
     if (!(await guardPaciente(req, res))) return;
     const plano = await setPlanDelivered(Number(req.query.id), !!(req.body || {}).entregue);
+    res.json({ ok: true, plano });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) =====
+app.get('/api/admin/finance', requireAdmin, soMentor, async (req, res) => {
+  try {
+    const [resumo, receber, pagar] = await Promise.all([
+      financeSummary(req.orgId), listReceivables(req.orgId), listPayables(req.orgId)
+    ]);
+    res.json({ resumo, receber, pagar });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/finance/receivable', requireAdmin, soMentor, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.userId && req.orgId && (await patientOrg(Number(b.userId))) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
+    const r = await addReceivable({ orgId: req.orgId, userId: b.userId ? Number(b.userId) : null, descricao: b.descricao, valor: b.valor, vencimento: b.vencimento });
+    res.json({ ok: true, id: r.id });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/finance/receivable/pay', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await setReceivablePaid(Number(req.query.id), req.orgId, !!(req.body || {}).pago)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/finance/payable', requireAdmin, soMentor, async (req, res) => {
+  try { const r = await addPayable(req.orgId, req.body || {}); res.json({ ok: true, id: r.id }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/finance/payable/pay', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await setPayablePaid(Number(req.query.id), req.orgId, !!(req.body || {}).pago)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/finance/payable/delete', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await deletePayable(Number(req.query.id), req.orgId)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// plano/mensalidade do paciente (definido na ficha)
+app.post('/api/admin/finance/plan', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const plano = await setPatientPlan(Number(req.query.id), req.body || {});
     res.json({ ok: true, plano });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
@@ -873,6 +919,35 @@ async function rodarPalavraViva() {
 }
 setInterval(rodarPalavraViva, 30 * 60 * 1000); // a cada 30 min (só age na janela da manhã, 1x/dia por pessoa)
 setTimeout(rodarPalavraViva, 45 * 1000);
+
+// ---------------------------------------------------------
+//  LEMBRETES FINANCEIROS HUMANIZADOS (mensalidade a vencer)
+//  Gera a mensalidade do mês e avisa o paciente X dias antes (e-mail + WhatsApp).
+// ---------------------------------------------------------
+async function rodarLembretesFinanceiros() {
+  if (!dbReady) return;
+  try {
+    await generateMonthlyReceivables().catch(() => {});   // garante a mensalidade do mês
+    const pend = await receivablesForReminder();
+    if (!pend.length) return;
+    const t = mailer();
+    const whatsOn = (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase() !== 'none';
+    for (const r of pend) {
+      const primeiro = String(r.paciente || '').trim().split(' ')[0] || 'você';
+      const venc = new Date(r.vencimento + 'T12:00:00').toLocaleDateString('pt-BR');
+      const valor = 'R$ ' + Number(r.valor).toFixed(2).replace('.', ',');
+      const texto = `Oi ${primeiro}, tudo bem? 🌿\n\nPassando com carinho só pra lembrar que a sua mensalidade do acompanhamento (${valor}) vence no dia ${venc}.\n\nSe precisar de qualquer coisa, estou por aqui. Cuide-se com carinho. 💛`;
+      if (t && r.email) {
+        try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: r.email, subject: 'Um lembrete carinhoso 🌿', text: texto }); } catch (_) {}
+      }
+      if (whatsOn && r.phone) { try { await sendWhatsApp(r.phone, texto); } catch (_) {} }
+      await markReceivableReminded(r.id);
+    }
+    console.log(`  Lembretes financeiros enviados: ${pend.length}.`);
+  } catch (e) { console.error('lembretes financeiros:', e.message); }
+}
+setInterval(rodarLembretesFinanceiros, 6 * 60 * 60 * 1000); // a cada 6h
+setTimeout(rodarLembretesFinanceiros, 60 * 1000);
 
 // ---------------------------------------------------------
 //  MINHA JORNADA — o paciente vê a própria evolução

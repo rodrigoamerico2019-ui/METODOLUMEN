@@ -183,6 +183,23 @@
   .mp-tema{flex:0 0 120px;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold2);padding-top:2px}
   .mp-b b{color:var(--ink);font-size:13px;font-weight:500}
   .mp-b small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;font-style:italic}
+  /* Central Financeira */
+  .fin-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .fin-add input{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font-size:12.5px;font-family:inherit;flex:1;min-width:120px}
+  .fin-add input:focus{outline:none;border-color:var(--gold)}
+  .fin-wrap{overflow-x:auto}
+  .fin-tab{width:100%;border-collapse:collapse}
+  .fin-tab th{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gold2);text-align:left;padding:8px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap}
+  .fin-tab td{padding:9px 8px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink);vertical-align:middle}
+  .fin-tab .val{font-weight:600;white-space:nowrap}
+  .fin-act{display:flex;gap:6px}
+  .fin-act button{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .fin-act button:hover{border-color:var(--gold);color:var(--gold2)}
+  .fin-plan{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .fin-plan label{font-size:12.5px;color:var(--dim)}
+  .fin-plan input[type=number]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:7px 9px;font-family:inherit;font-size:13px}
+  .fin-plan input:focus{outline:none;border-color:var(--gold)}
+  .fin-chk{display:flex;align-items:center;gap:5px}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -291,6 +308,7 @@
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
+    <div class="nav-item" data-v="financeiro" onclick="nav('financeiro')"><span class="ic">₪</span> Financeiro</div>
     <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Clientes</div>
     <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
     <div class="foot"><span id="footWho"></span>TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
@@ -442,6 +460,19 @@
         <div id="dTimeline"></div>
       </div>
       <div class="card">
+        <div class="h2c">💳 Mensalidade & Financeiro do paciente</div>
+        <p class="subc">defina a mensalidade e o lembrete automático (e-mail/WhatsApp) · acompanhe os pagamentos</p>
+        <div class="fin-plan">
+          <label>Mensalidade R$ <input id="pfValor" type="number" step="0.01" style="width:100px"/></label>
+          <label>vence dia <input id="pfDia" type="number" min="1" max="28" style="width:56px"/></label>
+          <label>lembrar <input id="pfLembrete" type="number" min="0" max="30" style="width:56px"/> dias antes</label>
+          <label class="fin-chk"><input type="checkbox" id="pfAtivo"/> cobrança ativa</label>
+          <button class="btn" style="padding:8px 18px" onclick="salvarPlanoFin()">Salvar</button>
+          <span class="muted" id="pfStatus"></span>
+        </div>
+        <div class="fin-wrap"><div id="pfHist"></div></div>
+      </div>
+      <div class="card">
         <div class="h2c">💬 Enviar mensagem ao paciente</div>
         <p class="subc">chega como notificação no celular e aparece na conversa do app</p>
         <textarea id="dMsg" class="notas" style="min-height:70px" placeholder="Ex.: Estou orando por você essa semana. Não esqueça do seu check-in de hoje. 🙏"></textarea>
@@ -481,6 +512,36 @@
       </div>
     </section>
 
+    <!-- ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== -->
+    <section id="view-financeiro" class="hide">
+      <div class="topline"><h2>Financeiro do Consultório</h2><span class="sub">mensalidades, contas a receber e a pagar — com lembretes carinhosos aos pacientes</span></div>
+      <div class="lic-stats" id="finStats"></div>
+      <div class="grid">
+        <div class="card">
+          <div class="h2c">💰 Contas a Receber</div>
+          <p class="subc">mensalidades dos pacientes (geradas todo mês) e lançamentos avulsos</p>
+          <div class="fin-add">
+            <input id="frDesc" placeholder="Descrição (ex.: Sessão avulsa)"/>
+            <input id="frValor" type="number" step="0.01" placeholder="R$" style="flex:0 0 100px;min-width:0"/>
+            <input id="frVenc" type="date" style="flex:0 0 auto;min-width:0"/>
+            <button class="btn" style="padding:9px 16px" onclick="addReceber()">+ Lançar</button>
+          </div>
+          <div class="fin-wrap"><table class="fin-tab" id="tabReceber"></table></div>
+        </div>
+        <div class="card">
+          <div class="h2c">🧾 Contas a Pagar</div>
+          <p class="subc">despesas do consultório (aluguel, supervisão…)</p>
+          <div class="fin-add">
+            <input id="fpDesc" placeholder="Descrição (ex.: Aluguel)"/>
+            <input id="fpValor" type="number" step="0.01" placeholder="R$" style="flex:0 0 100px;min-width:0"/>
+            <input id="fpVenc" type="date" style="flex:0 0 auto;min-width:0"/>
+            <button class="btn" style="padding:9px 16px" onclick="addPagar()">+ Lançar</button>
+          </div>
+          <div class="fin-wrap"><table class="fin-tab" id="tabPagar"></table></div>
+        </div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -513,7 +574,7 @@ $('sideEmblema').innerHTML = emblema(13);
 
 /* ===== navegação ===== */
 function nav(v){
-  ['prioridades','geral','jornadas','detalhe','licencas'].forEach(x=>$('view-'+x).classList.add('hide'));
+  ['prioridades','geral','jornadas','detalhe','licencas','financeiro'].forEach(x=>$('view-'+x).classList.add('hide'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   if(v==='alertas'){
     $('view-jornadas').classList.remove('hide');
@@ -529,6 +590,7 @@ function nav(v){
     if(v==='prioridades') renderPrioridades();
     if(v==='geral') carregarColetivo();
     if(v==='licencas') carregarLicencas();
+    if(v==='financeiro') carregarFinanceiro();
   }
   window.scrollTo(0,0);
 }
@@ -646,7 +708,7 @@ async function bootAfterAuth(){
     const me = await api('/api/mentor/me');
     IS_SUPER = !!me.super;
     // ADM (super): só Clientes, SEM acesso aos pacientes → esconde os menus de pacientes
-    ['prioridades','geral','jornadas','alertas'].forEach(v => {
+    ['prioridades','geral','jornadas','alertas','financeiro'].forEach(v => {
       const it = document.querySelector('.nav-item[data-v="'+v+'"]');
       if(it) it.classList.toggle('hide', IS_SUPER);
     });
@@ -764,6 +826,80 @@ async function editarLimite(orgId, atual){
   catch(e){ alert('Erro: '+e.message); }
 }
 
+/* ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== */
+const moeda = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
+const dataBR = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+async function carregarFinanceiro(){
+  try{
+    const d = await api('/api/admin/finance');
+    const s = d.resumo||{};
+    $('finStats').innerHTML = `
+      <div class="lic-card"><div class="k">A receber</div><div class="v"><small>${moeda(s.a_receber)}</small></div></div>
+      <div class="lic-card"><div class="k">Recebido no mês</div><div class="v"><small>${moeda(s.recebido_mes)}</small></div></div>
+      <div class="lic-card"><div class="k">Em atraso</div><div class="v" style="color:${Number(s.vencido)>0?'var(--vermelho)':'var(--ink)'}"><small>${moeda(s.vencido)}</small></div></div>
+      <div class="lic-card"><div class="k">A pagar</div><div class="v"><small>${moeda(s.a_pagar)}</small></div></div>`;
+    const rec = (d.receber||[]).map(r=>{
+      const st = r.status==='pago' ? '<span class="lic-st ativa">pago</span>'
+        : (r.vencida ? '<span class="lic-st inativa">vencida</span>' : '<span class="lic-st pend">a vencer</span>');
+      const acao = r.status==='pago'
+        ? `<button onclick="toggleReceber(${r.id},false)">estornar</button>`
+        : `<button onclick="toggleReceber(${r.id},true)">marcar pago</button>`;
+      return `<tr><td>${r.paciente||'—'}<br><small style="color:var(--faint)">${r.descricao||''}</small></td>
+        <td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${st}</td><td class="fin-act">${acao}</td></tr>`;
+    }).join('');
+    $('tabReceber').innerHTML = `<thead><tr><th>Paciente</th><th>Valor</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rec||'<tr><td colspan="5" class="muted">Nada a receber ainda. Defina a mensalidade na ficha de cada paciente.</td></tr>'}</tbody>`;
+    const pag = (d.pagar||[]).map(r=>{
+      const st = r.status==='pago' ? '<span class="lic-st ativa">pago</span>'
+        : (r.vencida ? '<span class="lic-st inativa">vencida</span>' : '<span class="lic-st pend">a pagar</span>');
+      const acao = (r.status==='pago'
+        ? `<button onclick="togglePagar(${r.id},false)">estornar</button>`
+        : `<button onclick="togglePagar(${r.id},true)">marcar pago</button>`) + `<button onclick="delPagar(${r.id})">excluir</button>`;
+      return `<tr><td>${r.descricao||'—'}</td><td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${st}</td><td class="fin-act">${acao}</td></tr>`;
+    }).join('');
+    $('tabPagar').innerHTML = `<thead><tr><th>Descrição</th><th>Valor</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+      <tbody>${pag||'<tr><td colspan="5" class="muted">Nenhuma despesa lançada.</td></tr>'}</tbody>`;
+  }catch(e){ $('finStats').innerHTML='<p class="muted">Erro ao carregar: '+e.message+'</p>'; }
+}
+async function addReceber(){
+  const descricao=$('frDesc').value.trim(), valor=$('frValor').value, vencimento=$('frVenc').value;
+  if(!valor||!vencimento){ alert('Informe valor e vencimento.'); return; }
+  try{ await postAdmin('/api/admin/finance/receivable', {descricao, valor, vencimento}); $('frDesc').value='';$('frValor').value='';$('frVenc').value=''; carregarFinanceiro(); }
+  catch(e){ alert('Erro: '+e.message); }
+}
+async function addPagar(){
+  const descricao=$('fpDesc').value.trim(), valor=$('fpValor').value, vencimento=$('fpVenc').value;
+  if(!descricao||!valor){ alert('Informe descrição e valor.'); return; }
+  try{ await postAdmin('/api/admin/finance/payable', {descricao, valor, vencimento}); $('fpDesc').value='';$('fpValor').value='';$('fpVenc').value=''; carregarFinanceiro(); }
+  catch(e){ alert('Erro: '+e.message); }
+}
+async function toggleReceber(id, pago){ try{ await postAdmin('/api/admin/finance/receivable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
+async function togglePagar(id, pago){ try{ await postAdmin('/api/admin/finance/payable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
+async function delPagar(id){ if(!confirm('Excluir esta despesa?')) return; try{ await postAdmin('/api/admin/finance/payable/delete?id='+id, {}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
+
+/* mensalidade do paciente (na ficha) */
+function renderFinanceiroPaciente(f){
+  f = f || {}; const p = f.plano || {};
+  $('pfValor').value = p.valor!=null ? Number(p.valor) : '';
+  $('pfDia').value = p.dia_vencimento || 10;
+  $('pfLembrete').value = p.lembrete_dias!=null ? p.lembrete_dias : 5;
+  $('pfAtivo').checked = p.ativo !== false;
+  $('pfStatus').textContent='';
+  const hist = (f.receber||[]);
+  $('pfHist').innerHTML = hist.length
+    ? `<table class="fin-tab"><thead><tr><th>Competência</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>`+
+      hist.map(r=>`<tr><td>${r.competencia||r.descricao||'—'}</td><td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${r.status==='pago'?'<span class="lic-st ativa">pago</span>':'<span class="lic-st pend">pendente</span>'}</td></tr>`).join('')+
+      `</tbody></table>`
+    : '<p class="muted">Sem lançamentos ainda. Defina a mensalidade acima — a cobrança do mês é gerada automaticamente e o lembrete carinhoso é enviado sozinho.</p>';
+}
+async function salvarPlanoFin(){
+  if(!pacienteAtual) return;
+  const body={ valor:$('pfValor').value||0, dia_vencimento:$('pfDia').value, lembrete_dias:$('pfLembrete').value, ativo:$('pfAtivo').checked };
+  $('pfStatus').textContent='salvando…';
+  try{ await postAdmin('/api/admin/finance/plan?id='+pacienteAtual.id, body); $('pfStatus').textContent='salvo ✓'; }
+  catch(e){ $('pfStatus').textContent='erro: '+e.message; }
+}
+
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){
   const s = d.stats || {};
@@ -874,6 +1010,7 @@ async function abrirPaciente(id){
   if(d.paciente.photo){ foto.src = d.paciente.photo; foto.classList.add('on'); } else { foto.classList.remove('on'); foto.removeAttribute('src'); }
   renderAudios(d.audios || []);
   renderMapa(d.mapa);
+  renderFinanceiroPaciente(d.financeiro);
 
   const p = d.paciente;
   const nasc = p.birth_date ? new Date(p.birth_date).toLocaleDateString('pt-BR',{timeZone:'UTC'}) : null;

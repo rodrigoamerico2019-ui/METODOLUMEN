@@ -180,6 +180,44 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_scale_user ON scale_responses (user_id, scale_key, created_at DESC);
+    -- ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (do mentor, por organização) =====
+    -- Plano/mensalidade que o mentor define para cada paciente
+    CREATE TABLE IF NOT EXISTS patient_plans (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      valor NUMERIC NOT NULL DEFAULT 0,
+      dia_vencimento INT NOT NULL DEFAULT 10,
+      lembrete_dias INT NOT NULL DEFAULT 5,
+      ativo BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- Contas a RECEBER (mensalidades geradas do plano + lançamentos manuais)
+    CREATE TABLE IF NOT EXISTS receivables (
+      id BIGSERIAL PRIMARY KEY,
+      org_id BIGINT,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      descricao TEXT,
+      valor NUMERIC NOT NULL,
+      vencimento DATE NOT NULL,
+      competencia TEXT,                          -- 'YYYY-MM' (não duplica a mensalidade do mês)
+      status TEXT NOT NULL DEFAULT 'pendente',   -- pendente | pago
+      pago_em TIMESTAMPTZ,
+      lembrete_em TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_receiv_org ON receivables (org_id, vencimento);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_receiv_comp ON receivables (user_id, competencia) WHERE competencia IS NOT NULL;
+    -- Contas a PAGAR (despesas do consultório)
+    CREATE TABLE IF NOT EXISTS payables (
+      id BIGSERIAL PRIMARY KEY,
+      org_id BIGINT,
+      descricao TEXT NOT NULL,
+      valor NUMERIC NOT NULL,
+      vencimento DATE,
+      status TEXT NOT NULL DEFAULT 'pendente',   -- pendente | pago
+      pago_em TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_pay_org ON payables (org_id, vencimento);
     -- PLANO DE AÇÃO: um plano por paciente (foco + passos práticos), gerado pela IA,
     -- revisado pelo mentor e, quando ele quiser, entregue ao paciente no app.
     CREATE TABLE IF NOT EXISTS action_plans (
@@ -975,6 +1013,131 @@ export async function deliveredPlan(userId) {
   if (!pool || !userId) return null;
   const r = await pool.query('SELECT foco, passos, entregue_em FROM action_plans WHERE user_id=$1 AND entregue=true', [userId]);
   return r.rows[0] || null;
+}
+
+// =========================================================
+//  CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor, escopo por org)
+// =========================================================
+export async function getPatientPlan(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT valor, dia_vencimento, lembrete_dias, ativo FROM patient_plans WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+export async function setPatientPlan(userId, { valor, dia_vencimento, lembrete_dias, ativo }) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const v = Math.max(0, Number(valor) || 0);
+  const dia = Math.min(28, Math.max(1, Number(dia_vencimento) || 10));
+  const lem = Math.min(30, Math.max(0, Number(lembrete_dias ?? 5)));
+  await pool.query(`INSERT INTO patient_plans (user_id, valor, dia_vencimento, lembrete_dias, ativo, updated_at)
+    VALUES ($1,$2,$3,$4,$5,now())
+    ON CONFLICT (user_id) DO UPDATE SET valor=$2, dia_vencimento=$3, lembrete_dias=$4, ativo=$5, updated_at=now()`,
+    [userId, v, dia, lem, ativo !== false]);
+  return getPatientPlan(userId);
+}
+export async function patientReceivables(userId, limit = 24) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`SELECT id, descricao, valor, vencimento::text AS vencimento, status, pago_em, competencia
+    FROM receivables WHERE user_id=$1 ORDER BY vencimento DESC LIMIT $2`, [userId, limit]);
+  return r.rows;
+}
+export async function listReceivables(orgId, limit = 300) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT r.id, r.user_id, u.name AS paciente, r.descricao, r.valor, r.vencimento::text AS vencimento,
+           r.status, r.pago_em, r.competencia,
+           (r.status='pendente' AND r.vencimento < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS vencida
+    FROM receivables r LEFT JOIN users u ON u.id=r.user_id
+    WHERE ($1::bigint IS NULL OR r.org_id=$1)
+    ORDER BY r.status='pendente' DESC, r.vencimento DESC LIMIT $2`, [orgId, limit]);
+  return r.rows;
+}
+export async function addReceivable({ orgId, userId, descricao, valor, vencimento, competencia }) {
+  if (!pool) throw new Error('banco não configurado');
+  const v = Number(valor); if (!(v > 0)) throw new Error('valor inválido');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(vencimento || ''))) throw new Error('vencimento inválido');
+  const r = await pool.query(`INSERT INTO receivables (org_id, user_id, descricao, valor, vencimento, competencia)
+    VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [orgId, userId || null, String(descricao || 'Mensalidade').slice(0, 120), v, vencimento, competencia || null]);
+  return r.rows[0];
+}
+export async function setReceivablePaid(id, orgId, pago) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE receivables SET status=$3, pago_em=CASE WHEN $3='pago' THEN now() ELSE NULL END
+    WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`, [id, orgId, pago ? 'pago' : 'pendente']);
+  return { ok: true };
+}
+export async function listPayables(orgId, limit = 200) {
+  if (!pool) return [];
+  const r = await pool.query(`SELECT id, descricao, valor, vencimento::text AS vencimento, status, pago_em,
+      (status='pendente' AND vencimento IS NOT NULL AND vencimento < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS vencida
+    FROM payables WHERE ($1::bigint IS NULL OR org_id=$1)
+    ORDER BY status='pendente' DESC, vencimento DESC NULLS LAST LIMIT $2`, [orgId, limit]);
+  return r.rows;
+}
+export async function addPayable(orgId, { descricao, valor, vencimento }) {
+  if (!pool) throw new Error('banco não configurado');
+  const v = Number(valor); if (!(v > 0)) throw new Error('valor inválido');
+  if (!String(descricao || '').trim()) throw new Error('descreva a despesa');
+  const venc = /^\d{4}-\d{2}-\d{2}$/.test(String(vencimento || '')) ? vencimento : null;
+  const r = await pool.query(`INSERT INTO payables (org_id, descricao, valor, vencimento) VALUES ($1,$2,$3,$4) RETURNING id`,
+    [orgId, String(descricao).slice(0, 120), v, venc]);
+  return r.rows[0];
+}
+export async function setPayablePaid(id, orgId, pago) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE payables SET status=$3, pago_em=CASE WHEN $3='pago' THEN now() ELSE NULL END
+    WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`, [id, orgId, pago ? 'pago' : 'pendente']);
+  return { ok: true };
+}
+export async function deletePayable(id, orgId) {
+  if (!pool) return;
+  await pool.query('DELETE FROM payables WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId]);
+  return { ok: true };
+}
+export async function financeSummary(orgId) {
+  if (!pool) return null;
+  const r = await pool.query(`
+    WITH hoje AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d)
+    SELECT
+      COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_receber,
+      COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'
+        AND vencimento < (SELECT d FROM hoje)),0) AS vencido,
+      COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = date_trunc('month',(SELECT d FROM hoje))),0) AS recebido_mes,
+      COALESCE((SELECT sum(valor) FROM payables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_pagar
+  `, [orgId]);
+  return r.rows[0] || null;
+}
+// job: gera a mensalidade do mês para cada plano ativo (idempotente por competência)
+export async function generateMonthlyReceivables() {
+  if (!pool) return 0;
+  const r = await pool.query(`
+    WITH hoje AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d)
+    INSERT INTO receivables (org_id, user_id, descricao, valor, vencimento, competencia)
+    SELECT u.org_id, p.user_id, 'Mensalidade do acompanhamento', p.valor,
+           make_date(extract(year from (SELECT d FROM hoje))::int, extract(month from (SELECT d FROM hoje))::int, p.dia_vencimento),
+           to_char((SELECT d FROM hoje),'YYYY-MM')
+    FROM patient_plans p JOIN users u ON u.id=p.user_id
+    WHERE p.ativo=true AND p.valor > 0
+    ON CONFLICT (user_id, competencia) WHERE competencia IS NOT NULL DO NOTHING
+    RETURNING id`);
+  return r.rowCount;
+}
+// job: contas a receber que vencem em N dias (do plano do paciente) e ainda não foram lembradas
+export async function receivablesForReminder() {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT r.id, r.valor, r.vencimento::text AS vencimento, u.name AS paciente, u.email, u.phone
+    FROM receivables r
+    JOIN users u ON u.id=r.user_id
+    JOIN patient_plans p ON p.user_id=r.user_id
+    WHERE r.status='pendente' AND r.lembrete_em IS NULL AND p.lembrete_dias > 0
+      AND r.vencimento = ((now() AT TIME ZONE 'America/Sao_Paulo')::date + p.lembrete_dias)`);
+  return r.rows;
+}
+export async function markReceivableReminded(id) {
+  if (!pool) return;
+  await pool.query('UPDATE receivables SET lembrete_em=now() WHERE id=$1', [id]);
 }
 
 // médias da tríade nos últimos N dias (para as esferas do painel)
