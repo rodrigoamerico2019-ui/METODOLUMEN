@@ -63,14 +63,14 @@
 
 <script>
 const PLANOS = {
-  essencial:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',ano:'989,00'},
-  profissional:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',ano:'1.890,00'},
-  clinica:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',ano:'3.490,90'},
-  premium:{nome:'TRILUMEN PREMIUM',lim:'até 500 pacientes',preco:'549,90',ano:'5.490,00'},
+  essencial:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90'},
+  profissional:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00'},
+  clinica:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,09'},
+  premium:{nome:'TRILUMEN PREMIUM',lim:'até 500 pacientes',preco:'549,90',parc:'549,00'},
   // aliases legados
-  one:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',ano:'989,00'},
-  plus:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',ano:'1.890,00'},
-  prime:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',ano:'3.490,90'}
+  one:{nome:'TRILUMEN ESSENCIAL',lim:'até 30 pacientes',preco:'99,90',parc:'98,90'},
+  plus:{nome:'TRILUMEN PROFISSIONAL',lim:'até 100 pacientes',preco:'179,90',parc:'189,00'},
+  prime:{nome:'TRILUMEN CLÍNICA',lim:'até 250 pacientes',preco:'329,90',parc:'349,09'}
 };
 const qs = new URLSearchParams(location.search);
 const plano = (qs.get('plano')||'essencial').toLowerCase();
@@ -79,7 +79,7 @@ const p = PLANOS[plano] || PLANOS.essencial;
 document.getElementById('pNome').textContent = p.nome;
 document.getElementById('pLim').textContent = p.lim + (ciclo==='anual' ? ' · plano anual' : '');
 document.getElementById('pPreco').innerHTML = ciclo==='anual'
-  ? 'R$ '+p.ano+' <small>/ano</small>'
+  ? '10x de R$ '+p.parc+' <small>no cartão · ou à vista no Pix</small>'
   : 'R$ '+p.preco+' <small>/mês</small>';
 document.getElementById('emb').innerHTML = `<svg width="42" height="92" viewBox="0 0 100 210">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C9A227"/><stop offset="55%" stop-color="#E4C878"/><stop offset="100%" stop-color="#C9A227"/></linearGradient></defs>

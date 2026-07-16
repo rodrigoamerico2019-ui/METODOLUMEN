@@ -302,10 +302,10 @@ document.getElementById('footEmb').innerHTML = emblema(13);
 
 /* CHECKOUT — leva ao formulário de assinatura (Asaas) */
 const PRECOS = {
-  essencial:   { mes:'99,90',  ano:'989,00' },
-  profissional:{ mes:'179,90', ano:'1.890,00' },
-  clinica:     { mes:'329,90', ano:'3.490,90' },
-  premium:     { mes:'549,90', ano:'5.490,00' }
+  essencial:   { mes:'99,90',  parc:'98,90' },
+  profissional:{ mes:'179,90', parc:'189,00' },
+  clinica:     { mes:'329,90', parc:'349,09' },
+  premium:     { mes:'549,90', parc:'549,00' }
 };
 let CICLO = 'mensal';
 function setCiclo(c){
@@ -314,10 +314,14 @@ function setCiclo(c){
   document.getElementById('ctAno').classList.toggle('on', c==='anual');
   document.querySelectorAll('.plano').forEach(card => {
     const k = card.dataset.plano; if(!k || !PRECOS[k]) return;
-    const v = (c==='anual' ? PRECOS[k].ano : PRECOS[k].mes).split(',');
-    const preco = card.querySelector('.preco');
-    if(preco) preco.innerHTML =
-      `<span class="c">R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="p">/${c==='anual'?'ano':'mês'}</span>`;
+    const preco = card.querySelector('.preco'); if(!preco) return;
+    if(c==='anual'){
+      const v = PRECOS[k].parc.split(',');
+      preco.innerHTML = `<span class="c">10x de R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="p">no cartão</span>`;
+    } else {
+      const v = PRECOS[k].mes.split(',');
+      preco.innerHTML = `<span class="c">R$</span><span class="n">${v[0]}</span><span class="c">,${v[1]}</span><span class="p">/mês</span>`;
+    }
   });
 }
 function assinar(plano){ window.location.href = '/checkout.html?plano=' + plano + '&ciclo=' + CICLO; }

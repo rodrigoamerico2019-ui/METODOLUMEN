@@ -537,15 +537,29 @@ app.post('/api/checkout', async (req, res) => {
       cpfCnpj: doc, mobilePhone: String(phone || '').replace(/\D/g, '') || undefined
     });
     const hoje = new Date().toISOString().slice(0, 10);
-    const sub = await asaas('/subscriptions', 'POST', {
-      customer: cust.id, billingType: 'UNDEFINED', value: valor, nextDueDate: hoje,
-      cycle: anual ? 'YEARLY' : 'MONTHLY',
-      description: 'Assinatura ' + p.nome + (anual ? ' (anual)' : ' (mensal)'),
-      externalReference: String(plano).toLowerCase()
-    });
-    const pays = await asaas('/subscriptions/' + sub.id + '/payments');
-    const url = pays.data?.[0]?.invoiceUrl || null;
-    await saveCheckout({ sub: sub.id, customer: cust.id, email, nome, plano: String(plano).toLowerCase(), ciclo: anual ? 'anual' : 'mensal' });
+    let url, ref;
+    if (anual) {
+      // ANUAL: cobrança única parcelável em até 10x no cartão (Pix/boleto também)
+      const pg = await asaas('/payments', 'POST', {
+        customer: cust.id, billingType: 'UNDEFINED',
+        installmentCount: 10, totalValue: valor, dueDate: hoje,
+        description: 'TriLumen ' + p.nome + ' — anual (em até 10x no cartão)',
+        externalReference: String(plano).toLowerCase()
+      });
+      ref = pg.installment || pg.id;
+      url = pg.invoiceUrl || null;
+    } else {
+      // MENSAL: assinatura recorrente (cliente escolhe Pix/cartão/boleto a cada mês)
+      const sub = await asaas('/subscriptions', 'POST', {
+        customer: cust.id, billingType: 'UNDEFINED', value: valor, nextDueDate: hoje,
+        cycle: 'MONTHLY', description: 'Assinatura ' + p.nome + ' (mensal)',
+        externalReference: String(plano).toLowerCase()
+      });
+      const pays = await asaas('/subscriptions/' + sub.id + '/payments');
+      url = pays.data?.[0]?.invoiceUrl || null;
+      ref = sub.id;
+    }
+    await saveCheckout({ sub: ref, customer: cust.id, email, nome, plano: String(plano).toLowerCase(), ciclo: anual ? 'anual' : 'mensal' });
     res.json({ ok: true, url });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
@@ -557,8 +571,11 @@ app.post('/api/webhook/asaas', async (req, res) => {
     if (process.env.ASAAS_WEBHOOK_TOKEN && req.headers['asaas-access-token'] !== process.env.ASAAS_WEBHOOK_TOKEN) return;
     const ev = req.body || {};
     const pay = ev.payment || {};
-    if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(ev.event) && pay.subscription) {
-      const ck = await getCheckoutBySub(pay.subscription);
+    if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(ev.event)) {
+      // ref = assinatura (mensal) OU parcelamento/pagamento (anual)
+      const ref = pay.subscription || pay.installment || pay.id;
+      if (!ref) return;
+      const ck = await getCheckoutBySub(ref);
       // financeiro do painel ADM: registra pagamento + próximo vencimento (mensal +1 mês, anual +1 ano)
       let prox = null;
       if (pay.dueDate) {
@@ -566,13 +583,13 @@ app.post('/api/webhook/asaas', async (req, res) => {
         if (ck?.ciclo === 'anual') d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1);
         prox = d.toISOString().slice(0, 10);
       }
-      await markOrgPagamento(pay.subscription, prox).catch(() => {});
+      await markOrgPagamento(ref, prox).catch(() => {});
       if (ck && !ck.provisioned_at) {
         const acesso = await provisionarAssinatura({
           plano: ck.plano, nome: ck.nome, email: ck.email,
-          asaasCustomer: ck.asaas_customer, asaasSubscription: pay.subscription
+          asaasCustomer: ck.asaas_customer, asaasSubscription: ref
         });
-        await markCheckoutProvisioned(pay.subscription);
+        await markCheckoutProvisioned(ref);
         if (!acesso.jaExistia) { await enviarAcessoMentor(acesso); console.log(`  Assinatura provisionada: ${acesso.email} (${acesso.plano_nome}).`); }
       }
     }
