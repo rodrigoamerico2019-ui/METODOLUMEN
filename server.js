@@ -356,14 +356,14 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // anotações privadas do mentor
-app.post('/api/admin/notes', requireAdmin, async (req, res) => {
+app.post('/api/admin/notes', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     await setNotasMentor(Number(req.query.id), (req.body || {}).texto || ''); res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // PLANO DE AÇÃO — gerar com IA, editar e entregar ao paciente
-app.post('/api/admin/plan/generate', requireAdmin, async (req, res) => {
+app.post('/api/admin/plan/generate', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'IA não configurada' });
@@ -371,7 +371,7 @@ app.post('/api/admin/plan/generate', requireAdmin, async (req, res) => {
     res.json({ ok: true, plano });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
-app.post('/api/admin/plan/save', requireAdmin, async (req, res) => {
+app.post('/api/admin/plan/save', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     const b = req.body || {};
@@ -379,7 +379,7 @@ app.post('/api/admin/plan/save', requireAdmin, async (req, res) => {
     res.json({ ok: true, plano });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
-app.post('/api/admin/plan/deliver', requireAdmin, async (req, res) => {
+app.post('/api/admin/plan/deliver', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     const plano = await setPlanDelivered(Number(req.query.id), !!(req.body || {}).entregue);
@@ -387,7 +387,7 @@ app.post('/api/admin/plan/deliver', requireAdmin, async (req, res) => {
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
-app.post('/api/admin/message', requireAdmin, async (req, res) => {
+app.post('/api/admin/message', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     const id = Number(req.query.id);
@@ -427,7 +427,7 @@ async function guardPaciente(req, res) {
   return true;
 }
 // transcrição de um dia de atendimento (consulta do mentor)
-app.get('/api/admin/transcript', requireAdmin, async (req, res) => {
+app.get('/api/admin/transcript', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     const msgs = await transcriptOfDay(Number(req.query.id), String(req.query.day || ''));
@@ -605,7 +605,7 @@ A luz só atravessa o que está alinhado. 🕊️`;
   console.log(`  [ACESSO TRILUMEN] ${a.email} → usuário ${a.username} / senha ${a.senha_temp} (SMTP off — envie manualmente)`);
 }
 // reprodução do áudio original (mentor)
-app.get('/api/admin/audio', requireAdmin, async (req, res) => {
+app.get('/api/admin/audio', requireAdmin, soMentor, async (req, res) => {
   try {
     const a = await getAudioBytes(Number(req.query.id));
     if (!a) return res.status(404).end();
