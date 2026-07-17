@@ -572,8 +572,16 @@ app.get('/api/admin/whats-test', requireAdmin, async (req, res) => {
       const r = await sendWhatsApp(String(req.query.phone), 'Oi! 🌿 Teste do TriLumen — se você recebeu esta mensagem, os lembretes de consulta e de mensalidade já funcionam no seu WhatsApp. 💛');
       return res.json({ enviado: r });
     }
-    const r = await fetch(`https://api.z-api.io/instances/${inst}/token/${token}/status`, { headers: { 'Client-Token': process.env.ZAPI_CLIENT_TOKEN || '' } });
-    res.json({ status: await r.json().catch(() => ({})), httpOk: r.ok });
+    const ct = String(process.env.ZAPI_CLIENT_TOKEN || '');
+    const rawInst = String(process.env.ZAPI_INSTANCE || ''), rawTok = String(process.env.ZAPI_TOKEN || '');
+    const diag = {
+      instLen: inst.length, tokenLen: token.length, clientLen: ct.trim().length,
+      instTinhaEspaco: rawInst !== rawInst.trim(), tokenTinhaEspaco: rawTok !== rawTok.trim(),
+      instComAspas: /["']/.test(inst), tokenComAspas: /["']/.test(token),
+      instInicio: inst.slice(0, 3), tokenInicio: token.slice(0, 3)
+    };
+    const r = await fetch(`https://api.z-api.io/instances/${inst}/token/${token}/status`, { headers: { 'Client-Token': ct.trim() } });
+    res.json({ status: await r.json().catch(() => ({})), httpOk: r.ok, diag });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
