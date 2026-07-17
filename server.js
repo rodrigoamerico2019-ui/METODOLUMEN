@@ -560,6 +560,22 @@ app.post('/api/admin/orgs/limite', requireAdmin, async (req, res) => {
     res.json(await setOrgLimite(Number(b.orgId), b.limite));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
+// TESTE do WhatsApp (super-admin): status da instância Z-API OU envia msg amigável (?phone=)
+app.get('/api/admin/whats-test', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const provider = (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase().trim();
+    if (!provider.startsWith('zapi')) return res.json({ ok: false, note: 'WHATSAPP_PROVIDER não é zapi', provider });
+    const inst = String(process.env.ZAPI_INSTANCE || '').trim(), token = String(process.env.ZAPI_TOKEN || '').trim();
+    if (!inst || !token) return res.json({ ok: false, note: 'Faltam ZAPI_INSTANCE e/ou ZAPI_TOKEN', temInstance: !!inst, temToken: !!token, temClientToken: !!process.env.ZAPI_CLIENT_TOKEN });
+    if (req.query.phone) {
+      const r = await sendWhatsApp(String(req.query.phone), 'Oi! 🌿 Teste do TriLumen — se você recebeu esta mensagem, os lembretes de consulta e de mensalidade já funcionam no seu WhatsApp. 💛');
+      return res.json({ enviado: r });
+    }
+    const r = await fetch(`https://api.z-api.io/instances/${inst}/token/${token}/status`, { headers: { 'Client-Token': process.env.ZAPI_CLIENT_TOKEN || '' } });
+    res.json({ status: await r.json().catch(() => ({})), httpOk: r.ok });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 
 // ---------------------------------------------------------
 //  ASSINATURA — provisionamento automático
