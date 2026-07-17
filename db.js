@@ -1144,10 +1144,12 @@ export async function generateMonthlyReceivables() {
 export async function receivablesForReminder() {
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT r.id, r.valor, r.vencimento::text AS vencimento, u.name AS paciente, u.email, u.phone
+    SELECT r.id, r.valor, r.vencimento::text AS vencimento, u.name AS paciente, u.email, u.phone,
+           o.nome AS clinica
     FROM receivables r
     JOIN users u ON u.id=r.user_id
     JOIN patient_plans p ON p.user_id=r.user_id
+    LEFT JOIN organizations o ON o.id=u.org_id
     WHERE r.status='pendente' AND r.lembrete_em IS NULL AND p.lembrete_dias > 0
       AND r.vencimento = ((now() AT TIME ZONE 'America/Sao_Paulo')::date + p.lembrete_dias)`);
   return r.rows;
@@ -1212,8 +1214,9 @@ export async function appointmentsForReminder(kind) {
     : "a.quando BETWEEN now() + interval '90 minutes' AND now() + interval '24 hours'";
   const r = await pool.query(`
     SELECT a.id, a.modalidade, a.local, ${FMT_LOCAL} AS quando_local,
-           u.name AS paciente, u.email, u.phone
+           u.name AS paciente, u.email, u.phone, o.nome AS clinica
     FROM appointments a JOIN users u ON u.id=a.user_id
+    LEFT JOIN organizations o ON o.id=u.org_id
     WHERE a.status='agendada' AND a.${col} IS NULL AND ${janela}`);
   return r.rows;
 }

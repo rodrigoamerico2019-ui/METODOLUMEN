@@ -986,7 +986,7 @@ async function rodarLembretesFinanceiros() {
       const primeiro = String(r.paciente || '').trim().split(' ')[0] || 'você';
       const venc = new Date(r.vencimento + 'T12:00:00').toLocaleDateString('pt-BR');
       const valor = 'R$ ' + Number(r.valor).toFixed(2).replace('.', ',');
-      const texto = `Oi ${primeiro}, tudo bem? 🌿\n\nPassando com carinho só pra lembrar que a sua mensalidade do acompanhamento (${valor}) vence no dia ${venc}.\n\nSe precisar de qualquer coisa, estou por aqui. Cuide-se com carinho. 💛`;
+      const texto = `Oi ${primeiro}, tudo bem? 🌿\n\nPassando com carinho só pra lembrar que a sua mensalidade do acompanhamento (${valor}) vence no dia ${venc}.\n\nSe precisar de qualquer coisa, estou por aqui. Cuide-se com carinho. 💛${r.clinica ? '\n\n— ' + r.clinica : ''}`;
       if (t && r.email) {
         try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: r.email, subject: 'Um lembrete carinhoso 🌿', text: texto }); } catch (_) {}
       }
@@ -1017,7 +1017,7 @@ async function enviarLembretesConsulta(kind) {
     const dia = String(c.quando_local || '').slice(8, 10) + '/' + String(c.quando_local || '').slice(5, 7);
     const quandoTxt = kind === '1h' ? `hoje às ${hora}` : `dia ${dia} às ${hora}`;
     const abertura = kind === '1h' ? 'Nossa consulta é daqui a pouco' : 'Passando com carinho pra lembrar da nossa consulta';
-    const texto = `Oi ${primeiro}, tudo bem? 🌿\n\n${abertura} — ${quandoTxt} (${c.modalidade}).${detalheModalidade(c)}\n\nTe espero com carinho. 💛`;
+    const texto = `Oi ${primeiro}, tudo bem? 🌿\n\n${abertura} — ${quandoTxt} (${c.modalidade}).${detalheModalidade(c)}\n\nTe espero com carinho. 💛${c.clinica ? '\n\n— ' + c.clinica : ''}`;
     if (t && c.email) { try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: c.email, subject: kind === '1h' ? 'Sua consulta é daqui a pouco 🌿' : 'Lembrete da sua consulta 🌿', text: texto }); } catch (_) {} }
     if (whatsOn && c.phone) { try { await sendWhatsApp(c.phone, texto); } catch (_) {} }
     await markAppointmentReminded(c.id, kind);
