@@ -235,6 +235,174 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_appt_org ON appointments (org_id, quando);
     CREATE INDEX IF NOT EXISTS idx_appt_user ON appointments (user_id, quando);
+
+    -- =========================================================
+    --  MÓDULO DE CLIENTES E PRONTUÁRIO (multiorganização)
+    --  O cliente = users(role='paciente') estendido por tabelas satélite.
+    -- =========================================================
+    -- Unidades da organização (opcional)
+    CREATE TABLE IF NOT EXISTS org_units (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL, ativo BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- RBAC: cada membro da equipe é um usuário com um papel na org
+    CREATE TABLE IF NOT EXISTS org_members (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE, unit_id BIGINT REFERENCES org_units(id),
+      role TEXT NOT NULL DEFAULT 'professional',   -- owner|admin|professional|professional_secondary|reception|financeiro
+      registro_profissional TEXT, ativo BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE (org_id, user_id)
+    );
+    -- migra mentores/owners atuais para org_members (admin/owner) — idempotente
+    INSERT INTO org_members (org_id, user_id, role)
+      SELECT org_id, id, CASE WHEN role='owner' THEN 'owner' ELSE 'admin' END
+      FROM users WHERE role IN ('mentor','owner') AND org_id IS NOT NULL
+      ON CONFLICT (org_id, user_id) DO NOTHING;
+    -- Ficha estendida do cliente
+    CREATE TABLE IF NOT EXISTS client_details (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, org_id BIGINT, unit_id BIGINT,
+      codigo TEXT, nome_social TEXT, sexo TEXT, genero TEXT, cpf TEXT, rg TEXT,
+      profissao TEXT, empresa TEXT, escolaridade TEXT, idioma TEXT, whatsapp TEXT,
+      cep TEXT, estado TEXT, pais TEXT, com_quem_reside TEXT, possui_filhos BOOLEAN, qtd_filhos INT,
+      info_familiar TEXT, acessibilidade TEXT, obs TEXT,
+      tipo_acompanhamento TEXT, data_entrada DATE, origem TEXT, status TEXT DEFAULT 'ativo',
+      canal_preferencial TEXT, obs_inicial TEXT,
+      created_by INT, updated_by INT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), deleted_at TIMESTAMPTZ
+    );
+    -- vínculo cliente ↔ profissionais (principal + secundários)
+    CREATE TABLE IF NOT EXISTS client_professionals (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      member_id BIGINT REFERENCES org_members(id) ON DELETE CASCADE, principal BOOLEAN DEFAULT false,
+      modulos JSONB DEFAULT '[]', created_at TIMESTAMPTZ DEFAULT now(), UNIQUE (client_user_id, member_id)
+    );
+    -- responsáveis legais
+    CREATE TABLE IF NOT EXISTS client_legal_guardians (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT, cpf TEXT, birth_date DATE, parentesco TEXT, phone TEXT, whatsapp TEXT, email TEXT, endereco TEXT,
+      responsavel_financeiro BOOLEAN, guarda_legal BOOLEAN, doc_url TEXT,
+      autoriza_atendimento BOOLEAN, autoriza_comunicacao BOOLEAN, restricoes TEXT, obs TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(), deleted_at TIMESTAMPTZ
+    );
+    -- contatos de emergência (múltiplos)
+    CREATE TABLE IF NOT EXISTS client_emergency_contacts (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT, relacionamento TEXT, phone TEXT, whatsapp TEXT, email TEXT, melhor_horario TEXT,
+      pode_emergencia BOOLEAN DEFAULT true, situacoes TEXT, obs TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(), deleted_at TIMESTAMPTZ
+    );
+    -- perfis sensíveis (JSONB flexível; acesso exige permissão específica)
+    CREATE TABLE IF NOT EXISTS client_health_profiles (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, org_id BIGINT,
+      dados JSONB DEFAULT '{}', updated_by INT, updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS client_emotional_profiles (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      escalas JSONB DEFAULT '{}', campos JSONB DEFAULT '{}', created_by INT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS client_spiritual_profiles (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      ativo BOOLEAN DEFAULT false, dados JSONB DEFAULT '{}', created_by INT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- medicamentos (estruturado; nunca apagar de vez — usa status/suspensão)
+    CREATE TABLE IF NOT EXISTS client_medications (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL, principio_ativo TEXT, dosagem TEXT, unidade TEXT, forma TEXT,
+      frequencia TEXT, horarios TEXT, via TEXT, motivo TEXT, prescrito_por TEXT, especialidade TEXT,
+      data_inicio DATE, data_fim_prevista DATE, uso_continuo BOOLEAN, usando_atualmente BOOLEAN DEFAULT true,
+      adesao TEXT, efeitos_positivos TEXT, efeitos_adversos TEXT, obs TEXT,
+      data_suspensao DATE, motivo_suspensao TEXT, status TEXT DEFAULT 'ativo',
+      created_by INT, created_at TIMESTAMPTZ DEFAULT now(), updated_by INT, updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- objetivos do acompanhamento
+    CREATE TABLE IF NOT EXISTS client_goals (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      titulo TEXT, descricao TEXT, categoria TEXT, prioridade TEXT, nota_inicial INT, meta INT, prazo DATE,
+      indicador TEXT, obstaculos TEXT, recursos TEXT, apoio TEXT, status TEXT DEFAULT 'planejado',
+      progresso INT DEFAULT 0, data_revisao DATE, obs TEXT,
+      created_by INT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), deleted_at TIMESTAMPTZ
+    );
+    -- consentimentos (LGPD)
+    CREATE TABLE IF NOT EXISTS client_consents (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL, versao TEXT, texto TEXT, status TEXT DEFAULT 'aceito',
+      aceito_em TIMESTAMPTZ DEFAULT now(), revogado_em TIMESTAMPTZ, motivo_revogacao TEXT,
+      usuario_id INT, ip TEXT, dispositivo TEXT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- documentos
+    CREATE TABLE IF NOT EXISTS client_documents (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT, tipo TEXT, mime TEXT, tamanho INT, bytes BYTEA, compartilhado BOOLEAN DEFAULT false,
+      uploaded_by INT, created_at TIMESTAMPTZ DEFAULT now(), deleted_at TIMESTAMPTZ
+    );
+    CREATE TABLE IF NOT EXISTS client_tags (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      tag TEXT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- sessões clínicas (prontuário)
+    CREATE TABLE IF NOT EXISTS sessions (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      member_id BIGINT REFERENCES org_members(id), unit_id BIGINT,
+      quando TIMESTAMPTZ, duracao_min INT DEFAULT 50, modalidade TEXT, tipo TEXT,
+      status TEXT DEFAULT 'agendada', data_proxima TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),
+      finalizado_em TIMESTAMPTZ, finalizado_por INT, deleted_at TIMESTAMPTZ
+    );
+    -- prontuário PRIVADO (1:1 com a sessão — nunca vai automático ao cliente)
+    CREATE TABLE IF NOT EXISTS session_records (
+      session_id BIGINT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, org_id BIGINT,
+      demanda TEXT, estado_emocional_inicial TEXT, temas TEXT, intervencoes TEXT, percepcoes TEXT,
+      evolucao TEXT, condutas TEXT, encaminhamentos TEXT, riscos TEXT, proximos_passos TEXT,
+      obs_privadas TEXT, updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- resumo COMPARTILHÁVEL (1:1 — liberado manualmente)
+    CREATE TABLE IF NOT EXISTS session_shared_summaries (
+      session_id BIGINT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE, org_id BIGINT,
+      resumo TEXT, compartilhado BOOLEAN DEFAULT false, incluir_relatorio BOOLEAN DEFAULT false,
+      permite_download BOOLEAN DEFAULT false, permite_impressao BOOLEAN DEFAULT false,
+      compartilha_tarefas BOOLEAN DEFAULT false, shared_by INT, shared_at TIMESTAMPTZ
+    );
+    -- tarefas
+    CREATE TABLE IF NOT EXISTS session_tasks (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, session_id BIGINT REFERENCES sessions(id) ON DELETE CASCADE,
+      client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      titulo TEXT, descricao TEXT, status TEXT DEFAULT 'pendente', prazo DATE,
+      compartilhada BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- relatórios + versões + entregas
+    CREATE TABLE IF NOT EXISTS reports (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      member_id BIGINT, tipo TEXT, periodo_inicio DATE, periodo_fim DATE, config JSONB DEFAULT '{}',
+      status TEXT DEFAULT 'gerado', created_by INT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS report_versions (
+      id BIGSERIAL PRIMARY KEY, report_id BIGINT REFERENCES reports(id) ON DELETE CASCADE, versao INT DEFAULT 1,
+      doc_uid TEXT, dados_incluidos JSONB, pdf BYTEA, gerado_por INT, gerado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS report_deliveries (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, report_id BIGINT REFERENCES reports(id) ON DELETE CASCADE,
+      canal TEXT, destinatario TEXT, assunto TEXT, mensagem TEXT, status TEXT, erro TEXT,
+      enviado_por INT, enviado_em TIMESTAMPTZ DEFAULT now()
+    );
+    -- auditoria
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id BIGSERIAL PRIMARY KEY, org_id BIGINT, user_id INT, client_user_id INT,
+      acao TEXT, entidade TEXT, entidade_id TEXT, dados JSONB, ip TEXT, created_at TIMESTAMPTZ DEFAULT now()
+    );
+    -- índices
+    CREATE INDEX IF NOT EXISTS idx_orgmembers_org ON org_members (org_id, ativo);
+    CREATE INDEX IF NOT EXISTS idx_clientdet_org ON client_details (org_id, status);
+    CREATE INDEX IF NOT EXISTS idx_clientprof_client ON client_professionals (client_user_id);
+    CREATE INDEX IF NOT EXISTS idx_meds_client ON client_medications (client_user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_goals_client ON client_goals (client_user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_client ON sessions (client_user_id, quando DESC);
+    CREATE INDEX IF NOT EXISTS idx_sessions_org ON sessions (org_id, quando DESC);
+    CREATE INDEX IF NOT EXISTS idx_tasks_client ON session_tasks (client_user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_consents_client ON client_consents (client_user_id, tipo);
+    CREATE INDEX IF NOT EXISTS idx_docs_client ON client_documents (client_user_id);
+    CREATE INDEX IF NOT EXISTS idx_reports_client ON reports (client_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_logs (org_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_client ON audit_logs (client_user_id, created_at DESC);
     -- PLANO DE AÇÃO: um plano por paciente (foco + passos práticos), gerado pela IA,
     -- revisado pelo mentor e, quando ele quiser, entregue ao paciente no app.
     CREATE TABLE IF NOT EXISTS action_plans (
