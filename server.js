@@ -36,7 +36,11 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment,
          appointmentsForReminder, markAppointmentReminded,
          getMemberRole, listOrgMembers, registrarAuditoria, listAudit,
-         criarClienteRapido, listClients, getClientFull, updateClientDetails } from './db.js';
+         criarClienteRapido, listClients, getClientFull, updateClientDetails,
+         getHealthProfile, saveHealthProfile, getSpiritualProfile, saveSpiritualProfile,
+         addEmotionalAssessment, listEmotionalAssessments,
+         listMedications, addMedication, suspendMedication,
+         listGoals, addGoal, updateGoal, deleteGoal } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -509,6 +513,72 @@ app.get('/api/admin/clients/audit', requireAdmin, soMentor, carregaPapel, permit
     if (id && req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
     res.json({ eventos: await listAudit(req.orgId, id) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ===== ETAPA 4: dados clínicos sensíveis (perfis clínicos) =====
+const CLINICO = ['owner', 'admin', 'professional', 'professional_secondary'];
+async function clienteDaOrg(req, res) {
+  const id = Number(req.query.id);
+  if (req.orgId && (await patientOrg(id)) !== req.orgId) { res.status(403).json({ error: 'cliente de outra organização' }); return null; }
+  return id;
+}
+const clin = [requireAdmin, soMentor, carregaPapel, permite(...CLINICO)];
+// Saúde
+app.get('/api/admin/clients/health', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ perfil: await getHealthProfile(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/health', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json(await saveHealthProfile(id, req.orgId, (req.body || {}).dados || req.body, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// Espiritual
+app.get('/api/admin/clients/spiritual', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ perfil: await getSpiritualProfile(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/spiritual', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; const b = req.body || {}; res.json(await saveSpiritualProfile(id, req.orgId, b.ativo, b.dados || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// Emocional
+app.get('/api/admin/clients/emotional', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ avaliacoes: await listEmotionalAssessments(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/emotional', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; const b = req.body || {}; res.json(await addEmotionalAssessment(id, req.orgId, b.escalas || {}, b.campos || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// Medicamentos
+app.get('/api/admin/clients/meds', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ meds: await listMedications(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/meds', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ ok: true, ...(await addMedication(id, req.orgId, req.body || {}, req.mentorUid)) }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/meds/suspend', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; const b = req.body || {}; res.json(await suspendMedication(Number(req.query.medId), req.orgId, id, b.motivo, b.data_suspensao, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// Objetivos
+app.get('/api/admin/clients/goals', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ goals: await listGoals(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/goals', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ ok: true, ...(await addGoal(id, req.orgId, req.body || {}, req.mentorUid)) }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/goals/update', ...clin, async (req, res) => {
+  try { res.json(await updateGoal(Number(req.query.goalId), req.orgId, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/goals/delete', ...clin, async (req, res) => {
+  try { res.json(await deleteGoal(Number(req.query.goalId), req.orgId)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, soMentor, async (req, res) => {

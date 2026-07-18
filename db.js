@@ -1513,6 +1513,108 @@ export async function updateClientDetails(userId, orgId, updaterUid, d = {}) {
   return { ok: true };
 }
 
+// ---- helpers ----
+const dateOrNull = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null;
+const numOrNull = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+
+// ---- SAÚDE (JSONB, sensível) ----
+export async function getHealthProfile(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT dados, updated_at FROM client_health_profiles WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+export async function saveHealthProfile(userId, orgId, dados, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query(`INSERT INTO client_health_profiles (user_id, org_id, dados, updated_by, updated_at)
+    VALUES ($1,$2,$3,$4,now()) ON CONFLICT (user_id) DO UPDATE SET dados=$3, updated_by=$4, updated_at=now()`,
+    [userId, orgId, JSON.stringify(dados || {}), uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'saude_atualizada', entidade: 'client_health', entidadeId: userId });
+  return { ok: true };
+}
+// ---- ESPIRITUAL (JSONB + opt-in) ----
+export async function getSpiritualProfile(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT id, ativo, dados FROM client_spiritual_profiles WHERE client_user_id=$1 ORDER BY id LIMIT 1', [userId]);
+  return r.rows[0] || null;
+}
+export async function saveSpiritualProfile(userId, orgId, ativo, dados, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const ex = await pool.query('SELECT id FROM client_spiritual_profiles WHERE client_user_id=$1 ORDER BY id LIMIT 1', [userId]);
+  if (ex.rows[0]) await pool.query('UPDATE client_spiritual_profiles SET ativo=$2, dados=$3 WHERE id=$1', [ex.rows[0].id, !!ativo, JSON.stringify(dados || {})]);
+  else await pool.query('INSERT INTO client_spiritual_profiles (org_id, client_user_id, ativo, dados, created_by) VALUES ($1,$2,$3,$4,$5)', [orgId, userId, !!ativo, JSON.stringify(dados || {}), uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'espiritual_atualizado', entidade: 'client_spiritual', entidadeId: userId });
+  return { ok: true };
+}
+// ---- EMOCIONAL (avaliações ao longo do tempo; 1ª = linha de base) ----
+export async function addEmotionalAssessment(userId, orgId, escalas, campos, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query('INSERT INTO client_emotional_profiles (org_id, client_user_id, escalas, campos, created_by) VALUES ($1,$2,$3,$4,$5)',
+    [orgId, userId, JSON.stringify(escalas || {}), JSON.stringify(campos || {}), uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'emocional_registrado', entidade: 'client_emotional', entidadeId: userId });
+  return { ok: true };
+}
+export async function listEmotionalAssessments(userId, limit = 24) {
+  if (!pool || !userId) return [];
+  const r = await pool.query('SELECT id, escalas, campos, created_at FROM client_emotional_profiles WHERE client_user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit]);
+  return r.rows;
+}
+// ---- MEDICAMENTOS (estruturado; nunca apaga — suspende) ----
+export async function listMedications(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query('SELECT * FROM client_medications WHERE client_user_id=$1 ORDER BY status, created_at DESC', [userId]);
+  return r.rows;
+}
+export async function addMedication(userId, orgId, m, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  if (!String(m.nome || '').trim()) throw new Error('Informe o nome do medicamento.');
+  const r = await pool.query(`INSERT INTO client_medications
+    (org_id, client_user_id, nome, principio_ativo, dosagem, unidade, forma, frequencia, horarios, via, motivo, prescrito_por, especialidade,
+     data_inicio, data_fim_prevista, uso_continuo, usando_atualmente, adesao, efeitos_positivos, efeitos_adversos, obs, created_by, updated_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$22) RETURNING id`,
+    [orgId, userId, String(m.nome).trim(), m.principio_ativo || null, m.dosagem || null, m.unidade || null, m.forma || null, m.frequencia || null, m.horarios || null, m.via || null,
+     m.motivo || null, m.prescrito_por || null, m.especialidade || null, dateOrNull(m.data_inicio), dateOrNull(m.data_fim_prevista), !!m.uso_continuo, m.usando_atualmente !== false,
+     m.adesao || null, m.efeitos_positivos || null, m.efeitos_adversos || null, m.obs || null, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'medicamento_criado', entidade: 'medication', entidadeId: r.rows[0].id, dados: { nome: m.nome } });
+  return { id: r.rows[0].id };
+}
+export async function suspendMedication(id, orgId, clientId, motivo, dataSusp, uid) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE client_medications SET status='suspenso', usando_atualmente=false,
+    data_suspensao=$3, motivo_suspensao=$4, updated_by=$5, updated_at=now() WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`,
+    [id, orgId, dateOrNull(dataSusp) || new Date().toISOString().slice(0, 10), motivo || null, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'medicamento_suspenso', entidade: 'medication', entidadeId: id, dados: { motivo } });
+  return { ok: true };
+}
+// ---- OBJETIVOS ----
+export async function listGoals(userId) {
+  if (!pool || !userId) return [];
+  const r = await pool.query('SELECT * FROM client_goals WHERE client_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC', [userId]);
+  return r.rows;
+}
+export async function addGoal(userId, orgId, g, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  if (!String(g.titulo || '').trim()) throw new Error('Informe o título do objetivo.');
+  const r = await pool.query(`INSERT INTO client_goals
+    (org_id, client_user_id, titulo, descricao, categoria, prioridade, nota_inicial, meta, prazo, indicador, obstaculos, recursos, apoio, status, progresso, data_revisao, obs, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+    [orgId, userId, String(g.titulo).trim(), g.descricao || null, g.categoria || null, g.prioridade || null, numOrNull(g.nota_inicial), numOrNull(g.meta), dateOrNull(g.prazo),
+     g.indicador || null, g.obstaculos || null, g.recursos || null, g.apoio || null, g.status || 'planejado', numOrNull(g.progresso) || 0, dateOrNull(g.data_revisao), g.obs || null, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'objetivo_criado', entidade: 'goal', entidadeId: r.rows[0].id });
+  return { id: r.rows[0].id };
+}
+export async function updateGoal(id, orgId, g, uid) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE client_goals SET status=COALESCE($3,status), progresso=COALESCE($4,progresso), obs=COALESCE($5,obs), data_revisao=COALESCE($6,data_revisao), updated_at=now()
+    WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`, [id, orgId, g.status || null, g.progresso != null ? numOrNull(g.progresso) : null, g.obs || null, dateOrNull(g.data_revisao)]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: null, acao: 'objetivo_alterado', entidade: 'goal', entidadeId: id });
+  return { ok: true };
+}
+export async function deleteGoal(id, orgId) {
+  if (!pool) return;
+  await pool.query('UPDATE client_goals SET deleted_at=now() WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId]);
+  return { ok: true };
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;

@@ -1131,8 +1131,13 @@ function cliTab(t){
   const body=$('cliTabBody');
   if(t==='visao') return renderCliVisao(body);
   if(t==='dados') return renderCliDados(body);
+  if(t==='saude') return renderCliSaude(body);
+  if(t==='medicamentos') return renderCliMeds(body);
+  if(t==='emocional') return renderCliEmo(body);
+  if(t==='espiritual') return renderCliEsp(body);
+  if(t==='objetivos') return renderCliObj(body);
   if(t==='auditoria') return renderCliAudit(body);
-  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Saúde, medicamentos, perfil emocional/espiritual, objetivos, sessões, documentos, relatórios e consentimentos.</small></div>';
+  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Sessões, documentos, relatórios e consentimentos.</small></div>';
 }
 function renderCliVisao(body){
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
@@ -1177,6 +1182,96 @@ async function renderCliAudit(body){
     body.innerHTML = evs.length ? '<div class="tl">'+evs.map(e=>'<div class="tl-item" style="--dot:#F5C76A"><div class="tl-when">'+new Date(e.created_at).toLocaleString('pt-BR')+'</div><div class="tl-tit">'+e.acao+'</div><div class="tl-det">'+(e.quem||'sistema')+(e.entidade?' · '+e.entidade:'')+'</div></div>').join('')+'</div>' : '<p class="muted">Sem eventos.</p>';
   }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; }
 }
+
+/* ===== ETAPA 4: abas clínicas (saúde, medicamentos, emocional, espiritual, objetivos) ===== */
+function campoJ(prefix,key,label,type,val){
+  if(type==='bool') return '<div><label>'+label+'</label><select id="'+prefix+key+'"><option value="">—</option><option value="1"'+(val===true?' selected':'')+'>Sim</option><option value="0"'+(val===false?' selected':'')+'>Não</option></select></div>';
+  return '<div><label>'+label+'</label><input id="'+prefix+key+'" type="'+(type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/></div>';
+}
+function lerCampos(prefix,defs){ const o={}; for(const [k,,t] of defs){ const el=$(prefix+k); if(!el) continue; let v=el.value; if(t==='bool') v=v===''?null:(v==='1'); else if(t==='number') v=v===''?null:Number(v); else v=v.trim()||null; o[k]=v; } return o; }
+
+const SAUDE_DEFS=[['possui_condicao','Tem condição diagnosticada','bool'],['condicoes','Condições','text'],['possui_deficiencia','Possui deficiência','bool'],['acessibilidade','Acessibilidade','text'],['acomp_medico','Acompanhamento médico','bool'],['medico_nome','Médico','text'],['especialidade','Especialidade','text'],['medico_telefone','Tel. do médico','text'],['alergias_bool','Tem alergias','bool'],['alergias','Alergias','text'],['internacoes','Internações','text'],['cirurgias','Cirurgias','text'],['sono_qualidade','Sono 0-10','number'],['sono_horas','Horas de sono','number'],['atividade_fisica','Atividade física','text'],['alimentacao','Alimentação','text'],['alcool','Álcool','text'],['tabaco','Tabaco','text'],['outras_substancias','Outras substâncias','text'],['obs_restritas','Observações restritas','text']];
+async function renderCliSaude(body){
+  let dados={}; try{ dados=(await api('/api/admin/clients/health?id='+clienteAtual.id)).perfil?.dados||{}; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Dados sensíveis — acesso restrito a perfis clínicos.</p>'+
+    '<div class="dp-grid">'+SAUDE_DEFS.map(([k,l,t])=>campoJ('sd_',k,l,t,dados[k])).join('')+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarSaude()">Salvar saúde</button> <span class="muted" id="sdStatus"></span>';
+}
+async function salvarSaude(){ $('sdStatus').textContent='salvando…'; try{ await postAdmin('/api/admin/clients/health?id='+clienteAtual.id,{dados:lerCampos('sd_',SAUDE_DEFS)}); $('sdStatus').textContent='salvo ✓'; }catch(e){ $('sdStatus').textContent='erro: '+e.message; } }
+
+const ESP_DEFS=[['tradicao','Tradição religiosa','text'],['comunidade','Igreja/comunidade','text'],['acomp_pastoral','Acompanhamento pastoral','bool'],['relacao_deus','Relação com Deus','text'],['oracao','Vida de oração 0-10','number'],['leitura','Leitura bíblica 0-10','number'],['comunhao','Comunhão 0-10','number'],['proposito_espiritual','Propósito espiritual 0-10','number'],['crise_fe','Crise de fé','bool'],['conflitos','Conflitos espirituais','text'],['trauma_religioso','Trauma/abuso religioso','text'],['temas_trabalhar','Temas a trabalhar','text'],['temas_evitar','Temas a NÃO abordar','text'],['autoriza_referencias','Autoriza refs bíblicas','bool'],['autoriza_exercicios','Autoriza exercícios espirituais','bool'],['obs','Observações','text']];
+async function renderCliEsp(body){
+  let p={ativo:false,dados:{}}; try{ p=(await api('/api/admin/clients/spiritual?id='+clienteAtual.id)).perfil||{ativo:false,dados:{}}; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const dados=p.dados||{};
+  body.innerHTML='<label class="fin-chk" style="margin-bottom:12px"><input type="checkbox" id="espAtivo" '+(p.ativo?'checked':'')+'/> Incluir espiritualidade (com autorização do cliente e habilitação da organização)</label>'+
+    '<div class="dp-grid">'+ESP_DEFS.map(([k,l,t])=>campoJ('sp_',k,l,t,dados[k])).join('')+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarEsp()">Salvar espiritual</button> <span class="muted" id="spStatus"></span>';
+}
+async function salvarEsp(){ $('spStatus').textContent='salvando…'; try{ await postAdmin('/api/admin/clients/spiritual?id='+clienteAtual.id,{ativo:$('espAtivo').checked,dados:lerCampos('sp_',ESP_DEFS)}); $('spStatus').textContent='salvo ✓'; }catch(e){ $('spStatus').textContent='erro: '+e.message; } }
+
+const EMO_ESCALAS=['ansiedade','tristeza','estresse','irritabilidade','medo','culpa','solidao','desanimo','sobrecarga','esperanca','energia','clareza_mental','autoestima','relacionamentos','proposito'];
+const EMO_CAMPOS=[['motivo_procura','Motivo da procura'],['emocao_predominante','Emoção predominante'],['preocupacao','Principal preocupação'],['gatilhos','Gatilhos conhecidos'],['enfrentamento','Estratégias de enfrentamento'],['rede_apoio','Rede de apoio'],['o_que_piora','O que costuma piorar'],['o_que_ajuda','O que costuma ajudar'],['historico','Histórico de acompanhamento'],['diagnosticos','Diagnósticos informados'],['obs','Observações']];
+async function renderCliEmo(body){
+  let avs=[]; try{ avs=(await api('/api/admin/clients/emotional?id='+clienteAtual.id)).avaliacoes||[]; }catch(e){}
+  const esc=EMO_ESCALAS.map(k=>'<div><label>'+k.replace(/_/g,' ')+' 0-10</label><input id="em_'+k+'" type="number" min="0" max="10"/></div>').join('');
+  const cps=EMO_CAMPOS.map(([k,l])=>'<div style="grid-column:1/-1"><label>'+l+'</label><input id="emc_'+k+'"/></div>').join('');
+  const hist=avs.length?'<p class="subc" style="margin-top:16px">'+avs.length+' avaliação(ões) registrada(s) — a 1ª é a linha de base. Última: '+new Date(avs[0].created_at).toLocaleDateString('pt-BR')+'</p>':'<p class="muted" style="margin-top:12px">Nenhuma avaliação — registre a linha de base.</p>';
+  body.innerHTML='<p class="subc">Nova avaliação emocional (escalas de 0 a 10)</p><div class="dp-grid">'+esc+cps+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarEmo()">Registrar avaliação</button> <span class="muted" id="emStatus"></span>'+hist;
+}
+async function salvarEmo(){
+  const escalas={}; EMO_ESCALAS.forEach(k=>{ const v=$('em_'+k).value; if(v!=='') escalas[k]=Number(v); });
+  const campos={}; EMO_CAMPOS.forEach(([k])=>{ const v=$('emc_'+k).value.trim(); if(v) campos[k]=v; });
+  $('emStatus').textContent='salvando…';
+  try{ await postAdmin('/api/admin/clients/emotional?id='+clienteAtual.id,{escalas,campos}); cliTab('emocional'); }catch(e){ $('emStatus').textContent='erro: '+e.message; }
+}
+
+async function renderCliMeds(body){
+  let meds=[]; try{ meds=(await api('/api/admin/clients/meds?id='+clienteAtual.id)).meds||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const lista=meds.length?meds.map(m=>{
+    const st=m.status==='suspenso'?'<span class="lic-st inativa">suspenso</span>':'<span class="lic-st ativa">em uso</span>';
+    const acao=m.status!=='suspenso'?'<button onclick="suspenderMed('+m.id+')">suspender</button>':'';
+    return '<div class="ag-item"><div class="ag-info"><b>'+m.nome+'</b>'+(m.dosagem?' '+m.dosagem+' '+(m.unidade||''):'')+'<small>'+[m.frequencia,m.prescrito_por,m.motivo_suspensao?('suspenso: '+m.motivo_suspensao):''].filter(Boolean).join(' · ')+'</small></div>'+st+'<div class="fin-act">'+acao+'</div></div>';
+  }).join(''):'<p class="muted">Nenhum medicamento cadastrado.</p>';
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">ℹ️ Cadastro informativo — não substitui orientação médica. O sistema não recomenda nem altera dose.</p>'+
+    '<div class="cad-form" style="margin-bottom:14px">'+
+    '<input id="mdNome" placeholder="Medicamento *"/><input id="mdDose" placeholder="Dosagem"/><input id="mdUnid" placeholder="Unid." style="max-width:90px"/>'+
+    '<input id="mdFreq" placeholder="Frequência"/><input id="mdHor" placeholder="Horários"/><input id="mdPresc" placeholder="Prescrito por"/>'+
+    '<input id="mdInicio" type="date" title="Início"/><input id="mdMotivo" placeholder="Motivo" style="flex-basis:100%"/>'+
+    '<button class="btn" style="padding:9px 18px" onclick="addMed()">Adicionar</button><div id="mdStatus" style="width:100%"></div></div>'+lista;
+}
+async function addMed(){
+  const b={ nome:$('mdNome').value.trim(), dosagem:$('mdDose').value.trim(), unidade:$('mdUnid').value.trim(), frequencia:$('mdFreq').value.trim(), horarios:$('mdHor').value.trim(), prescrito_por:$('mdPresc').value.trim(), data_inicio:$('mdInicio').value, motivo:$('mdMotivo').value.trim() };
+  if(!b.nome){ $('mdStatus').textContent='Informe o medicamento.'; return; }
+  try{ await postAdmin('/api/admin/clients/meds?id='+clienteAtual.id,b); cliTab('medicamentos'); }catch(e){ $('mdStatus').textContent='erro: '+e.message; }
+}
+async function suspenderMed(medId){
+  const motivo=prompt('Motivo da suspensão:'); if(motivo===null) return;
+  try{ await postAdmin('/api/admin/clients/meds/suspend?id='+clienteAtual.id+'&medId='+medId,{motivo}); cliTab('medicamentos'); }catch(e){ alert('Erro: '+e.message); }
+}
+
+async function renderCliObj(body){
+  let goals=[]; try{ goals=(await api('/api/admin/clients/goals?id='+clienteAtual.id)).goals||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const lista=goals.length?goals.map(g=>'<div class="ag-item"><div class="ag-info"><b>'+g.titulo+'</b>'+(g.categoria?' · '+g.categoria:'')+'<small>'+(g.descricao||'')+' · progresso '+(g.progresso||0)+'%'+(g.prioridade?' · prioridade '+g.prioridade:'')+'</small></div>'+
+    '<span class="lic-st '+(g.status==='concluido'?'ativa':(g.status==='cancelado'?'inativa':'pend'))+'">'+(g.status||'')+'</span>'+
+    '<div class="fin-act"><button onclick="progObj('+g.id+','+(g.progresso||0)+')">progresso</button><button onclick="delObj('+g.id+')">excluir</button></div></div>').join(''):'<p class="muted">Nenhum objetivo.</p>';
+  body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
+    '<input id="goTit" placeholder="Título do objetivo *"/><input id="goCat" placeholder="Categoria"/>'+
+    '<select id="goPri"><option value="">Prioridade…</option><option>alta</option><option>média</option><option>baixa</option></select>'+
+    '<input id="goNota" type="number" min="0" max="10" placeholder="Nota 0-10" style="max-width:120px"/><input id="goMeta" type="number" min="0" max="10" placeholder="Meta 0-10" style="max-width:110px"/>'+
+    '<input id="goPrazo" type="date" title="Prazo"/><input id="goDesc" placeholder="Descrição" style="flex-basis:100%"/>'+
+    '<button class="btn" style="padding:9px 18px" onclick="addObj()">Adicionar</button><div id="goStatus" style="width:100%"></div></div>'+lista;
+}
+async function addObj(){
+  const b={ titulo:$('goTit').value.trim(), categoria:$('goCat').value.trim(), prioridade:$('goPri').value, nota_inicial:$('goNota').value, meta:$('goMeta').value, prazo:$('goPrazo').value, descricao:$('goDesc').value.trim() };
+  if(!b.titulo){ $('goStatus').textContent='Informe o título.'; return; }
+  try{ await postAdmin('/api/admin/clients/goals?id='+clienteAtual.id,b); cliTab('objetivos'); }catch(e){ $('goStatus').textContent='erro: '+e.message; }
+}
+async function progObj(id,atual){
+  const v=prompt('Progresso (0 a 100%):',atual); if(v===null) return;
+  try{ await postAdmin('/api/admin/clients/goals/update?goalId='+id,{progresso:Number(v),status:Number(v)>=100?'concluido':'em_andamento'}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); }
+}
+async function delObj(id){ if(!confirm('Excluir objetivo?')) return; try{ await postAdmin('/api/admin/clients/goals/delete?goalId='+id,{}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); } }
 
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){
