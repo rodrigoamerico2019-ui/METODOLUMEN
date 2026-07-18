@@ -34,7 +34,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment,
-         appointmentsForReminder, markAppointmentReminded } from './db.js';
+         appointmentsForReminder, markAppointmentReminded,
+         getMemberRole, listOrgMembers, registrarAuditoria, listAudit,
+         criarClienteRapido, listClients, getClientFull, updateClientDetails } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -281,6 +283,17 @@ function soMentor(req, res, next) {
   if (req.superAdmin) return res.status(403).json({ error: 'O painel administrativo não acessa pacientes dos clientes.' });
   next();
 }
+// RBAC: carrega o papel do mentor (org_members). Sem registro explícito, um mentor é 'admin' da própria org.
+async function carregaPapel(req, res, next) {
+  let role = null;
+  try { if (req.mentorUid) role = await getMemberRole(req.orgId, req.mentorUid); } catch (_) {}
+  req.memberRole = role || (req.mentorUid ? 'admin' : null);
+  next();
+}
+function permite(...roles) {
+  return (req, res, next) => roles.includes(req.memberRole) ? next()
+    : res.status(403).json({ error: 'Seu perfil não tem permissão para esta ação.' });
+}
 
 app.get('/api/admin/invite', requireAdmin, async (req, res) => {
   try {
@@ -457,6 +470,45 @@ app.post('/api/admin/agenda/status', requireAdmin, soMentor, async (req, res) =>
 app.post('/api/admin/agenda/delete', requireAdmin, soMentor, async (req, res) => {
   try { res.json(await deleteAppointment(Number(req.query.id), req.orgId)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== MÓDULO DE CLIENTES (Etapa 3) =====
+const STAFF = ['owner', 'admin', 'professional', 'professional_secondary', 'reception'];
+const CADASTRA = ['owner', 'admin', 'professional', 'reception'];
+app.get('/api/admin/clients', requireAdmin, soMentor, carregaPapel, permite(...STAFF, 'financeiro'), async (req, res) => {
+  try { res.json({ clientes: await listClients(req.orgId, { q: req.query.q, status: req.query.status }) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/clients/members', requireAdmin, soMentor, carregaPapel, async (req, res) => {
+  try { res.json({ membros: await listOrgMembers(req.orgId) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients', requireAdmin, soMentor, carregaPapel, permite(...CADASTRA), async (req, res) => {
+  try { res.json({ ok: true, cliente: await criarClienteRapido(req.orgId, req.mentorUid, { ...(req.body || {}), ip: req.ip }) }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/clients/full', requireAdmin, soMentor, carregaPapel, permite(...STAFF, 'financeiro'), async (req, res) => {
+  try {
+    const id = Number(req.query.id);
+    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    const c = await getClientFull(id);
+    if (!c) return res.status(404).json({ error: 'cliente não encontrado' });
+    res.json(c);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/update', requireAdmin, soMentor, carregaPapel, permite(...CADASTRA), async (req, res) => {
+  try {
+    const id = Number(req.query.id);
+    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    res.json(await updateClientDetails(id, req.orgId, req.mentorUid, { ...(req.body || {}), ip: req.ip }));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/clients/audit', requireAdmin, soMentor, carregaPapel, permite('owner', 'admin', 'professional'), async (req, res) => {
+  try {
+    const id = Number(req.query.id) || null;
+    if (id && req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    res.json({ eventos: await listAudit(req.orgId, id) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, soMentor, async (req, res) => {

@@ -214,6 +214,24 @@
   .ag-info small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;word-break:break-word}
   .ag-mod{font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
   .ag-mod.online{color:#7ab8d9;border-color:#2e4a57} .ag-mod.presencial{color:#7fb069;border-color:#3a5a2e}
+  /* Módulo de clientes */
+  .cli-filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .cli-filtros input,.cli-filtros select,.cad-form input,.cad-form select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 12px;font-size:13px;font-family:inherit}
+  .cli-filtros input{flex:1;min-width:200px}
+  .cli-filtros input:focus,.cli-filtros select:focus,.cad-form input:focus,.cad-form select:focus{outline:none;border-color:var(--gold)}
+  .cad-form{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .cad-form input,.cad-form select{flex:1;min-width:150px}
+  .cad-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid #3a5a2e;border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7}
+  .cad-ok b{color:var(--gold2)}
+  .cli-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:14px 0 18px}
+  .cli-tab{background:transparent;border:none;color:var(--dim);font-size:12.5px;padding:8px 12px;border-radius:8px 8px 0 0;cursor:pointer;font-family:inherit}
+  .cli-tab.on{color:var(--gold2);border-bottom:2px solid var(--gold)}
+  .cli-tab:hover{color:var(--ink)}
+  .dp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+  .dp-grid label{font-size:10.5px;color:var(--faint);display:block;margin-bottom:3px;letter-spacing:.3px}
+  .dp-grid input,.dp-grid select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:13px;font-family:inherit}
+  .dp-grid input:focus,.dp-grid select:focus{outline:none;border-color:var(--gold)}
+  .cli-vazio{color:var(--dim);font-size:13px;padding:20px;text-align:center}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
   .sess-day{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -320,6 +338,7 @@
     <div class="brand"><span id="sideEmblema"></span><h1>TRILUMEN</h1></div>
     <div class="nav-item on" data-v="prioridades" onclick="nav('prioridades')"><span class="ic">✦</span> Prioridades</div>
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
+    <div class="nav-item" data-v="clientes" onclick="nav('clientes')"><span class="ic">☰</span> Clientes</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
     <div class="nav-item" data-v="agenda" onclick="nav('agenda')"><span class="ic">◷</span> Agenda</div>
@@ -585,6 +604,40 @@
       </div>
     </section>
 
+    <!-- ===== MÓDULO DE CLIENTES — lista + cadastro rápido ===== -->
+    <section id="view-clientes" class="hide">
+      <div class="topline"><h2>Clientes</h2><span class="sub">cadastro, ficha e prontuário — isolado por organização</span></div>
+      <div class="card">
+        <div class="h2c">＋ Cadastro rápido <button class="btn" style="float:right;padding:8px 18px" onclick="toggleCadRapido()">Novo cliente</button></div>
+        <div id="cadRapidoBox" style="display:none"></div>
+      </div>
+      <div class="card">
+        <div class="cli-filtros">
+          <input id="cliBusca" placeholder="Buscar por nome, código ou e-mail…" oninput="carregarClientes()"/>
+          <select id="cliStatus" onchange="carregarClientes()">
+            <option value="">Todos os status</option>
+            <option>lead</option><option>aguardando</option><option>triagem</option><option>ativo</option>
+            <option>pausado</option><option>concluido</option><option>alta</option><option>desistente</option>
+            <option>encaminhado</option><option>inativo</option>
+          </select>
+        </div>
+        <div class="lic-wrap"><table class="lic-tabela" id="cliTabela"></table></div>
+      </div>
+    </section>
+
+    <!-- ===== PERFIL DO CLIENTE (abas) ===== -->
+    <section id="view-cliente" class="hide">
+      <button class="back" onclick="nav('clientes')">← todos os clientes</button>
+      <div class="card">
+        <div class="ficha-head">
+          <img id="cliFoto" class="ficha-foto" alt=""/>
+          <div style="flex:1"><div class="h2c" id="cliNome"></div><p class="subc" id="cliSub"></p></div>
+        </div>
+        <div class="cli-tabs" id="cliTabs"></div>
+        <div id="cliTabBody"></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -617,7 +670,7 @@ $('sideEmblema').innerHTML = emblema(13);
 
 /* ===== navegação ===== */
 function nav(v){
-  ['prioridades','geral','jornadas','detalhe','licencas','financeiro','agenda'].forEach(x=>$('view-'+x).classList.add('hide'));
+  ['prioridades','geral','jornadas','detalhe','licencas','financeiro','agenda','clientes','cliente'].forEach(x=>$('view-'+x).classList.add('hide'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   if(v==='alertas'){
     $('view-jornadas').classList.remove('hide');
@@ -626,6 +679,9 @@ function nav(v){
   } else if(v==='detalhe'){
     $('view-detalhe').classList.remove('hide');
     document.querySelector('[data-v="jornadas"]').classList.add('on');
+  } else if(v==='cliente'){
+    $('view-cliente').classList.remove('hide');
+    document.querySelector('[data-v="clientes"]').classList.add('on');
   } else {
     $('view-'+v).classList.remove('hide');
     const it = document.querySelector('[data-v="'+v+'"]'); if(it) it.classList.add('on');
@@ -635,6 +691,7 @@ function nav(v){
     if(v==='licencas') carregarLicencas();
     if(v==='financeiro') carregarFinanceiro();
     if(v==='agenda') carregarAgenda();
+    if(v==='clientes') carregarClientes();
   }
   window.scrollTo(0,0);
 }
@@ -752,7 +809,7 @@ async function bootAfterAuth(){
     const me = await api('/api/mentor/me');
     IS_SUPER = !!me.super;
     // ADM (super): só Clientes, SEM acesso aos pacientes → esconde os menus de pacientes
-    ['prioridades','geral','jornadas','alertas','financeiro','agenda'].forEach(v => {
+    ['prioridades','geral','jornadas','alertas','financeiro','agenda','clientes'].forEach(v => {
       const it = document.querySelector('.nav-item[data-v="'+v+'"]');
       if(it) it.classList.toggle('hide', IS_SUPER);
     });
@@ -1001,6 +1058,124 @@ function agendarPaciente(){
   const pid = pacienteAtual && pacienteAtual.id;
   nav('agenda');
   if(pid) setTimeout(()=>{ preencheAgPac(); $('agPac').value=pid; $('agData').focus(); }, 60);
+}
+
+/* ===== MÓDULO DE CLIENTES (Etapa 3) ===== */
+const TIPOS_ACOMP = ['Psicoterapia','Terapia','Mentoria','Aconselhamento pastoral','Discipulado','Atendimento de casal','Atendimento familiar','Atendimento em grupo','Outro'];
+let membrosOrg = [], clienteAtual = null;
+async function carregarClientes(){
+  try{
+    const q = ($('cliBusca')?.value||'').trim(), st = $('cliStatus')?.value||'';
+    const d = await api('/api/admin/clients?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(st));
+    const linhas = (d.clientes||[]).map(c=>{
+      const badge = '<span class="lic-st '+(c.status==='ativo'?'ativa':(['inativo','desistente'].includes(c.status)?'inativa':'pend'))+'">'+(c.status||'—')+'</span>';
+      const acesso = c.tem_acesso ? '<span class="lic-st ativa">com acesso</span>' : '<span class="muted">sem acesso</span>';
+      return '<tr><td class="lic-cliente"><b>'+(c.name||'—')+'</b><small>'+(c.codigo||'')+(c.tipo_acompanhamento?' · '+c.tipo_acompanhamento:'')+'</small></td>'+
+        '<td>'+(c.profissional||'<span class="muted">—</span>')+'</td><td>'+badge+'</td><td>'+acesso+'</td>'+
+        '<td class="fin-act"><button onclick="abrirCliente('+c.id+')">Abrir ficha →</button></td></tr>';
+    }).join('');
+    $('cliTabela').innerHTML = '<thead><tr><th>Cliente</th><th>Profissional</th><th>Status</th><th>Acesso</th><th></th></tr></thead>'+
+      '<tbody>'+(linhas||'<tr><td colspan="5" class="muted">Nenhum cliente ainda. Clique em “Novo cliente”.</td></tr>')+'</tbody>';
+  }catch(e){ $('cliTabela').innerHTML='<tbody><tr><td class="muted">Erro: '+e.message+'</td></tr></tbody>'; }
+}
+async function toggleCadRapido(){
+  const box=$('cadRapidoBox');
+  if(box.style.display!=='none'){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  if(!membrosOrg.length){ try{ membrosOrg=(await api('/api/admin/clients/members')).membros||[]; }catch(_){ } }
+  const tipos = TIPOS_ACOMP.map(t=>'<option>'+t+'</option>').join('');
+  const profs = '<option value="">Profissional responsável…</option>'+membrosOrg.map(m=>'<option value="'+m.id+'">'+m.name+'</option>').join('');
+  box.innerHTML = '<div class="cad-form">'+
+    '<input id="crNome" placeholder="Nome completo *"/>'+
+    '<input id="crSocial" placeholder="Nome social"/>'+
+    '<input id="crNasc" type="date" title="Nascimento"/>'+
+    '<input id="crFone" placeholder="Telefone"/>'+
+    '<input id="crWhats" placeholder="WhatsApp"/>'+
+    '<input id="crEmail" type="email" placeholder="E-mail (opcional)"/>'+
+    '<select id="crTipo"><option value="">Tipo de acompanhamento…</option>'+tipos+'</select>'+
+    '<select id="crProf">'+profs+'</select>'+
+    '<input id="crEntrada" type="date" title="Data de entrada"/>'+
+    '<input id="crOrigem" placeholder="Origem (indicação, site…)"/>'+
+    '<input id="crCanal" placeholder="Canal preferencial"/>'+
+    '<input id="crObs" placeholder="Observação inicial" style="flex-basis:100%"/>'+
+    '<button class="btn" style="padding:9px 20px" onclick="salvarCadRapido()">Salvar cliente</button>'+
+    '<div id="crResult" style="width:100%"></div></div>';
+}
+async function salvarCadRapido(){
+  const body={ name:$('crNome').value.trim(), nome_social:$('crSocial').value.trim(), birth:$('crNasc').value,
+    phone:$('crFone').value, whatsapp:$('crWhats').value, email:$('crEmail').value.trim(), tipo_acompanhamento:$('crTipo').value,
+    member_id:$('crProf').value||undefined, data_entrada:$('crEntrada').value, origem:$('crOrigem').value.trim(),
+    canal_preferencial:$('crCanal').value.trim(), obs_inicial:$('crObs').value.trim() };
+  if(!body.name){ $('crResult').innerHTML='<span style="color:var(--amarelo)">Informe o nome.</span>'; return; }
+  $('crResult').innerHTML='salvando…';
+  try{
+    const d=await postAdmin('/api/admin/clients', body);
+    $('crResult').innerHTML='<div class="cad-ok">✅ Cliente criado — código <b>'+d.cliente.codigo+'</b>. '+
+      '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="abrirCliente('+d.cliente.id+')">Abrir ficha</button></div>';
+    carregarClientes();
+  }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
+}
+const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+async function abrirCliente(id){
+  try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ alert('Erro: '+e.message); return; }
+  clienteAtual.id=id; nav('cliente');
+  const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
+  $('cliNome').textContent = b.name + (det.nome_social?' ("'+det.nome_social+'")':'');
+  $('cliSub').textContent = (det.codigo||'') + ' · ' + (det.tipo_acompanhamento||'acompanhamento') + ' · ' + (b.email && !b.email.includes('@sem-email.')?b.email:'sem e-mail');
+  const foto=$('cliFoto'); if(b.photo){ foto.src=b.photo; foto.classList.add('on'); } else { foto.classList.remove('on'); }
+  $('cliTabs').innerHTML = CLI_TABS.map(t=>'<button class="cli-tab" data-t="'+t[0]+'" onclick="cliTab(\''+t[0]+'\')">'+t[1]+'</button>').join('');
+  cliTab('visao');
+}
+function cliTab(t){
+  document.querySelectorAll('#cliTabs .cli-tab').forEach(x=>x.classList.toggle('on', x.dataset.t===t));
+  const body=$('cliTabBody');
+  if(t==='visao') return renderCliVisao(body);
+  if(t==='dados') return renderCliDados(body);
+  if(t==='auditoria') return renderCliAudit(body);
+  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Saúde, medicamentos, perfil emocional/espiritual, objetivos, sessões, documentos, relatórios e consentimentos.</small></div>';
+}
+function renderCliVisao(body){
+  const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
+  const prof=(clienteAtual.profissionais||[]).map(p=>p.name+(p.principal?' (principal)':'')).join(', ')||'—';
+  const linha=(k,v)=> v?('<span class="stat"><b>'+v+'</b>'+k+'</span>'):'';
+  body.innerHTML='<div id="dStats">'+
+    linha('código',det.codigo)+linha('status',det.status)+linha('tipo',det.tipo_acompanhamento)+
+    linha('idade',b.idade!=null?b.idade+' anos':'')+linha('telefone',b.phone)+linha('cidade',b.city)+
+    linha('profissional(is)',prof)+linha('acesso ao app',b.tem_acesso?'ativo':'não')+'</div>'+
+    (clienteAtual.emergencia.length?'<p class="subc" style="margin-top:14px">🆘 Emergência: '+clienteAtual.emergencia.map(e=>e.nome+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
+    (det.obs_inicial?'<p class="muted" style="margin-top:8px">Obs.: '+det.obs_inicial+'</p>':'');
+}
+function campoCli(id,label,val,type){ return '<div><label>'+label+'</label><input id="'+id+'" type="'+(type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/></div>'; }
+function renderCliDados(body){
+  const b=clienteAtual.basico, d=clienteAtual.detalhes||{};
+  const nasc = b.birth_date?String(b.birth_date).slice(0,10):'';
+  body.innerHTML='<div class="dp-grid">'+
+    campoCli('dpNome','Nome completo',b.name)+campoCli('dpSocial','Nome social',d.nome_social)+campoCli('dpNasc','Nascimento',nasc,'date')+
+    campoCli('dpSexo','Sexo',d.sexo)+campoCli('dpGenero','Gênero',d.genero)+campoCli('dpEstadoCivil','Estado civil',b.marital_status)+
+    campoCli('dpCpf','CPF',d.cpf)+campoCli('dpRg','RG',d.rg)+campoCli('dpProfissao','Profissão',d.profissao)+campoCli('dpEmpresa','Empresa',d.empresa)+
+    campoCli('dpEscolaridade','Escolaridade',d.escolaridade)+campoCli('dpIdioma','Idioma',d.idioma)+
+    campoCli('dpFone','Telefone',b.phone)+campoCli('dpWhats','WhatsApp',d.whatsapp)+
+    campoCli('dpCidade','Cidade',b.city)+campoCli('dpEndereco','Endereço',b.address)+campoCli('dpCep','CEP',d.cep)+campoCli('dpEstado','Estado',d.estado)+campoCli('dpPais','País',d.pais)+
+    campoCli('dpReside','Com quem reside',d.com_quem_reside)+campoCli('dpFilhos','Qtd. filhos',d.qtd_filhos,'number')+
+    campoCli('dpAcess','Acessibilidade',d.acessibilidade)+campoCli('dpObs','Observações',d.obs)+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarDadosCliente()">Salvar dados</button> <span class="muted" id="dpStatus"></span>';
+}
+async function salvarDadosCliente(){
+  const g=id=>$(id).value.trim();
+  const body={ name:g('dpNome'), nome_social:g('dpSocial'), birth:$('dpNasc').value, sexo:g('dpSexo'), genero:g('dpGenero'),
+    marital_status:g('dpEstadoCivil'), cpf:g('dpCpf'), rg:g('dpRg'), profissao:g('dpProfissao'), empresa:g('dpEmpresa'),
+    escolaridade:g('dpEscolaridade'), idioma:g('dpIdioma'), phone:g('dpFone'), whatsapp:g('dpWhats'),
+    city:g('dpCidade'), address:g('dpEndereco'), cep:g('dpCep'), estado:g('dpEstado'), pais:g('dpPais'),
+    com_quem_reside:g('dpReside'), qtd_filhos:$('dpFilhos').value, acessibilidade:g('dpAcess'), obs:g('dpObs') };
+  $('dpStatus').textContent='salvando…';
+  try{ await postAdmin('/api/admin/clients/update?id='+clienteAtual.id, body); $('dpStatus').textContent='salvo ✓'; }
+  catch(e){ $('dpStatus').textContent='erro: '+e.message; }
+}
+async function renderCliAudit(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
+  try{ const d=await api('/api/admin/clients/audit?id='+clienteAtual.id); const evs=d.eventos||[];
+    body.innerHTML = evs.length ? '<div class="tl">'+evs.map(e=>'<div class="tl-item" style="--dot:#F5C76A"><div class="tl-when">'+new Date(e.created_at).toLocaleString('pt-BR')+'</div><div class="tl-tit">'+e.acao+'</div><div class="tl-det">'+(e.quem||'sistema')+(e.entidade?' · '+e.entidade:'')+'</div></div>').join('')+'</div>' : '<p class="muted">Sem eventos.</p>';
+  }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; }
 }
 
 /* ===== VISÃO GERAL ===== */

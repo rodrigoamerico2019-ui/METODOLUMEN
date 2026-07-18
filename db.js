@@ -1398,6 +1398,121 @@ export async function markAppointmentReminded(id, kind) {
   await pool.query(`UPDATE appointments SET ${col}=now() WHERE id=$1`, [id]);
 }
 
+// =========================================================
+//  MÓDULO DE CLIENTES — RBAC, cadastro, lista, perfil, auditoria (Etapa 3)
+// =========================================================
+export async function getMemberRole(orgId, userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT role FROM org_members WHERE org_id=$1 AND user_id=$2 AND ativo=true', [orgId, userId]);
+  return r.rows[0]?.role || null;
+}
+export async function listOrgMembers(orgId) {
+  if (!pool) return [];
+  const r = await pool.query(`SELECT om.id, om.role, u.name, u.email FROM org_members om JOIN users u ON u.id=om.user_id
+    WHERE ($1::bigint IS NULL OR om.org_id=$1) AND om.ativo=true ORDER BY u.name`, [orgId]);
+  return r.rows;
+}
+export async function registrarAuditoria({ orgId, userId, clientId, acao, entidade, entidadeId, dados, ip }) {
+  if (!pool) return;
+  await pool.query(`INSERT INTO audit_logs (org_id, user_id, client_user_id, acao, entidade, entidade_id, dados, ip)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [orgId || null, userId || null, clientId || null, acao, entidade || null, entidadeId != null ? String(entidadeId) : null,
+     dados ? JSON.stringify(dados) : null, ip || null]);
+}
+export async function listAudit(orgId, clientId, limit = 100) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT a.acao, a.entidade, a.entidade_id, a.dados, a.created_at, u.name AS quem
+    FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id
+    WHERE ($1::bigint IS NULL OR a.org_id=$1) AND ($2::int IS NULL OR a.client_user_id=$2)
+    ORDER BY a.created_at DESC LIMIT $3`, [orgId, clientId || null, limit]);
+  return r.rows;
+}
+const codigoCliente = () => 'CLI-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+
+// CADASTRO RÁPIDO — cria o cliente (users role=paciente, SEM senha) + ficha estendida
+export async function criarClienteRapido(orgId, criadorUid, d = {}) {
+  if (!pool) throw new Error('banco não configurado');
+  const nome = String(d.name || '').trim();
+  if (nome.length < 2) throw new Error('Informe o nome do cliente.');
+  let email = norm(d.email);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
+  if (!email) email = 'cliente_' + Date.now() + Math.random().toString(36).slice(2, 6) + '@sem-email.trilumen';
+  if ((await pool.query('SELECT 1 FROM users WHERE email=$1', [email])).rows[0]) throw new Error('Já existe um cadastro com este e-mail.');
+  const nasc = /^\d{4}-\d{2}-\d{2}$/.test(String(d.birth || '')) ? d.birth : null;
+  const u = await pool.query(
+    `INSERT INTO users (email, name, password_hash, role, org_id, birth_date, phone, created_at)
+     VALUES ($1,$2,'', 'paciente', $3, $4, $5, now()) RETURNING id`,
+    [email, nome, orgId, nasc, String(d.phone || '').replace(/\D/g, '') || null]);
+  const cid = u.rows[0].id;
+  const codigo = codigoCliente();
+  await pool.query(`INSERT INTO client_details
+    (user_id, org_id, codigo, nome_social, whatsapp, tipo_acompanhamento, data_entrada, origem, status, canal_preferencial, obs_inicial, created_by, updated_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)`,
+    [cid, orgId, codigo, String(d.nome_social || '').trim() || null, String(d.whatsapp || '').replace(/\D/g, '') || null,
+     d.tipo_acompanhamento || null,
+     /^\d{4}-\d{2}-\d{2}$/.test(String(d.data_entrada || '')) ? d.data_entrada : new Date().toISOString().slice(0, 10),
+     d.origem || null, d.status || 'ativo', d.canal_preferencial || null, String(d.obs_inicial || '').slice(0, 500) || null, criadorUid || null]);
+  await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [cid]);
+  if (d.member_id) await pool.query(
+    `INSERT INTO client_professionals (org_id, client_user_id, member_id, principal) VALUES ($1,$2,$3,true)
+     ON CONFLICT (client_user_id, member_id) DO NOTHING`, [orgId, cid, Number(d.member_id)]);
+  await registrarAuditoria({ orgId, userId: criadorUid, clientId: cid, acao: 'cliente_criado', entidade: 'client', entidadeId: cid,
+    dados: { nome, codigo }, ip: d.ip });
+  return { id: cid, codigo, email: email.includes('@sem-email.') ? null : email };
+}
+
+export async function listClients(orgId, { q, status, limit = 200 } = {}) {
+  if (!pool) return [];
+  const r = await pool.query(`
+    SELECT u.id, u.name, u.email, u.phone, u.created_at,
+           cd.codigo, cd.status, cd.tipo_acompanhamento, cd.nome_social, cd.whatsapp,
+           (u.password_hash <> '') AS tem_acesso,
+           (SELECT m2.name FROM client_professionals cp JOIN org_members om ON om.id=cp.member_id
+              JOIN users m2 ON m2.id=om.user_id WHERE cp.client_user_id=u.id AND cp.principal=true LIMIT 1) AS profissional
+    FROM users u LEFT JOIN client_details cd ON cd.user_id=u.id
+    WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1) AND cd.deleted_at IS NULL
+      AND ($2::text IS NULL OR $2='' OR lower(u.name) LIKE '%'||lower($2)||'%' OR cd.codigo ILIKE '%'||$2||'%' OR u.email ILIKE '%'||$2||'%')
+      AND ($3::text IS NULL OR $3='' OR cd.status=$3)
+    ORDER BY u.name LIMIT $4`, [orgId, q || null, status || null, limit]);
+  return r.rows;
+}
+
+export async function getClientFull(userId) {
+  if (!pool || !userId) return null;
+  const [basic, det, prof, emerg, guard] = await Promise.all([
+    pool.query(`SELECT id, name, email, phone, birth_date, marital_status, city, address, emergency_name, emergency_phone, photo,
+       date_part('year', age(birth_date))::int AS idade, org_id, (password_hash <> '') AS tem_acesso FROM users WHERE id=$1`, [userId]),
+    pool.query('SELECT * FROM client_details WHERE user_id=$1', [userId]),
+    pool.query(`SELECT cp.id, cp.principal, om.role, u.name FROM client_professionals cp
+       JOIN org_members om ON om.id=cp.member_id JOIN users u ON u.id=om.user_id WHERE cp.client_user_id=$1`, [userId]),
+    pool.query('SELECT * FROM client_emergency_contacts WHERE client_user_id=$1 AND deleted_at IS NULL ORDER BY id', [userId]),
+    pool.query('SELECT * FROM client_legal_guardians WHERE client_user_id=$1 AND deleted_at IS NULL ORDER BY id', [userId])
+  ]);
+  if (!basic.rows[0]) return null;
+  return { basico: basic.rows[0], detalhes: det.rows[0] || null, profissionais: prof.rows, emergencia: emerg.rows, responsaveis: guard.rows };
+}
+
+export async function updateClientDetails(userId, orgId, updaterUid, d = {}) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  await pool.query(`UPDATE users SET name=COALESCE($2,name), phone=COALESCE($3,phone), birth_date=COALESCE($4,birth_date),
+     marital_status=COALESCE($5,marital_status), city=COALESCE($6,city), address=COALESCE($7,address) WHERE id=$1 AND role='paciente'`,
+    [userId, d.name || null, d.phone != null ? String(d.phone).replace(/\D/g, '') : null,
+     /^\d{4}-\d{2}-\d{2}$/.test(String(d.birth || '')) ? d.birth : null, d.marital_status || null, d.city || null, d.address || null]);
+  await pool.query(`INSERT INTO client_details (user_id, org_id, created_by, updated_by) VALUES ($1,$2,$3,$3) ON CONFLICT (user_id) DO NOTHING`,
+    [userId, orgId, updaterUid || null]);
+  const cols = ['nome_social','sexo','genero','cpf','rg','profissao','empresa','escolaridade','idioma','whatsapp','cep','estado','pais','com_quem_reside','info_familiar','acessibilidade','obs','tipo_acompanhamento','origem','status','canal_preferencial'];
+  const sets = [], vals = [userId]; let i = 2;
+  for (const c of cols) if (d[c] !== undefined) { sets.push(`${c}=$${i++}`); vals.push(d[c] === '' ? null : d[c]); }
+  if (d.possui_filhos !== undefined) { sets.push(`possui_filhos=$${i++}`); vals.push(!!d.possui_filhos); }
+  if (d.qtd_filhos !== undefined) { sets.push(`qtd_filhos=$${i++}`); vals.push(Number(d.qtd_filhos) || null); }
+  sets.push(`updated_by=$${i++}`); vals.push(updaterUid || null);
+  sets.push('updated_at=now()');
+  await pool.query(`UPDATE client_details SET ${sets.join(', ')} WHERE user_id=$1`, vals);
+  await registrarAuditoria({ orgId, userId: updaterUid, clientId: userId, acao: 'cadastro_alterado', entidade: 'client', entidadeId: userId, ip: d.ip });
+  return { ok: true };
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;
