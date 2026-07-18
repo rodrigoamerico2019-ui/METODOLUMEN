@@ -917,44 +917,48 @@ export async function transcriptOfDay(userId, day) {
 // =========================================================
 //  VISÃO GERAL DA PLATAFORMA (dashboard TriLumen)
 // =========================================================
-export async function overviewStats() {
+export async function overviewStats(orgId = null) {
   if (!pool) return null;
   const r = await pool.query(`
     SELECT
-      (SELECT count(*)::int FROM users) AS pessoas,
-      (SELECT count(DISTINCT user_id)::int FROM messages WHERE created_at > now() - interval '30 days') AS jornadas,
-      (SELECT count(DISTINCT user_id)::int FROM messages
-         WHERE meta->>'risco'='ALTO' AND created_at > now() - interval '7 days') AS alertas,
-      (SELECT count(*)::int FROM checkins
-         WHERE day = (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS checkins_hoje`);
+      (SELECT count(*)::int FROM users u WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1)) AS pessoas,
+      (SELECT count(DISTINCT m.user_id)::int FROM messages m JOIN users u ON u.id=m.user_id
+         WHERE m.created_at > now() - interval '30 days' AND ($1::bigint IS NULL OR u.org_id=$1)) AS jornadas,
+      (SELECT count(DISTINCT m.user_id)::int FROM messages m JOIN users u ON u.id=m.user_id
+         WHERE m.meta->>'risco'='ALTO' AND m.created_at > now() - interval '7 days' AND ($1::bigint IS NULL OR u.org_id=$1)) AS alertas,
+      (SELECT count(*)::int FROM checkins c JOIN users u ON u.id=c.user_id
+         WHERE c.day = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND ($1::bigint IS NULL OR u.org_id=$1)) AS checkins_hoje`,
+    [orgId]);
   return r.rows[0];
 }
 
-// evolução emocional agregada de todos os pacientes (média da tríade por dia)
-export async function globalDaily(days = 30) {
+// evolução emocional agregada dos pacientes DA ORGANIZAÇÃO (média da tríade por dia)
+export async function globalDaily(orgId = null, days = 30) {
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
-           round(avg((meta->>'corpo')::numeric),1)    AS corpo,
-           round(avg((meta->>'alma')::numeric),1)     AS alma,
-           round(avg((meta->>'espirito')::numeric),1) AS espirito,
-           round(avg((meta->>'intensidade')::numeric),1) AS intensidade
-    FROM messages
-    WHERE role='assistant' AND meta IS NOT NULL
-      AND created_at > now() - ($1 || ' days')::interval
-    GROUP BY 1 ORDER BY 1`, [days]);
+    SELECT (m.created_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
+           round(avg((m.meta->>'corpo')::numeric),1)    AS corpo,
+           round(avg((m.meta->>'alma')::numeric),1)     AS alma,
+           round(avg((m.meta->>'espirito')::numeric),1) AS espirito,
+           round(avg((m.meta->>'intensidade')::numeric),1) AS intensidade
+    FROM messages m JOIN users u ON u.id=m.user_id
+    WHERE m.role='assistant' AND m.meta IS NOT NULL
+      AND m.created_at > now() - ($2 || ' days')::interval
+      AND ($1::bigint IS NULL OR u.org_id=$1)
+    GROUP BY 1 ORDER BY 1`, [orgId, days]);
   return r.rows;
 }
 
-// emoções predominantes na plataforma (para o gráfico de rosca)
-export async function emotionsPredominant(days = 30) {
+// emoções predominantes DA ORGANIZAÇÃO (para o gráfico de rosca)
+export async function emotionsPredominant(orgId = null, days = 30) {
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT meta->>'emocao' AS emocao, count(*)::int AS n
-    FROM messages
-    WHERE role='assistant' AND meta->>'emocao' IS NOT NULL AND meta->>'emocao' <> ''
-      AND created_at > now() - ($1 || ' days')::interval
-    GROUP BY 1 ORDER BY n DESC LIMIT 6`, [days]);
+    SELECT m.meta->>'emocao' AS emocao, count(*)::int AS n
+    FROM messages m JOIN users u ON u.id=m.user_id
+    WHERE m.role='assistant' AND m.meta->>'emocao' IS NOT NULL AND m.meta->>'emocao' <> ''
+      AND m.created_at > now() - ($2 || ' days')::interval
+      AND ($1::bigint IS NULL OR u.org_id=$1)
+    GROUP BY 1 ORDER BY n DESC LIMIT 6`, [orgId, days]);
   return r.rows;
 }
 

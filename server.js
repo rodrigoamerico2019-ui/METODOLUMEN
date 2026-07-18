@@ -487,7 +487,7 @@ app.get('/api/admin/collective', requireAdmin, soMentor, async (req, res) => {
 app.get('/api/admin/overview', requireAdmin, soMentor, async (req, res) => {
   try {
     const [stats, evolucao, emocoes] = await Promise.all([
-      overviewStats(), globalDaily(30), emotionsPredominant(30)
+      overviewStats(req.orgId), globalDaily(req.orgId, 30), emotionsPredominant(req.orgId, 30)
     ]);
     res.json({ stats, evolucao, emocoes, org: req.orgId ? await orgById(req.orgId) : null });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
