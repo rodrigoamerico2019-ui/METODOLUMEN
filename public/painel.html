@@ -216,21 +216,29 @@
   .ag-mod.online{color:#7ab8d9;border-color:#2e4a57} .ag-mod.presencial{color:#7fb069;border-color:#3a5a2e}
   /* Módulo de clientes */
   .cli-filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-  .cli-filtros input,.cli-filtros select,.cad-form input,.cad-form select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 12px;font-size:13px;font-family:inherit}
+  .cli-filtros input,.cli-filtros select,.cad-form input,.cad-form select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:11px 13px;font-size:14px;font-family:inherit}
   .cli-filtros input{flex:1;min-width:200px}
   .cli-filtros input:focus,.cli-filtros select:focus,.cad-form input:focus,.cad-form select:focus{outline:none;border-color:var(--gold)}
-  .cad-form{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-  .cad-form input,.cad-form select{flex:1;min-width:150px}
+  .cad-form{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px}
+  .cad-form input,.cad-form select{flex:1 1 calc(50% - 6px);min-width:220px}
+  .cad-form .cad-full{flex-basis:100%}
   .cad-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid #3a5a2e;border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7}
   .cad-ok b{color:var(--gold2)}
   .cli-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:14px 0 18px}
   .cli-tab{background:transparent;border:none;color:var(--dim);font-size:12.5px;padding:8px 12px;border-radius:8px 8px 0 0;cursor:pointer;font-family:inherit}
   .cli-tab.on{color:var(--gold2);border-bottom:2px solid var(--gold)}
   .cli-tab:hover{color:var(--ink)}
-  .dp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:16px}
-  .dp-grid label{font-size:10.5px;color:var(--faint);display:block;margin-bottom:3px;letter-spacing:.3px}
-  .dp-grid input,.dp-grid select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:13px;font-family:inherit}
-  .dp-grid input:focus,.dp-grid select:focus{outline:none;border-color:var(--gold)}
+  .dp-grid{display:flex;flex-wrap:wrap;gap:12px 14px;margin-bottom:16px}
+  .dp-grid>div{flex:1 1 100%;display:flex;flex-direction:column;min-width:0}
+  .dp-grid label{font-size:11px;color:var(--faint);margin-bottom:4px;letter-spacing:.3px}
+  .dp-grid input,.dp-grid select,.dp-grid textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:11px 13px;font-size:14px;font-family:inherit}
+  .dp-grid textarea{min-height:72px;resize:vertical}
+  .dp-grid input:focus,.dp-grid select:focus,.dp-grid textarea:focus{outline:none;border-color:var(--gold)}
+  .dp-grid .dp-full{flex-basis:100%}
+  .dp-grid .dp-half{flex-basis:calc(50% - 7px);min-width:200px}
+  .dp-grid .dp-third{flex-basis:calc(33.333% - 10px);min-width:150px}
+  .dp-grid .dp-quarter{flex-basis:calc(25% - 11px);min-width:130px}
+  @media(max-width:640px){ .dp-grid>div{flex-basis:100% !important} }
   .cli-vazio{color:var(--dim);font-size:13px;padding:20px;text-align:center}
   .pront-empty{color:var(--faint);font-style:italic}
   .hide{display:none}
@@ -1086,7 +1094,7 @@ async function toggleCadRapido(){
   const tipos = TIPOS_ACOMP.map(t=>'<option>'+t+'</option>').join('');
   const profs = '<option value="">Profissional responsável…</option>'+membrosOrg.map(m=>'<option value="'+m.id+'">'+m.name+'</option>').join('');
   box.innerHTML = '<div class="cad-form">'+
-    '<input id="crNome" placeholder="Nome completo *"/>'+
+    '<input id="crNome" class="cad-full" placeholder="Nome completo *"/>'+
     '<input id="crSocial" placeholder="Nome social"/>'+
     '<input id="crNasc" type="date" title="Nascimento"/>'+
     '<input id="crFone" placeholder="Telefone"/>'+
@@ -1150,19 +1158,29 @@ function renderCliVisao(body){
     (clienteAtual.emergencia.length?'<p class="subc" style="margin-top:14px">🆘 Emergência: '+clienteAtual.emergencia.map(e=>e.nome+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
     (det.obs_inicial?'<p class="muted" style="margin-top:8px">Obs.: '+det.obs_inicial+'</p>':'');
 }
-function campoCli(id,label,val,type){ return '<div><label>'+label+'</label><input id="'+id+'" type="'+(type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/></div>'; }
+function campoCli(id,label,val,opts){
+  opts=opts||{}; const cls=opts.w?('dp-'+opts.w):'';
+  const el = opts.ta ? '<textarea id="'+id+'">'+(val!=null?String(val):'')+'</textarea>'
+    : '<input id="'+id+'" type="'+(opts.type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/>';
+  return '<div class="'+cls+'"><label>'+label+'</label>'+el+'</div>';
+}
 function renderCliDados(body){
   const b=clienteAtual.basico, d=clienteAtual.detalhes||{};
   const nasc = b.birth_date?String(b.birth_date).slice(0,10):'';
   body.innerHTML='<div class="dp-grid">'+
-    campoCli('dpNome','Nome completo',b.name)+campoCli('dpSocial','Nome social',d.nome_social)+campoCli('dpNasc','Nascimento',nasc,'date')+
-    campoCli('dpSexo','Sexo',d.sexo)+campoCli('dpGenero','Gênero',d.genero)+campoCli('dpEstadoCivil','Estado civil',b.marital_status)+
-    campoCli('dpCpf','CPF',d.cpf)+campoCli('dpRg','RG',d.rg)+campoCli('dpProfissao','Profissão',d.profissao)+campoCli('dpEmpresa','Empresa',d.empresa)+
-    campoCli('dpEscolaridade','Escolaridade',d.escolaridade)+campoCli('dpIdioma','Idioma',d.idioma)+
-    campoCli('dpFone','Telefone',b.phone)+campoCli('dpWhats','WhatsApp',d.whatsapp)+
-    campoCli('dpCidade','Cidade',b.city)+campoCli('dpEndereco','Endereço',b.address)+campoCli('dpCep','CEP',d.cep)+campoCli('dpEstado','Estado',d.estado)+campoCli('dpPais','País',d.pais)+
-    campoCli('dpReside','Com quem reside',d.com_quem_reside)+campoCli('dpFilhos','Qtd. filhos',d.qtd_filhos,'number')+
-    campoCli('dpAcess','Acessibilidade',d.acessibilidade)+campoCli('dpObs','Observações',d.obs)+'</div>'+
+    campoCli('dpNome','Nome completo',b.name,{w:'full'})+
+    campoCli('dpSocial','Nome social',d.nome_social,{w:'full'})+
+    campoCli('dpNasc','Nascimento',nasc,{w:'quarter',type:'date'})+campoCli('dpSexo','Sexo',d.sexo,{w:'quarter'})+campoCli('dpGenero','Gênero',d.genero,{w:'quarter'})+campoCli('dpEstadoCivil','Estado civil',b.marital_status,{w:'quarter'})+
+    campoCli('dpCpf','CPF',d.cpf,{w:'half'})+campoCli('dpRg','RG',d.rg,{w:'half'})+
+    campoCli('dpProfissao','Profissão',d.profissao,{w:'half'})+campoCli('dpEmpresa','Empresa',d.empresa,{w:'half'})+
+    campoCli('dpEscolaridade','Escolaridade',d.escolaridade,{w:'half'})+campoCli('dpIdioma','Idioma',d.idioma,{w:'half'})+
+    campoCli('dpFone','Telefone',b.phone,{w:'half'})+campoCli('dpWhats','WhatsApp',d.whatsapp,{w:'half'})+
+    campoCli('dpCidade','Cidade',b.city,{w:'half'})+campoCli('dpEstado','Estado',d.estado,{w:'quarter'})+campoCli('dpCep','CEP',d.cep,{w:'quarter'})+
+    campoCli('dpPais','País',d.pais,{w:'half'})+campoCli('dpReside','Com quem reside',d.com_quem_reside,{w:'half'})+
+    campoCli('dpFilhos','Qtd. filhos',d.qtd_filhos,{w:'quarter',type:'number'})+
+    campoCli('dpEndereco','Endereço',b.address,{w:'full'})+
+    campoCli('dpAcess','Necessidades de acessibilidade',d.acessibilidade,{w:'full'})+
+    campoCli('dpObs','Observações',d.obs,{w:'full',ta:true})+'</div>'+
     '<button class="btn" style="padding:9px 22px" onclick="salvarDadosCliente()">Salvar dados</button> <span class="muted" id="dpStatus"></span>';
 }
 async function salvarDadosCliente(){
@@ -1185,8 +1203,9 @@ async function renderCliAudit(body){
 
 /* ===== ETAPA 4: abas clínicas (saúde, medicamentos, emocional, espiritual, objetivos) ===== */
 function campoJ(prefix,key,label,type,val){
-  if(type==='bool') return '<div><label>'+label+'</label><select id="'+prefix+key+'"><option value="">—</option><option value="1"'+(val===true?' selected':'')+'>Sim</option><option value="0"'+(val===false?' selected':'')+'>Não</option></select></div>';
-  return '<div><label>'+label+'</label><input id="'+prefix+key+'" type="'+(type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/></div>';
+  const w = (type==='bool'||type==='number') ? 'dp-third' : 'dp-full';
+  if(type==='bool') return '<div class="'+w+'"><label>'+label+'</label><select id="'+prefix+key+'"><option value="">—</option><option value="1"'+(val===true?' selected':'')+'>Sim</option><option value="0"'+(val===false?' selected':'')+'>Não</option></select></div>';
+  return '<div class="'+w+'"><label>'+label+'</label><input id="'+prefix+key+'" type="'+(type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/></div>';
 }
 function lerCampos(prefix,defs){ const o={}; for(const [k,,t] of defs){ const el=$(prefix+k); if(!el) continue; let v=el.value; if(t==='bool') v=v===''?null:(v==='1'); else if(t==='number') v=v===''?null:Number(v); else v=v.trim()||null; o[k]=v; } return o; }
 
@@ -1213,8 +1232,8 @@ const EMO_ESCALAS=['ansiedade','tristeza','estresse','irritabilidade','medo','cu
 const EMO_CAMPOS=[['motivo_procura','Motivo da procura'],['emocao_predominante','Emoção predominante'],['preocupacao','Principal preocupação'],['gatilhos','Gatilhos conhecidos'],['enfrentamento','Estratégias de enfrentamento'],['rede_apoio','Rede de apoio'],['o_que_piora','O que costuma piorar'],['o_que_ajuda','O que costuma ajudar'],['historico','Histórico de acompanhamento'],['diagnosticos','Diagnósticos informados'],['obs','Observações']];
 async function renderCliEmo(body){
   let avs=[]; try{ avs=(await api('/api/admin/clients/emotional?id='+clienteAtual.id)).avaliacoes||[]; }catch(e){}
-  const esc=EMO_ESCALAS.map(k=>'<div><label>'+k.replace(/_/g,' ')+' 0-10</label><input id="em_'+k+'" type="number" min="0" max="10"/></div>').join('');
-  const cps=EMO_CAMPOS.map(([k,l])=>'<div style="grid-column:1/-1"><label>'+l+'</label><input id="emc_'+k+'"/></div>').join('');
+  const esc=EMO_ESCALAS.map(k=>'<div class="dp-quarter"><label>'+k.replace(/_/g,' ')+' 0-10</label><input id="em_'+k+'" type="number" min="0" max="10"/></div>').join('');
+  const cps=EMO_CAMPOS.map(([k,l])=>'<div class="dp-full"><label>'+l+'</label><input id="emc_'+k+'"/></div>').join('');
   const hist=avs.length?'<p class="subc" style="margin-top:16px">'+avs.length+' avaliação(ões) registrada(s) — a 1ª é a linha de base. Última: '+new Date(avs[0].created_at).toLocaleDateString('pt-BR')+'</p>':'<p class="muted" style="margin-top:12px">Nenhuma avaliação — registre a linha de base.</p>';
   body.innerHTML='<p class="subc">Nova avaliação emocional (escalas de 0 a 10)</p><div class="dp-grid">'+esc+cps+'</div>'+
     '<button class="btn" style="padding:9px 22px" onclick="salvarEmo()">Registrar avaliação</button> <span class="muted" id="emStatus"></span>'+hist;
