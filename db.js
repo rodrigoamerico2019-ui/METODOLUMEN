@@ -1615,6 +1615,120 @@ export async function deleteGoal(id, orgId) {
   return { ok: true };
 }
 
+// ---- SESSÕES + PRONTUÁRIO (privado) + RESUMO (compartilhável) + TAREFAS ----
+export async function listSessions(userId, { limit = 100 } = {}) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`
+    SELECT s.id, s.quando, s.duracao_min, s.modalidade, s.tipo, s.status, s.created_at,
+           u.name AS profissional,
+           (sr.session_id IS NOT NULL) AS tem_prontuario,
+           COALESCE(ss.compartilhado,false) AS resumo_compartilhado,
+           (SELECT count(*)::int FROM session_tasks t WHERE t.session_id=s.id) AS tarefas
+    FROM sessions s
+    LEFT JOIN org_members om ON om.id=s.member_id
+    LEFT JOIN users u ON u.id=om.user_id
+    LEFT JOIN session_records sr ON sr.session_id=s.id
+    LEFT JOIN session_shared_summaries ss ON ss.session_id=s.id
+    WHERE s.client_user_id=$1 AND s.deleted_at IS NULL
+    ORDER BY s.quando DESC NULLS LAST, s.id DESC LIMIT $2`, [userId, limit]);
+  return r.rows;
+}
+export async function createSession(userId, orgId, s = {}, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const quando = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(s.quando || '')) ? s.quando : null;
+  const r = await pool.query(`INSERT INTO sessions
+    (org_id, client_user_id, member_id, quando, duracao_min, modalidade, tipo, status)
+    VALUES ($1,$2,$3,
+      CASE WHEN $4::text IS NULL THEN now() ELSE ($4::timestamp AT TIME ZONE 'America/Sao_Paulo') END,
+      $5,$6,$7,$8) RETURNING id`,
+    [orgId, userId, s.member_id ? Number(s.member_id) : null, quando, numOrNull(s.duracao_min) || 50,
+     s.modalidade || null, s.tipo || null, s.status || 'realizada']);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'sessao_criada', entidade: 'session', entidadeId: r.rows[0].id });
+  return { id: r.rows[0].id };
+}
+export async function getSessionFull(sessionId, orgId) {
+  if (!pool || !sessionId) return null;
+  const s = await pool.query(`SELECT s.*, u.name AS profissional FROM sessions s
+     LEFT JOIN org_members om ON om.id=s.member_id LEFT JOIN users u ON u.id=om.user_id
+     WHERE s.id=$1 AND ($2::bigint IS NULL OR s.org_id=$2) AND s.deleted_at IS NULL`, [sessionId, orgId]);
+  if (!s.rows[0]) return null;
+  const [rec, sum, tasks] = await Promise.all([
+    pool.query('SELECT * FROM session_records WHERE session_id=$1', [sessionId]),
+    pool.query('SELECT * FROM session_shared_summaries WHERE session_id=$1', [sessionId]),
+    pool.query('SELECT * FROM session_tasks WHERE session_id=$1 ORDER BY created_at', [sessionId])
+  ]);
+  return { sessao: s.rows[0], prontuario: rec.rows[0] || null, resumo: sum.rows[0] || null, tarefas: tasks.rows };
+}
+export async function updateSession(id, orgId, clientId, s = {}, uid) {
+  if (!pool) throw new Error('banco não configurado');
+  const quando = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(s.quando || '')) ? s.quando : null;
+  await pool.query(`UPDATE sessions SET
+     status=COALESCE($3,status), modalidade=COALESCE($4,modalidade), tipo=COALESCE($5,tipo),
+     duracao_min=COALESCE($6,duracao_min),
+     quando=CASE WHEN $7::text IS NULL THEN quando ELSE ($7::timestamp AT TIME ZONE 'America/Sao_Paulo') END,
+     updated_at=now()
+     WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`,
+    [id, orgId, s.status || null, s.modalidade || null, s.tipo || null, numOrNull(s.duracao_min), quando]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'sessao_alterada', entidade: 'session', entidadeId: id });
+  return { ok: true };
+}
+export async function deleteSession(id, orgId, clientId, uid) {
+  if (!pool) return;
+  await pool.query('UPDATE sessions SET deleted_at=now() WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'sessao_excluida', entidade: 'session', entidadeId: id });
+  return { ok: true };
+}
+const REC_COLS = ['demanda','estado_emocional_inicial','temas','intervencoes','percepcoes','evolucao','condutas','encaminhamentos','riscos','proximos_passos','obs_privadas'];
+export async function saveSessionRecord(sessionId, orgId, clientId, d = {}, uid) {
+  if (!pool || !sessionId) throw new Error('banco não configurado');
+  const vals = REC_COLS.map(c => (d[c] != null && d[c] !== '') ? String(d[c]) : null);
+  const ph = REC_COLS.map((_, i) => '$' + (i + 3));
+  await pool.query(`INSERT INTO session_records (session_id, org_id, ${REC_COLS.join(', ')}, updated_at)
+    VALUES ($1,$2, ${ph.join(', ')}, now())
+    ON CONFLICT (session_id) DO UPDATE SET ${REC_COLS.map((c, i) => `${c}=$${i + 3}`).join(', ')}, updated_at=now()`,
+    [sessionId, orgId, ...vals]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'prontuario_salvo', entidade: 'session_record', entidadeId: sessionId });
+  return { ok: true };
+}
+export async function saveSharedSummary(sessionId, orgId, clientId, d = {}, uid) {
+  if (!pool || !sessionId) throw new Error('banco não configurado');
+  const compart = !!d.compartilhado;
+  await pool.query(`INSERT INTO session_shared_summaries
+    (session_id, org_id, resumo, compartilhado, incluir_relatorio, permite_download, permite_impressao, compartilha_tarefas, shared_by, shared_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $4 THEN $9::int ELSE NULL END, CASE WHEN $4 THEN now() ELSE NULL END)
+    ON CONFLICT (session_id) DO UPDATE SET resumo=$3, compartilhado=$4, incluir_relatorio=$5, permite_download=$6,
+      permite_impressao=$7, compartilha_tarefas=$8,
+      shared_by=CASE WHEN $4 THEN $9::int ELSE NULL END,
+      shared_at=CASE WHEN $4 THEN COALESCE(session_shared_summaries.shared_at, now()) ELSE NULL END`,
+    [sessionId, orgId, d.resumo || null, compart, !!d.incluir_relatorio, !!d.permite_download, !!d.permite_impressao, !!d.compartilha_tarefas, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: compart ? 'resumo_compartilhado' : 'resumo_salvo', entidade: 'session_summary', entidadeId: sessionId });
+  return { ok: true };
+}
+export async function listSessionTasks(userId, { sessionId } = {}) {
+  if (!pool || !userId) return [];
+  const r = await pool.query(`SELECT * FROM session_tasks WHERE client_user_id=$1 AND ($2::bigint IS NULL OR session_id=$2)
+    ORDER BY (status='concluida'), prazo NULLS LAST, created_at DESC`, [userId, sessionId || null]);
+  return r.rows;
+}
+export async function addSessionTask(userId, orgId, sessionId, t = {}, uid) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  if (!String(t.titulo || '').trim()) throw new Error('Informe o título da tarefa.');
+  const r = await pool.query(`INSERT INTO session_tasks (org_id, session_id, client_user_id, titulo, descricao, status, prazo, compartilhada)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [orgId, sessionId || null, userId, String(t.titulo).trim(), t.descricao || null, t.status || 'pendente', dateOrNull(t.prazo), t.compartilhada !== false]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'tarefa_criada', entidade: 'task', entidadeId: r.rows[0].id });
+  return { id: r.rows[0].id };
+}
+export async function updateSessionTask(id, orgId, clientId, t = {}, uid) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE session_tasks SET titulo=COALESCE($3,titulo), descricao=COALESCE($4,descricao),
+     status=COALESCE($5,status), prazo=COALESCE($6,prazo), compartilhada=COALESCE($7,compartilhada)
+     WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`,
+    [id, orgId, t.titulo || null, t.descricao || null, t.status || null, dateOrNull(t.prazo), t.compartilhada == null ? null : !!t.compartilhada]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'tarefa_alterada', entidade: 'task', entidadeId: id });
+  return { ok: true };
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;

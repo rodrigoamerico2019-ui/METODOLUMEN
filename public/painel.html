@@ -1144,8 +1144,9 @@ function cliTab(t){
   if(t==='emocional') return renderCliEmo(body);
   if(t==='espiritual') return renderCliEsp(body);
   if(t==='objetivos') return renderCliObj(body);
+  if(t==='sessoes') return renderCliSessoes(body);
   if(t==='auditoria') return renderCliAudit(body);
-  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Sessões, documentos, relatórios e consentimentos.</small></div>';
+  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
 }
 function renderCliVisao(body){
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
@@ -1291,6 +1292,92 @@ async function progObj(id,atual){
   try{ await postAdmin('/api/admin/clients/goals/update?goalId='+id,{progresso:Number(v),status:Number(v)>=100?'concluido':'em_andamento'}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); }
 }
 async function delObj(id){ if(!confirm('Excluir objetivo?')) return; try{ await postAdmin('/api/admin/clients/goals/delete?goalId='+id,{}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); } }
+
+/* ===== ETAPA 5: sessões + prontuário (privado) + resumo (compartilhável) + tarefas ===== */
+const REC_DEFS=[['demanda','Demanda / queixa da sessão'],['estado_emocional_inicial','Estado emocional inicial'],['temas','Temas trabalhados'],['intervencoes','Intervenções / técnicas'],['percepcoes','Percepções do profissional'],['evolucao','Evolução'],['condutas','Condutas / combinados'],['encaminhamentos','Encaminhamentos'],['riscos','Riscos observados'],['proximos_passos','Próximos passos'],['obs_privadas','Observações privadas']];
+const escHtml=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+function fmtSessao(q){ return q?new Date(q).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'; }
+async function renderCliSessoes(body){
+  let sessions=[]; try{ sessions=(await api('/api/admin/clients/sessions?id='+clienteAtual.id)).sessions||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const agora=new Date(); const dLocal=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const lista=sessions.length?sessions.map(s=>{
+    const badges=[s.tem_prontuario?'<span class="lic-st ativa">prontuário</span>':'<span class="lic-st pend">sem prontuário</span>',
+      s.resumo_compartilhado?'<span class="lic-st ativa">resumo enviado</span>':'',
+      s.tarefas?('<span class="lic-st pend">'+s.tarefas+' tarefa(s)</span>'):''].filter(Boolean).join(' ');
+    return '<div class="ag-item"><div class="ag-info"><b>'+fmtSessao(s.quando)+'</b>'+(s.status?' · '+s.status:'')+
+      '<small>'+[s.modalidade,s.tipo,s.profissional,(s.duracao_min||50)+' min'].filter(Boolean).join(' · ')+'</small></div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end">'+badges+'</div>'+
+      '<div class="fin-act"><button onclick="abrirSessaoCli('+s.id+')">abrir</button><button onclick="delSessao('+s.id+')">excluir</button></div></div>';
+  }).join(''):'<p class="muted">Nenhuma sessão registrada.</p>';
+  body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
+    '<input id="ssQuando" type="datetime-local" value="'+dLocal+'" title="Data e hora"/>'+
+    '<input id="ssDur" type="number" min="10" value="50" title="Duração (min)" style="max-width:110px"/>'+
+    '<select id="ssMod"><option value="">Modalidade…</option><option>presencial</option><option>online</option></select>'+
+    '<select id="ssTipo"><option value="">Tipo…</option><option>avaliação</option><option>acompanhamento</option><option>retorno</option><option>devolutiva</option><option>alta</option></select>'+
+    '<select id="ssStatus"><option value="realizada">realizada</option><option value="agendada">agendada</option><option value="cancelada">cancelada</option></select>'+
+    '<button class="btn" style="padding:9px 18px" onclick="criarSessao()">Nova sessão</button><div id="ssStatusMsg" style="width:100%"></div></div>'+lista;
+}
+async function criarSessao(){
+  const b={ quando:$('ssQuando').value, duracao_min:$('ssDur').value, modalidade:$('ssMod').value, tipo:$('ssTipo').value, status:$('ssStatus').value };
+  try{ const d=await postAdmin('/api/admin/clients/sessions?id='+clienteAtual.id,b); abrirSessaoCli(d.id); }
+  catch(e){ $('ssStatusMsg').textContent='erro: '+e.message; }
+}
+async function delSessao(sid){ if(!confirm('Excluir sessão? (o prontuário será arquivado)')) return; try{ await postAdmin('/api/admin/clients/session/delete?sessionId='+sid,{}); cliTab('sessoes'); }catch(e){ alert('Erro: '+e.message); } }
+async function abrirSessaoCli(sid){
+  const body=$('cliTabBody'); body.innerHTML='<p class="muted">carregando…</p>';
+  let d; try{ d=await api('/api/admin/clients/session?sessionId='+sid); }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const s=d.sessao, rec=d.prontuario||{}, sum=d.resumo||{}, tarefas=d.tarefas||[];
+  const campos=REC_DEFS.map(([k,l])=>'<div class="dp-full"><label>'+l+'</label><textarea id="rc_'+k+'">'+escHtml(rec[k])+'</textarea></div>').join('');
+  const chk=(id,lab,on)=>'<label class="fin-chk"><input type="checkbox" id="'+id+'" '+(on?'checked':'')+'/> '+lab+'</label>';
+  const tlist=tarefas.length?tarefas.map(t=>{
+    const done=t.status==='concluida';
+    return '<div class="ag-item"><div class="ag-info"><b style="'+(done?'text-decoration:line-through;opacity:.6':'')+'">'+escHtml(t.titulo)+'</b>'+
+      '<small>'+[t.descricao,t.prazo?('prazo '+String(t.prazo).slice(0,10)):'',t.compartilhada?'compartilhada':'privada'].filter(Boolean).join(' · ')+'</small></div>'+
+      '<span class="lic-st '+(done?'ativa':'pend')+'">'+t.status+'</span>'+
+      '<div class="fin-act"><button onclick="toggleTarefa('+sid+','+t.id+',\''+(done?'pendente':'concluida')+'\')">'+(done?'reabrir':'concluir')+'</button></div></div>';
+  }).join(''):'<p class="muted">Nenhuma tarefa.</p>';
+  body.innerHTML='<button class="btn ghost" style="padding:6px 14px;margin-bottom:12px" onclick="cliTab(\'sessoes\')">← Voltar às sessões</button>'+
+    '<h3 style="margin:0 0 4px">Sessão de '+fmtSessao(s.quando)+'</h3>'+
+    '<p class="subc" style="margin-bottom:14px">'+[s.status,s.modalidade,s.tipo,s.profissional].filter(Boolean).join(' · ')+'</p>'+
+    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Prontuário PRIVADO — visível só à equipe clínica. Nunca é enviado ao cliente automaticamente.</p>'+
+    '<div class="dp-grid">'+campos+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarProntuario('+sid+')">Salvar prontuário</button> <span class="muted" id="rcStatus"></span>'+
+    '<hr style="margin:22px 0;border:none;border-top:1px solid var(--line)"/>'+
+    '<h3 style="margin:0 0 4px">📤 Resumo compartilhável</h3>'+
+    '<p class="subc" style="margin-bottom:10px">O que o cliente pode ver — escrito por você, liberado manualmente.</p>'+
+    '<div class="dp-grid"><div class="dp-full"><label>Resumo para o cliente</label><textarea id="sumResumo" style="min-height:110px">'+escHtml(sum.resumo)+'</textarea></div></div>'+
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 12px">'+
+      chk('sumCompart','✅ Compartilhar com o cliente',sum.compartilhado)+
+      chk('sumTarefas','Incluir tarefas',sum.compartilha_tarefas)+
+      chk('sumRelatorio','Incluir em relatório',sum.incluir_relatorio)+
+      chk('sumDownload','Permitir download',sum.permite_download)+
+      chk('sumImpressao','Permitir impressão',sum.permite_impressao)+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarResumo('+sid+')">Salvar resumo</button> <span class="muted" id="sumStatus"></span>'+
+    '<hr style="margin:22px 0;border:none;border-top:1px solid var(--line)"/>'+
+    '<h3 style="margin:0 0 10px">✅ Tarefas da sessão</h3>'+
+    '<div class="cad-form" style="margin-bottom:12px"><input id="tkTit" placeholder="Título da tarefa *"/><input id="tkDesc" placeholder="Descrição" style="flex:2 1 220px"/>'+
+    '<input id="tkPrazo" type="date" title="Prazo"/><label class="fin-chk" style="align-self:center"><input type="checkbox" id="tkCompart" checked/> compartilhar</label>'+
+    '<button class="btn" style="padding:9px 18px" onclick="addTarefa('+sid+')">Adicionar</button><div id="tkStatus" style="width:100%"></div></div>'+tlist;
+}
+async function salvarProntuario(sid){
+  const b={}; REC_DEFS.forEach(([k])=>{ b[k]=$('rc_'+k).value.trim(); });
+  $('rcStatus').textContent='salvando…';
+  try{ await postAdmin('/api/admin/clients/session/record?sessionId='+sid,b); $('rcStatus').textContent='salvo ✓'; }catch(e){ $('rcStatus').textContent='erro: '+e.message; }
+}
+async function salvarResumo(sid){
+  const b={ resumo:$('sumResumo').value.trim(), compartilhado:$('sumCompart').checked, compartilha_tarefas:$('sumTarefas').checked,
+    incluir_relatorio:$('sumRelatorio').checked, permite_download:$('sumDownload').checked, permite_impressao:$('sumImpressao').checked };
+  $('sumStatus').textContent='salvando…';
+  try{ await postAdmin('/api/admin/clients/session/summary?sessionId='+sid,b); $('sumStatus').textContent=b.compartilhado?'compartilhado ✓':'salvo ✓'; }catch(e){ $('sumStatus').textContent='erro: '+e.message; }
+}
+async function addTarefa(sid){
+  const b={ titulo:$('tkTit').value.trim(), descricao:$('tkDesc').value.trim(), prazo:$('tkPrazo').value, compartilhada:$('tkCompart').checked };
+  if(!b.titulo){ $('tkStatus').textContent='Informe o título.'; return; }
+  try{ await postAdmin('/api/admin/clients/tasks?id='+clienteAtual.id+'&sessionId='+sid,b); abrirSessaoCli(sid); }catch(e){ $('tkStatus').textContent='erro: '+e.message; }
+}
+async function toggleTarefa(sid,taskId,status){
+  try{ await postAdmin('/api/admin/clients/tasks/update?id='+clienteAtual.id+'&taskId='+taskId,{status}); abrirSessaoCli(sid); }catch(e){ alert('Erro: '+e.message); }
+}
 
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){

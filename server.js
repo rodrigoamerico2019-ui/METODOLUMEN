@@ -40,7 +40,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getHealthProfile, saveHealthProfile, getSpiritualProfile, saveSpiritualProfile,
          addEmotionalAssessment, listEmotionalAssessments,
          listMedications, addMedication, suspendMedication,
-         listGoals, addGoal, updateGoal, deleteGoal } from './db.js';
+         listGoals, addGoal, updateGoal, deleteGoal,
+         listSessions, createSession, getSessionFull, updateSession, deleteSession,
+         saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -580,6 +582,72 @@ app.post('/api/admin/clients/goals/delete', ...clin, async (req, res) => {
   try { res.json(await deleteGoal(Number(req.query.goalId), req.orgId)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
+
+// ===== ETAPA 5: sessões + prontuário (privado) + resumo (compartilhável) + tarefas =====
+// confere que a sessão é da organização do mentor; guarda a sessão em req._sessao
+async function sessaoDaOrg(req, res) {
+  const sid = Number(req.query.sessionId);
+  if (!sid) { res.status(400).json({ error: 'sessão inválida' }); return null; }
+  const full = await getSessionFull(sid, req.orgId);
+  if (!full) { res.status(404).json({ error: 'sessão não encontrada' }); return null; }
+  req._sessao = full; return sid;
+}
+// lista de sessões do cliente
+app.get('/api/admin/clients/sessions', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ sessions: await listSessions(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// cria sessão
+app.post('/api/admin/clients/sessions', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ ok: true, ...(await createSession(id, req.orgId, req.body || {}, req.mentorUid)) }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// detalhe da sessão (sessão + prontuário privado + resumo + tarefas)
+app.get('/api/admin/clients/session', ...clin, async (req, res) => {
+  try { const sid = await sessaoDaOrg(req, res); if (sid == null) return; res.json(req._sessao); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/session/update', ...clin, async (req, res) => {
+  try { const sid = await sessaoDaOrg(req, res); if (sid == null) return;
+    res.json(await updateSession(sid, req.orgId, req._sessao.sessao.client_user_id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/session/delete', ...clin, async (req, res) => {
+  try { const sid = await sessaoDaOrg(req, res); if (sid == null) return;
+    res.json(await deleteSession(sid, req.orgId, req._sessao.sessao.client_user_id, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// prontuário PRIVADO da sessão (nunca vai automático ao cliente)
+app.post('/api/admin/clients/session/record', ...clin, async (req, res) => {
+  try { const sid = await sessaoDaOrg(req, res); if (sid == null) return;
+    res.json(await saveSessionRecord(sid, req.orgId, req._sessao.sessao.client_user_id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// resumo COMPARTILHÁVEL da sessão (liberado manualmente pelo mentor)
+app.post('/api/admin/clients/session/summary', ...clin, async (req, res) => {
+  try { const sid = await sessaoDaOrg(req, res); if (sid == null) return;
+    res.json(await saveSharedSummary(sid, req.orgId, req._sessao.sessao.client_user_id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// tarefas do cliente (todas ou de uma sessão)
+app.get('/api/admin/clients/tasks', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json({ tasks: await listSessionTasks(id, { sessionId: req.query.sessionId ? Number(req.query.sessionId) : null }) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/tasks', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    const sid = req.query.sessionId ? Number(req.query.sessionId) : null;
+    if (sid && !(await getSessionFull(sid, req.orgId))) return res.status(404).json({ error: 'sessão não encontrada' });
+    res.json({ ok: true, ...(await addSessionTask(id, req.orgId, sid, req.body || {}, req.mentorUid)) }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/tasks/update', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json(await updateSessionTask(Number(req.query.taskId), req.orgId, id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
 // mensagem do mentor → salva e notifica o celular do paciente
 app.post('/api/admin/message', requireAdmin, soMentor, async (req, res) => {
   try {
