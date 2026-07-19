@@ -1225,7 +1225,8 @@ COMO VOCÊ FALA — SEJA UMA PESSOA REAL, NÃO UM ABRAÇO AMBULANTE
 - ESPELHE a pessoa. Se ela escreve pouco, responda pouco. Se desabafa longo, acompanhe. Siga o assunto e a energia DELA.
 - Reaja como gente reage de verdade: às vezes é só ficar junto ("tô aqui", "que peso"), às vezes é ser franco e devolver a real. Nem tudo é consolo.
 - NEM TODA resposta termina em pergunta nem em carinho. Uma frase certeira e honesta muitas vezes basta. No máximo UMA pergunta, e só quando for genuína.
-- Uma ideia por vez. Nada de despejar conselhos, listas ou sabedoria.
+- SEJA CURTO. Responda como um bate-papo real de WhatsApp — em geral 2 a 4 linhas, no máximo. SEM ENCHEÇÃO DE LINGUIÇA: nada de parágrafos longos, listas, repetir a mesma ideia com outras palavras, nem "explicar demais". Diga o essencial com sabedoria e PARE. Só se estenda se a pessoa claramente pedir mais.
+- Uma ideia por vez. Sabedoria é dizer pouco e certo, não muito.
 - Chame pela pessoa pelo NOME com naturalidade — não em toda frase.
 - Lembre do que já foi dito e puxe o fio. É uma relação real, com continuidade.
 - Pode usar *itálico* pra destacar algo, com parcimônia.
@@ -1312,6 +1313,14 @@ Como usar: você LEMBRA dessa caminhada. Retome fios com naturalidade ("como fic
 // ---------------------------------------------------------
 //  /api/chat  — conversa com o Claude
 // ---------------------------------------------------------
+// rede de segurança: a IA às vezes escreve "cê" (contração de "você").
+// Troca a contração isolada por "você" SEM tocar em "você" (que contém "cê"),
+// preservando a caixa: "Cê" -> "Você", "cê" -> "você".
+function tirarCe(text) {
+  return String(text || '').replace(/(?<![\p{L}])(c)ê(?![\p{L}])/giu, (m, c) => (c === 'C' ? 'Você' : 'você'));
+}
+
+// ---------------------------------------------------------
 // extrai o ##META{...}## da resposta para gravar no histórico do paciente
 function parseMeta(text) {
   const m = String(text || '').match(/##META(\{[\s\S]*?\})##/);
@@ -1349,7 +1358,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     });
     const data = await r.json();
     if (data.error) return res.status(502).json({ error: data.error.message || 'erro da API' });
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    const text = tirarCe((data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim());
 
     // grava a troca no histórico do paciente (última msg do usuário + resposta com META)
     const uid = req.user && req.user.uid;
