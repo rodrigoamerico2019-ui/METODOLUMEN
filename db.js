@@ -1901,6 +1901,37 @@ export async function getReportPdf(reportId, orgId) {
   return r.rows[0] || null;
 }
 
+// ÚLTIMO ENCONTRO — o que a pessoa trouxe, com as palavras dela, na última
+// conversa. Serve para a IA abrir o dia citando o assunto REAL (não "de onde
+// paramos"). Pega só as falas do último dia em que houve conversa.
+export async function ultimoEncontro(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query(`
+    SELECT role, content, meta,
+           (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+           ((now() AT TIME ZONE 'America/Sao_Paulo')::date
+            - (created_at AT TIME ZONE 'America/Sao_Paulo')::date) AS dias_atras
+    FROM messages WHERE user_id=$1 ORDER BY created_at DESC LIMIT 24`, [userId]);
+  if (!r.rows.length) return null;
+  const ultimoDia = String(r.rows[0].dia);
+  const doDia = r.rows.filter(m => String(m.dia) === ultimoDia).reverse();
+  const falas = doDia.filter(m => m.role === 'user')
+    .map(m => String(m.content || '').replace(/\s+/g, ' ').trim())
+    .filter(t => t.length > 2)
+    .map(t => t.length > 240 ? t.slice(0, 240) + '…' : t)
+    .slice(-6);
+  if (!falas.length) return null;
+  const meta = [...doDia].reverse().find(m => m.role === 'assistant' && m.meta)?.meta || null;
+  return {
+    dia: ultimoDia,
+    dias_atras: Number(r.rows[0].dias_atras),
+    falas,
+    emocao: meta?.emocao || null,
+    status: meta?.status || null,
+    risco: meta?.risco || null
+  };
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;

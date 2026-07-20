@@ -29,7 +29,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
-         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial,
+         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
@@ -47,6 +47,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          sharedForClient, concluirTarefaCliente,
          reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf } from './db.js';
 import { buildReportPdf } from './relatorio.js';
+import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -1455,7 +1456,7 @@ Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadado
 // Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
 // com cache_control para o prompt caching baratear cada conversa. Nome e prontuário
 // mudam por pessoa e ficam fora do cache.
-function buildSystem(name, prontuario, bussola) {
+function buildSystem(name, prontuario, bussola, ultimo) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
   const conhecimento = KNOWLEDGE
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
@@ -1466,6 +1467,10 @@ function buildSystem(name, prontuario, bussola) {
     { type: 'text', text: SYSTEM_BASE + conhecimento, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `NOME DA PESSOA: ${nome} (chame pelo PRIMEIRO nome, com naturalidade, não em toda frase). HORÁRIO AGORA: ${periodo}. Se esta for a PRIMEIRA mensagem da conversa (sem histórico anterior), comece cumprimentando: "Olá, ${String(nome).trim().split(/\s+/)[0]}, ${periodo}." — e siga direto ao ponto, sem melação.` }
   ];
+  // ABERTURA DO DIA: retoma o assunto REAL do último encontro, com um jeito
+  // diferente a cada dia. Só entra quando é a primeira mensagem da conversa.
+  const abertura = blocoAbertura(String(nome).trim().split(/\s+/)[0], periodo, ultimo);
+  if (abertura) blocos.push({ type: 'text', text: abertura });
   // Aprendizado coletivo ANÔNIMO — intuição de "o que costuma curar", nunca dado de outra pessoa.
   if (COLETIVO) blocos.push({ type: 'text', text:
 `APRENDIZADO COLETIVO (sabedoria anônima, destilada de muitas jornadas — NÃO é dado de ninguém):
@@ -1508,10 +1513,14 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     // com login, o nome oficial vem da conta (não do que o front mandar)
     const nome = (req.user && req.user.name) || name;
     // memória viva: o prontuário evolutivo + a bússola do mapa inicial entram no sistema desta conversa
-    let prontuario = null, bussola = null;
+    let prontuario = null, bussola = null, ultimo = null;
     if (req.user && req.user.uid) {
       prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
       bussola = await getMapaBussola(req.user.uid).catch(() => null);
+      // primeira mensagem de uma conversa nova → resgata o assunto real do último encontro
+      if (messages.filter(m => m.role === 'user').length <= 1) {
+        ultimo = await ultimoEncontro(req.user.uid).catch(() => null);
+      }
     }
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1523,7 +1532,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(nome, prontuario, bussola),
+        system: buildSystem(nome, prontuario, bussola, ultimo),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });
