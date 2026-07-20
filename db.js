@@ -1822,6 +1822,85 @@ export async function concluirTarefaCliente(taskId, clientId, feito) {
   return { ok: true };
 }
 
+// ---- RELATÓRIOS ----
+// Dois tipos, e a diferença é de PRIVACIDADE, não de estilo:
+//   'cliente' → só o que já foi compartilhado com ele (nunca o prontuário)
+//   'clinico' → documento interno da equipe (inclui prontuário, saúde, medicamentos)
+export async function reportData(clientId, orgId, { tipo = 'cliente', inicio, fim } = {}) {
+  if (!pool || !clientId) throw new Error('cliente inválido');
+  const ini = dateOrNull(inicio), f = dateOrNull(fim);
+  const clinico = tipo === 'clinico';
+  const [cli, org, sess, goals, tasks, emo, scales] = await Promise.all([
+    getClientFull(clientId),
+    orgId ? orgById(orgId).catch(() => null) : null,
+    pool.query(`SELECT s.id, s.quando, s.duracao_min, s.modalidade, s.tipo, s.status,
+        u.name AS profissional, ss.resumo, ss.compartilhado,
+        ${clinico ? 'sr.demanda, sr.temas, sr.intervencoes, sr.evolucao, sr.condutas, sr.encaminhamentos, sr.proximos_passos,' : ''}
+        NULL AS _fim
+      FROM sessions s
+      LEFT JOIN org_members om ON om.id=s.member_id LEFT JOIN users u ON u.id=om.user_id
+      LEFT JOIN session_shared_summaries ss ON ss.session_id=s.id
+      ${clinico ? 'LEFT JOIN session_records sr ON sr.session_id=s.id' : ''}
+      WHERE s.client_user_id=$1 AND s.deleted_at IS NULL
+        AND ($2::date IS NULL OR s.quando >= $2::date)
+        AND ($3::date IS NULL OR s.quando < ($3::date + interval '1 day'))
+        ${clinico ? '' : 'AND ss.compartilhado = true'}
+      ORDER BY s.quando`, [clientId, ini, f]),
+    listGoals(clientId),
+    pool.query(`SELECT titulo, descricao, status, prazo, compartilhada FROM session_tasks
+      WHERE client_user_id=$1 ${clinico ? '' : 'AND compartilhada=true'}
+      ORDER BY (status='concluida'), prazo NULLS LAST, created_at`, [clientId]),
+    listEmotionalAssessments(clientId, 12),
+    latestScales(clientId)
+  ]);
+  const base = {
+    tipo, clinica: (org && org.nome) || 'TriLumen',
+    periodo: { inicio: ini, fim: f },
+    cliente: cli, sessoes: sess.rows, objetivos: goals, tarefas: tasks.rows,
+    emocional: emo, escalas: scales, gerado_em: new Date()
+  };
+  if (clinico) {
+    const [saude, meds] = await Promise.all([getHealthProfile(clientId), listMedications(clientId)]);
+    base.saude = saude; base.medicamentos = meds;
+  }
+  return base;
+}
+export async function salvarRelatorio({ clientId, orgId, tipo, inicio, fim, config, pdf, dados, uid }) {
+  if (!pool) throw new Error('banco não configurado');
+  const r = await pool.query(`INSERT INTO reports (org_id, client_user_id, tipo, periodo_inicio, periodo_fim, config, status, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,'gerado',$7) RETURNING id`,
+    [orgId, clientId, tipo, dateOrNull(inicio), dateOrNull(fim), JSON.stringify(config || {}), uid || null]);
+  const rid = r.rows[0].id;
+  const docUid = 'REL-' + String(rid).padStart(5, '0') + '-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+  await pool.query(`INSERT INTO report_versions (report_id, versao, doc_uid, dados_incluidos, pdf, gerado_por)
+    VALUES ($1,1,$2,$3,$4,$5)`, [rid, docUid, JSON.stringify(dados || {}), pdf || null, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'relatorio_gerado', entidade: 'report', entidadeId: rid, dados: { tipo, doc_uid: docUid } });
+  return { id: rid, doc_uid: docUid };
+}
+export async function gravarPdfRelatorio(reportId, pdf) {
+  if (!pool || !reportId) return;
+  await pool.query('UPDATE report_versions SET pdf=$2 WHERE report_id=$1 AND versao=1', [reportId, pdf]);
+  return { ok: true };
+}
+export async function listReports(clientId, orgId) {
+  if (!pool || !clientId) return [];
+  const r = await pool.query(`SELECT r.id, r.tipo, r.periodo_inicio, r.periodo_fim, r.status, r.created_at,
+      v.doc_uid, (v.pdf IS NOT NULL) AS tem_pdf, octet_length(v.pdf) AS bytes, u.name AS gerado_por
+    FROM reports r
+    LEFT JOIN report_versions v ON v.report_id=r.id AND v.versao=1
+    LEFT JOIN users u ON u.id=r.created_by
+    WHERE r.client_user_id=$1 AND ($2::bigint IS NULL OR r.org_id=$2)
+    ORDER BY r.created_at DESC LIMIT 50`, [clientId, orgId]);
+  return r.rows;
+}
+export async function getReportPdf(reportId, orgId) {
+  if (!pool || !reportId) return null;
+  const r = await pool.query(`SELECT v.pdf, v.doc_uid, r.client_user_id, r.tipo FROM report_versions v
+    JOIN reports r ON r.id=v.report_id
+    WHERE v.report_id=$1 AND ($2::bigint IS NULL OR r.org_id=$2) ORDER BY v.versao DESC LIMIT 1`, [reportId, orgId]);
+  return r.rows[0] || null;
+}
+
 // médias da tríade nos últimos N dias (para as esferas do painel)
 export async function triadAverages(userId, days = 7) {
   if (!pool || !userId) return null;

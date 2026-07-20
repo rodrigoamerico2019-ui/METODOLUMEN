@@ -1146,6 +1146,7 @@ function cliTab(t){
   if(t==='objetivos') return renderCliObj(body);
   if(t==='sessoes') return renderCliSessoes(body);
   if(t==='acesso') return renderCliAcesso(body);
+  if(t==='relatorios') return renderCliRelatorios(body);
   if(t==='auditoria') return renderCliAudit(body);
   body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
 }
@@ -1424,6 +1425,40 @@ async function revogarAcesso(){
   if(!confirm('Revogar o acesso do cliente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
   try{ await postAdmin('/api/admin/clients/access/revoke?id='+clienteAtual.id,{}); cliTab('acesso'); }
   catch(e){ alert('Erro: '+e.message); }
+}
+
+/* ===== ETAPA 7: relatórios em PDF (gerar, baixar, imprimir) ===== */
+async function renderCliRelatorios(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let reps=[]; try{ reps=(await api('/api/admin/clients/reports?id='+clienteAtual.id)).reports||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const hoje=new Date().toISOString().slice(0,10);
+  const ini=new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+  const lista=reps.length?reps.map(r=>{
+    const per=(r.periodo_inicio?new Date(r.periodo_inicio).toLocaleDateString('pt-BR'):'início')+' a '+(r.periodo_fim?new Date(r.periodo_fim).toLocaleDateString('pt-BR'):'hoje');
+    const kb=r.bytes?Math.max(1,Math.round(r.bytes/1024))+' KB':'—';
+    const et=r.tipo==='clinico'?'<span class="lic-st inativa">clínico · interno</span>':'<span class="lic-st ativa">do cliente</span>';
+    return '<div class="ag-item"><div class="ag-info"><b>'+escHtml(r.doc_uid||('#'+r.id))+'</b><small>'+per+' · '+new Date(r.created_at).toLocaleDateString('pt-BR')+' · '+kb+(r.gerado_por?' · '+escHtml(r.gerado_por):'')+'</small></div>'+
+      et+'<div class="fin-act"><button onclick="verRelatorio('+r.id+')">abrir/imprimir</button><button onclick="baixarRelatorio('+r.id+')">baixar</button></div></div>';
+  }).join(''):'<p class="muted">Nenhum relatório gerado ainda.</p>';
+  body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
+    '<select id="relTipo" title="Tipo"><option value="cliente">Relatório do cliente (só o compartilhado)</option><option value="clinico">Relatório clínico (interno, com prontuário)</option></select>'+
+    '<input id="relIni" type="date" value="'+ini+'" title="Início"/><input id="relFim" type="date" value="'+hoje+'" title="Fim"/>'+
+    '<button class="btn" style="padding:9px 18px" onclick="gerarRelatorio()">Gerar PDF</button><div id="relStatus" style="width:100%"></div></div>'+
+    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O <b>relatório do cliente</b> traz apenas os resumos e tarefas que você compartilhou. O <b>clínico</b> inclui o prontuário e é de uso interno — não entregue ao cliente.</p>'+
+    lista;
+}
+function relUrl(id, dl){ return '/api/admin/clients/reports/pdf?id='+clienteAtual.id+'&reportId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
+function verRelatorio(id){ window.open(relUrl(id,false), '_blank'); }
+function baixarRelatorio(id){ window.open(relUrl(id,true), '_blank'); }
+async function gerarRelatorio(){
+  const b={ tipo:$('relTipo').value, inicio:$('relIni').value, fim:$('relFim').value };
+  $('relStatus').textContent='gerando o PDF…';
+  try{
+    const d=await postAdmin('/api/admin/clients/reports?id='+clienteAtual.id,b);
+    await renderCliRelatorios($('cliTabBody'));
+    $('relStatus').textContent='relatório '+d.doc_uid+' gerado ✓';
+    verRelatorio(d.id);
+  }catch(e){ $('relStatus').textContent='erro: '+e.message; }
 }
 
 /* ===== VISÃO GERAL ===== */

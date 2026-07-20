@@ -44,7 +44,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listSessions, createSession, getSessionFull, updateSession, deleteSession,
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
-         sharedForClient, concluirTarefaCliente } from './db.js';
+         sharedForClient, concluirTarefaCliente,
+         reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf } from './db.js';
+import { buildReportPdf } from './relatorio.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -714,6 +716,39 @@ app.get('/api/me/shared', requireAuth, async (req, res) => {
 app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
   try { const b = req.body || {}; res.json(await concluirTarefaCliente(Number(b.taskId), req.user.uid, b.feito)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== ETAPA 7: relatórios (PDF leve, sem Chromium) + impressão =====
+// tipo 'cliente' = só o compartilhado · tipo 'clinico' = documento interno
+app.get('/api/admin/clients/reports', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json({ reports: await listReports(id, req.orgId) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/reports', ...clin, async (req, res) => {
+  try {
+    const id = await clienteDaOrg(req, res); if (id == null) return;
+    const b = req.body || {};
+    const tipo = b.tipo === 'clinico' ? 'clinico' : 'cliente';
+    const dados = await reportData(id, req.orgId, { tipo, inicio: b.inicio, fim: b.fim });
+    // grava primeiro para ter o número do documento, depois carimba o PDF
+    const meta = await salvarRelatorio({ clientId: id, orgId: req.orgId, tipo, inicio: b.inicio, fim: b.fim,
+      config: { tipo }, pdf: null, dados: { sessoes: (dados.sessoes || []).length, objetivos: (dados.objetivos || []).length }, uid: req.mentorUid });
+    const pdf = await buildReportPdf(dados, meta.doc_uid);
+    await gravarPdfRelatorio(meta.id, pdf);
+    res.json({ ok: true, ...meta, bytes: pdf.length });
+  } catch (e) { console.error('relatorio:', e); res.status(400).json({ error: String(e.message || e) }); }
+});
+// baixar / imprimir o PDF (inline abre no navegador com o botão de imprimir)
+app.get('/api/admin/clients/reports/pdf', ...clin, async (req, res) => {
+  try {
+    const r = await getReportPdf(Number(req.query.reportId), req.orgId);
+    if (!r || !r.pdf) return res.status(404).json({ error: 'relatório não encontrado' });
+    if (req.orgId && (await patientOrg(r.client_user_id)) !== req.orgId) return res.status(403).json({ error: 'de outra organização' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + r.doc_uid + '.pdf"');
+    res.send(r.pdf);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // mensagem do mentor → salva e notifica o celular do paciente
