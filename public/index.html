@@ -388,6 +388,25 @@
   .pp-dim { flex-shrink:0; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:#2a2208; background:var(--gold-2); border-radius:6px; padding:4px 8px; height:fit-content; font-weight:600; }
   .pp-b b { font-size:13.5px; color:var(--ink); }
   .pp-b p { font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.6; }
+  /* ACOMPANHAMENTO — o que o profissional compartilhou (resumos + tarefas) */
+  .acomp { max-width:440px; margin:0 auto 22px; background:linear-gradient(160deg, rgba(110,148,85,.10), var(--panel) 60%);
+    border:1px solid var(--line); border-left:3px solid #6E9455; border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
+  .acomp.hide { display:none; }
+  .ac-bloco { margin-top:14px; }
+  .ac-rot { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px; }
+  .ac-res { padding:12px 0; border-top:1px solid var(--line); }
+  .ac-res:first-of-type { border-top:0; }
+  .ac-data { font-size:11px; color:var(--ink-dim); margin-bottom:5px; }
+  .ac-txt { font-size:13.5px; color:var(--ink); line-height:1.65; white-space:pre-wrap; }
+  .ac-tar { display:flex; gap:10px; align-items:flex-start; padding:11px 0; border-top:1px solid var(--line); }
+  .ac-tar:first-of-type { border-top:0; }
+  .ac-chk { flex-shrink:0; width:20px; height:20px; margin-top:1px; border-radius:6px; border:1.5px solid var(--line);
+    background:var(--panel-2); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; color:#6E9455; }
+  .ac-chk.on { border-color:#6E9455; background:rgba(110,148,85,.14); }
+  .ac-tb b { font-size:13.5px; color:var(--ink); font-weight:500; }
+  .ac-tb.feito b { text-decoration:line-through; opacity:.55; }
+  .ac-tb p { font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.6; }
+  .ac-prazo { font-size:11px; color:var(--gold-2); margin-top:3px; }
   .ob-logo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:10px; }
   .ob-logo svg { width:58px; height:auto; }
   .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:6px; font-size:22px; color:var(--ink); }
@@ -604,6 +623,19 @@
         <div class="esc-eyebrow">🧭 Seu plano da semana</div>
         <div class="pp-foco" id="ppFoco"></div>
         <div id="ppPassos"></div>
+      </div>
+
+      <!-- DO SEU ACOMPANHAMENTO (só o que o profissional compartilhou) -->
+      <div class="acomp hide" id="acomp">
+        <div class="esc-eyebrow">🤝 Do seu acompanhamento</div>
+        <div class="ac-bloco hide" id="acTarefasBloco">
+          <div class="ac-rot">O que combinamos</div>
+          <div id="acTarefas"></div>
+        </div>
+        <div class="ac-bloco hide" id="acResumosBloco">
+          <div class="ac-rot">Resumos das sessões</div>
+          <div id="acResumos"></div>
+        </div>
       </div>
 
       <!-- MINHA JORNADA (só aparece logado, com dados reais) -->
@@ -1600,6 +1632,7 @@ function continuarAposMapa(){
   loadPalavra();          // Palavra Viva do dia (personalizada)
   loadScales();           // escalas de acompanhamento (recorrência)
   loadPlan();             // plano de ação entregue pelo mentor
+  loadShared();           // resumos e tarefas que o profissional compartilhou
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});
@@ -1789,6 +1822,46 @@ function loadPlan(){
         </div>`).join('');
       document.getElementById('planoP').classList.remove('hide');
     }).catch(()=>{});
+}
+
+/* o que o profissional compartilhou: resumos das sessões + tarefas combinadas.
+   Nunca traz o prontuário — o servidor só devolve o que foi liberado. */
+const escAc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function loadShared(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/shared', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if(!d) return;
+      const resumos = d.resumos || [], tarefas = d.tarefas || [];
+      if(!resumos.length && !tarefas.length) return;
+      if(tarefas.length){
+        document.getElementById('acTarefas').innerHTML = tarefas.map(t => {
+          const feito = t.status === 'concluida';
+          const prazo = t.prazo ? `<div class="ac-prazo">até ${new Date(String(t.prazo).slice(0,10)+'T12:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>` : '';
+          return `<div class="ac-tar">
+            <div class="ac-chk${feito?' on':''}" onclick="marcarTarefa(${t.id}, ${feito?'false':'true'})">${feito?'✓':''}</div>
+            <div class="ac-tb${feito?' feito':''}"><b>${escAc(t.titulo)}</b>${t.descricao?`<p>${escAc(t.descricao)}</p>`:''}${prazo}</div>
+          </div>`;
+        }).join('');
+        document.getElementById('acTarefasBloco').classList.remove('hide');
+      }
+      if(resumos.length){
+        document.getElementById('acResumos').innerHTML = resumos.map(s => {
+          const dia = s.quando ? new Date(s.quando).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'}) : '';
+          return `<div class="ac-res"><div class="ac-data">${dia}</div><div class="ac-txt">${escAc(s.resumo||'')}</div></div>`;
+        }).join('');
+        document.getElementById('acResumosBloco').classList.remove('hide');
+      }
+      document.getElementById('acomp').classList.remove('hide');
+    }).catch(()=>{});
+}
+function marcarTarefa(id, feito){
+  fetch(API_BASE + '/api/me/tasks/done', { method:'POST', headers: authHeaders(),
+    body: JSON.stringify({ taskId:id, feito }) })
+    .then(r => r.ok ? r.json() : null)
+    .then(() => loadShared())
+    .catch(()=>{});
 }
 
 let quiz = null;   // {escala, i, answers:[]}

@@ -42,7 +42,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listMedications, addMedication, suspendMedication,
          listGoals, addGoal, updateGoal, deleteGoal,
          listSessions, createSession, getSessionFull, updateSession, deleteSession,
-         saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask } from './db.js';
+         saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
+         statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
+         sharedForClient, concluirTarefaCliente } from './db.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
 import webpush from 'web-push';
@@ -645,6 +647,72 @@ app.post('/api/admin/clients/tasks', ...clin, async (req, res) => {
 app.post('/api/admin/clients/tasks/update', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
     res.json(await updateSessionTask(Number(req.query.taskId), req.orgId, id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== ETAPA 6: acesso do cliente ao app (convite) + portal do compartilhado =====
+const baseUrl = req => process.env.APP_URL || (req.protocol + '://' + req.get('host'));
+// status do acesso (tem senha? há convite pendente?)
+app.get('/api/admin/clients/access', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    const st = await statusAcessoCliente(id);
+    if (st && st.convite) st.convite.link = baseUrl(req) + '/acesso.html?t=' + st.convite.token;
+    res.json(st || {}); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// gera o convite; se body.enviar e houver e-mail, manda por e-mail
+app.post('/api/admin/clients/access', ...clin, async (req, res) => {
+  try {
+    const id = await clienteDaOrg(req, res); if (id == null) return;
+    const a = await criarAcessoCliente(id, req.orgId, req.mentorUid);
+    const link = baseUrl(req) + '/acesso.html?t=' + a.token;
+    let enviado = false, erroEnvio = null;
+    const t = mailer();
+    if ((req.body || {}).enviar && a.email && t) {
+      const org = req.orgId ? await orgById(req.orgId).catch(() => null) : null;
+      const clinica = (org && org.nome) || 'TriLumen';
+      try {
+        await t.sendMail({
+          from: process.env.SMTP_FROM || process.env.SMTP_USER, to: a.email,
+          subject: 'Seu acesso ao app — ' + clinica,
+          html: `<p>Olá, ${a.nome.split(' ')[0]}.</p>
+            <p>Seu acompanhamento em <b>${clinica}</b> agora tem um espaço no aplicativo, onde você pode
+            conversar, acompanhar sua caminhada e ver o que combinamos nas sessões.</p>
+            <p><a href="${link}" style="background:#D4AF37;color:#1a1a1a;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Criar minha senha e entrar</a></p>
+            <p style="color:#666;font-size:13px">O link vale por 7 dias e só pode ser usado uma vez.
+            Se não foi você que pediu, é só ignorar este e-mail.</p>
+            <p style="color:#666;font-size:13px">— ${clinica}</p>`
+        });
+        enviado = true;
+      } catch (e) { erroEnvio = String(e.message || e); }
+    } else if ((req.body || {}).enviar && !a.email) erroEnvio = 'cliente sem e-mail cadastrado';
+    else if ((req.body || {}).enviar && !t) erroEnvio = 'e-mail não configurado no servidor';
+    res.json({ ok: true, link, email: a.email, enviado, erroEnvio });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/access/revoke', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json(await revogarAcessoCliente(id, req.orgId, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// --- lado do cliente (público: só o token vale) ---
+app.get('/api/access/check', authLimiter, async (req, res) => {
+  try { const d = await checarAcessoToken(req.query.t);
+    if (!d) return res.status(404).json({ error: 'Convite inválido ou expirado.' });
+    res.json(d); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/access/activate', authLimiter, async (req, res) => {
+  try { const b = req.body || {}; res.json(await ativarAcessoCliente(b.token, b.password)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// portal: só o que o profissional liberou
+app.get('/api/me/shared', requireAuth, async (req, res) => {
+  try { res.json(await sharedForClient(req.user.uid)); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
+  try { const b = req.body || {}; res.json(await concluirTarefaCliente(Number(b.taskId), req.user.uid, b.feito)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 

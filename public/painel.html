@@ -1123,7 +1123,7 @@ async function salvarCadRapido(){
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do cliente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ alert('Erro: '+e.message); return; }
   clienteAtual.id=id; nav('cliente');
@@ -1145,6 +1145,7 @@ function cliTab(t){
   if(t==='espiritual') return renderCliEsp(body);
   if(t==='objetivos') return renderCliObj(body);
   if(t==='sessoes') return renderCliSessoes(body);
+  if(t==='acesso') return renderCliAcesso(body);
   if(t==='auditoria') return renderCliAudit(body);
   body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
 }
@@ -1377,6 +1378,52 @@ async function addTarefa(sid){
 }
 async function toggleTarefa(sid,taskId,status){
   try{ await postAdmin('/api/admin/clients/tasks/update?id='+clienteAtual.id+'&taskId='+taskId,{status}); abrirSessaoCli(sid); }catch(e){ alert('Erro: '+e.message); }
+}
+
+/* ===== ETAPA 6: acesso do cliente ao app (convite de uso único) ===== */
+async function renderCliAcesso(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let st; try{ st=await api('/api/admin/clients/access?id='+clienteAtual.id); }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const temEmail=!!st.email;
+  const cabeca = st.tem_acesso
+    ? '<div id="dStats"><span class="stat"><b>ativo</b>acesso ao app</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail de login</span>':'')+'</div>'+
+      '<p class="subc" style="margin-top:12px">O cliente já tem senha e entra no app pelo e-mail dele. Ele vê apenas os resumos e tarefas que você compartilhou — nunca o prontuário.</p>'
+    : '<div id="dStats"><span class="stat"><b>sem acesso</b>ainda não entrou</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail</span>':'<span class="stat"><b>sem e-mail</b>use o link</span>')+'</div>'+
+      '<p class="subc" style="margin-top:12px">Gere um convite para o cliente criar a própria senha. O link vale 7 dias e só pode ser usado uma vez.</p>';
+  const pend = st.convite
+    ? '<div class="cad-ok" style="margin:14px 0">🔗 Convite pendente — <small>expira '+new Date(st.convite.expira_em).toLocaleDateString('pt-BR')+'</small>'+
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+      '<input id="acLink" readonly value="'+escHtml(st.convite.link||'')+'" style="flex:1 1 260px;font-size:12px"/>'+
+      '<button class="btn ghost" style="padding:8px 16px" onclick="copiarLink()">copiar link</button></div></div>'
+    : '';
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O acesso é do cliente: a senha é criada por ele e você nunca a vê.</p>'+
+    cabeca + pend +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'+
+    '<button class="btn" style="padding:9px 20px" onclick="gerarAcesso(false)">'+(st.convite?'Gerar novo link':'Gerar link de acesso')+'</button>'+
+    (temEmail?'<button class="btn ghost" style="padding:9px 20px" onclick="gerarAcesso(true)">Gerar e enviar por e-mail</button>':'')+
+    (st.tem_acesso?'<button class="btn ghost" style="padding:9px 20px" onclick="revogarAcesso()">Revogar acesso</button>':'')+
+    '</div><div class="muted" id="acStatus" style="margin-top:10px"></div>';
+}
+function copiarLink(){
+  const el=$('acLink'); if(!el) return;
+  el.select(); el.setSelectionRange(0,9999);
+  navigator.clipboard.writeText(el.value).then(()=>{ $('acStatus').textContent='link copiado ✓'; })
+    .catch(()=>{ document.execCommand('copy'); $('acStatus').textContent='link copiado ✓'; });
+}
+async function gerarAcesso(enviar){
+  $('acStatus').textContent='gerando…';
+  try{
+    const d=await postAdmin('/api/admin/clients/access?id='+clienteAtual.id,{enviar:!!enviar});
+    await renderCliAcesso($('cliTabBody'));
+    $('acStatus').textContent = enviar
+      ? (d.enviado ? 'convite enviado para '+d.email+' ✓' : 'link gerado — não deu para enviar o e-mail'+(d.erroEnvio?' ('+d.erroEnvio+')':'')+'. Copie o link acima.')
+      : 'link gerado ✓ — copie e envie ao cliente.';
+  }catch(e){ $('acStatus').textContent='erro: '+e.message; }
+}
+async function revogarAcesso(){
+  if(!confirm('Revogar o acesso do cliente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
+  try{ await postAdmin('/api/admin/clients/access/revoke?id='+clienteAtual.id,{}); cliTab('acesso'); }
+  catch(e){ alert('Erro: '+e.message); }
 }
 
 /* ===== VISÃO GERAL ===== */

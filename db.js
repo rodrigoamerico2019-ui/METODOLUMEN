@@ -6,6 +6,7 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 
 const pool = process.env.DATABASE_URL
   ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 })
@@ -389,6 +390,14 @@ export async function initDb() {
       id BIGSERIAL PRIMARY KEY, org_id BIGINT, user_id INT, client_user_id INT,
       acao TEXT, entidade TEXT, entidade_id TEXT, dados JSONB, ip TEXT, created_at TIMESTAMPTZ DEFAULT now()
     );
+    -- convite de acesso do cliente ao app (ele define a própria senha; token de uso único)
+    CREATE TABLE IF NOT EXISTS client_access_tokens (
+      token TEXT PRIMARY KEY, org_id BIGINT,
+      client_user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      criado_por INT, expira_em TIMESTAMPTZ, usado_em TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_cat_client ON client_access_tokens (client_user_id, usado_em);
     -- índices
     CREATE INDEX IF NOT EXISTS idx_orgmembers_org ON org_members (org_id, ativo);
     CREATE INDEX IF NOT EXISTS idx_clientdet_org ON client_details (org_id, status);
@@ -1726,6 +1735,90 @@ export async function updateSessionTask(id, orgId, clientId, t = {}, uid) {
      WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`,
     [id, orgId, t.titulo || null, t.descricao || null, t.status || null, dateOrNull(t.prazo), t.compartilhada == null ? null : !!t.compartilhada]);
   await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'tarefa_alterada', entidade: 'task', entidadeId: id });
+  return { ok: true };
+}
+
+// ---- ACESSO DO CLIENTE AO APP (convite de uso único + portal do que foi compartilhado) ----
+// O cliente nasce SEM senha (password_hash=''), então não consegue entrar.
+// O mentor gera um convite; o cliente define a própria senha e passa a ver
+// APENAS o que foi liberado (resumos compartilhados + tarefas compartilhadas).
+export async function statusAcessoCliente(clientId) {
+  if (!pool || !clientId) return null;
+  const u = await pool.query(`SELECT (password_hash <> '') AS tem_acesso, email, name FROM users WHERE id=$1`, [clientId]);
+  if (!u.rows[0]) return null;
+  const t = await pool.query(`SELECT token, expira_em FROM client_access_tokens
+    WHERE client_user_id=$1 AND usado_em IS NULL AND expira_em > now() ORDER BY created_at DESC LIMIT 1`, [clientId]);
+  const semEmail = !u.rows[0].email || u.rows[0].email.includes('@sem-email.');
+  return { tem_acesso: u.rows[0].tem_acesso, nome: u.rows[0].name,
+    email: semEmail ? null : u.rows[0].email,
+    convite: t.rows[0] ? { token: t.rows[0].token, expira_em: t.rows[0].expira_em } : null };
+}
+export async function criarAcessoCliente(clientId, orgId, uid) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  const u = await pool.query(`SELECT name, email FROM users WHERE id=$1 AND role='paciente'`, [clientId]);
+  if (!u.rows[0]) throw new Error('Cliente não encontrado.');
+  // invalida convites anteriores ainda não usados
+  await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
+  const token = crypto.randomBytes(24).toString('hex');
+  await pool.query(`INSERT INTO client_access_tokens (token, org_id, client_user_id, criado_por, expira_em)
+    VALUES ($1,$2,$3,$4, now() + interval '7 days')`, [token, orgId, clientId, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_convite_criado', entidade: 'client_access', entidadeId: clientId });
+  const email = u.rows[0].email && !u.rows[0].email.includes('@sem-email.') ? u.rows[0].email : null;
+  return { token, nome: u.rows[0].name, email };
+}
+export async function checarAcessoToken(token) {
+  if (!pool || !token) return null;
+  const r = await pool.query(`SELECT t.client_user_id, u.name, u.email FROM client_access_tokens t
+    JOIN users u ON u.id=t.client_user_id
+    WHERE t.token=$1 AND t.usado_em IS NULL AND t.expira_em > now()`, [String(token)]);
+  if (!r.rows[0]) return null;
+  const e = r.rows[0].email;
+  return { nome: r.rows[0].name, email: e && !e.includes('@sem-email.') ? e : null };
+}
+export async function ativarAcessoCliente(token, password) {
+  if (!pool) throw new Error('banco não configurado');
+  const senha = String(password || '');
+  if (senha.length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
+  const r = await pool.query(`SELECT t.client_user_id, t.org_id FROM client_access_tokens t
+    WHERE t.token=$1 AND t.usado_em IS NULL AND t.expira_em > now()`, [String(token || '')]);
+  if (!r.rows[0]) throw new Error('Este convite é inválido ou expirou. Peça um novo ao seu mentor.');
+  const cid = r.rows[0].client_user_id;
+  const hash = await bcrypt.hash(senha, 10);
+  await pool.query('UPDATE users SET password_hash=$2 WHERE id=$1', [cid, hash]);
+  await pool.query('UPDATE client_access_tokens SET usado_em=now() WHERE token=$1', [String(token)]);
+  await registrarAuditoria({ orgId: r.rows[0].org_id, userId: cid, clientId: cid, acao: 'acesso_ativado', entidade: 'client_access', entidadeId: cid });
+  const u = await pool.query('SELECT * FROM users WHERE id=$1', [cid]);
+  return issueToken(u.rows[0]);
+}
+export async function revogarAcessoCliente(clientId, orgId, uid) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  await pool.query(`UPDATE users SET password_hash='' WHERE id=$1 AND role='paciente'`, [clientId]);
+  await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_revogado', entidade: 'client_access', entidadeId: clientId });
+  return { ok: true };
+}
+// PORTAL DO CLIENTE: só o que o profissional liberou explicitamente
+export async function sharedForClient(clientId) {
+  if (!pool || !clientId) return { resumos: [], tarefas: [] };
+  const [res, tks] = await Promise.all([
+    pool.query(`SELECT s.id, s.quando, ss.resumo, ss.shared_at, ss.permite_download, ss.permite_impressao, ss.compartilha_tarefas
+       FROM session_shared_summaries ss JOIN sessions s ON s.id=ss.session_id
+       WHERE s.client_user_id=$1 AND ss.compartilhado=true AND s.deleted_at IS NULL
+       ORDER BY s.quando DESC NULLS LAST LIMIT 50`, [clientId]),
+    pool.query(`SELECT t.id, t.titulo, t.descricao, t.status, t.prazo, t.session_id
+       FROM session_tasks t LEFT JOIN sessions s ON s.id=t.session_id
+       WHERE t.client_user_id=$1 AND t.compartilhada=true AND (s.id IS NULL OR s.deleted_at IS NULL)
+       ORDER BY (t.status='concluida'), t.prazo NULLS LAST, t.created_at DESC LIMIT 50`, [clientId])
+  ]);
+  return { resumos: res.rows, tarefas: tks.rows };
+}
+export async function concluirTarefaCliente(taskId, clientId, feito) {
+  if (!pool || !taskId || !clientId) throw new Error('banco não configurado');
+  const r = await pool.query(`UPDATE session_tasks SET status=$3
+    WHERE id=$1 AND client_user_id=$2 AND compartilhada=true RETURNING id`,
+    [taskId, clientId, feito === false ? 'pendente' : 'concluida']);
+  if (!r.rows[0]) throw new Error('Tarefa não encontrada.');
+  await registrarAuditoria({ userId: clientId, clientId, acao: feito === false ? 'tarefa_reaberta_cliente' : 'tarefa_concluida_cliente', entidade: 'task', entidadeId: taskId });
   return { ok: true };
 }
 
