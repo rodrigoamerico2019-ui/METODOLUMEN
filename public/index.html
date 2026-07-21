@@ -408,6 +408,54 @@
   .ac-tb.feito b { text-decoration:line-through; opacity:.55; }
   .ac-tb p { font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.6; }
   .ac-prazo { font-size:11px; color:var(--gold-2); margin-top:3px; }
+
+  /* ===== JORNADA (tela inicial) ===== */
+  #view-jornada { display:none; flex-direction:column; gap:14px; }
+  #view-jornada.active { display:flex; }
+  .jor-hello { padding:2px 2px 0; }
+  .jor-day { font-family:'Cormorant Garamond',Georgia,serif; font-weight:600; font-size:27px; color:var(--ink); line-height:1.1; }
+  .jor-mem { margin-top:7px; color:var(--ink-dim); font-size:14px; line-height:1.5; }
+  .jor-mem b { color:var(--ink); font-weight:600; }
+  .jor-talk { display:flex; align-items:center; gap:13px; width:100%; text-align:left; cursor:pointer; border:none; border-radius:18px;
+    padding:16px 18px; color:#1a1508; font-family:inherit; background:linear-gradient(135deg,#E4C878,#C9A227); box-shadow:0 10px 26px -12px rgba(201,162,39,.75); transition:transform .12s; }
+  .jor-talk:active { transform:scale(.98); }
+  .jt-ic { width:38px; height:38px; border-radius:50%; background:rgba(255,255,255,.35); display:grid; place-items:center; flex:0 0 auto; }
+  .jt-ic svg { width:20px; height:20px; stroke:#1a1508; fill:none; stroke-width:1.8; }
+  .jt1 { font-weight:700; font-size:15.5px; display:block; }
+  .jt2 { font-size:12.5px; opacity:.82; margin-top:1px; display:block; }
+  .jor-card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:16px 17px; box-shadow:0 8px 24px -18px rgba(60,45,15,.4); }
+  .jor-card.hide { display:none; }
+  .jor-lab { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .jor-step { border-left:3px solid #6E9455; }
+  .jor-step-body { display:flex; gap:12px; align-items:flex-start; margin-top:10px; }
+  .jor-check { width:26px; height:26px; border-radius:50%; border:2px solid var(--line); flex:0 0 auto; cursor:pointer; display:grid; place-items:center; background:var(--panel-2); transition:.2s; margin-top:1px; }
+  .jor-check svg { width:14px; height:14px; stroke:#fff; fill:none; stroke-width:2.4; opacity:0; transition:.2s; }
+  .jor-step.done .jor-check { background:#6E9455; border-color:#6E9455; }
+  .jor-step.done .jor-check svg { opacity:1; }
+  .jor-step-txt { font-size:14.5px; color:var(--ink); line-height:1.5; }
+  .jor-step.done .jor-step-txt { color:var(--ink-dim); text-decoration:line-through; text-decoration-color:var(--ink-faint); }
+  .jor-step-hint { display:block; margin-top:4px; font-size:12px; color:var(--ink-faint); }
+  .jor-word { background:linear-gradient(160deg,rgba(201,162,39,.10),var(--panel) 62%); border-left:3px solid var(--gold-2); }
+  .jor-verse { font-family:'Cormorant Garamond',Georgia,serif; font-style:italic; font-size:17.5px; color:var(--ink); margin-top:9px; line-height:1.4; }
+  .jor-ref { font-size:11.5px; letter-spacing:.05em; color:var(--gold-1); font-weight:600; margin-top:6px; }
+  .jor-checkin { width:100%; border:1px dashed var(--line); background:var(--panel-2); color:var(--ink-dim); border-radius:14px; padding:13px; font-family:inherit; font-size:14px; cursor:pointer; transition:.15s; }
+  .jor-checkin:active { transform:scale(.99); }
+  .jor-checkin.feito { border-style:solid; color:#41603a; background:rgba(110,148,85,.10); border-color:rgba(110,148,85,.3); cursor:default; }
+  .jor-cont { font-size:12.5px; color:var(--ink-dim); margin-top:10px; }
+  .jor-cont b { color:#6E9455; font-weight:700; }
+  .jor-spheres { display:flex; flex-direction:column; gap:10px; margin-top:13px; }
+  .jor-sph { display:grid; grid-template-columns:74px 1fr auto; align-items:center; gap:10px; }
+  .jor-sph .nm { font-size:12.5px; color:var(--ink); }
+  .jor-bar { height:7px; border-radius:5px; background:var(--line); overflow:hidden; }
+  .jor-bar span { display:block; height:100%; border-radius:5px; background:linear-gradient(90deg,#C9A227,#E4C878); }
+  .jor-delta { font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; min-width:30px; text-align:right; color:var(--ink-faint); }
+  .jor-delta.up { color:#6E9455; }
+  .jor-wins { display:flex; flex-wrap:wrap; gap:7px; margin-top:13px; }
+  .jor-win { font-size:11.5px; color:#41603a; background:rgba(110,148,85,.12); border:1px solid rgba(110,148,85,.28); padding:5px 10px; border-radius:999px; }
+  .jor-mirror { font-family:'Cormorant Garamond',Georgia,serif; font-style:italic; font-size:16px; color:var(--ink-dim); text-align:center; padding:4px 14px 8px; line-height:1.5; }
+  .jor-mirror.hide { display:none; }
+  .jor-mirror b { color:var(--gold-1); font-style:normal; font-weight:600; }
+
   .ob-logo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:10px; }
   .ob-logo svg { width:58px; height:auto; }
   .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:6px; font-size:22px; color:var(--ink); }
@@ -425,6 +473,7 @@
   .ob-tr input[type=range] { width:calc(100% - 34px); accent-color:#d4a94a; vertical-align:middle; }
   .ob-tr b { display:inline-block; width:26px; text-align:right; color:var(--gold-2); font-size:14px; vertical-align:middle; }
   .ob-foot em { display:block; margin-top:6px; font-style:italic; color:var(--gold-soft); font-size:11px; }
+  .ob-close { position:absolute; top:14px; left:14px; background:none; border:none; color:var(--ink-dim); font-family:inherit; font-size:13px; cursor:pointer; padding:6px 8px; z-index:2; }
   .ob-name { width:100%; max-width:340px; margin-top:22px; }
   .ob-name input { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--ink);
     font-family:'Cormorant Garamond'; font-size:18px; text-align:center; padding:13px 14px; }
@@ -541,7 +590,8 @@
   </div>
 
   <!-- ============ ONBOARDING / CHECK-IN DE ENTRADA ============ -->
-  <div class="onboarding" id="onboarding">
+  <div class="onboarding hide" id="onboarding">
+    <button class="ob-close" id="obClose" onclick="document.getElementById('onboarding').classList.add('hide')" aria-label="voltar">← voltar</button>
     <div class="ob-logo">
       <svg viewBox="0 0 100 210" xmlns="http://www.w3.org/2000/svg" aria-label="Método Lúmen">
         <circle cx="50" cy="36" r="31" fill="#FBF6E9"/><circle cx="50" cy="36" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
@@ -586,8 +636,48 @@
 
   <div class="views">
 
+    <!-- ============ JORNADA (tela inicial) ============ -->
+    <div class="view active" id="view-jornada">
+      <div class="jor-hello">
+        <div class="jor-day" id="jorDay">Olá.</div>
+        <div class="jor-mem" id="jorMem"></div>
+      </div>
+
+      <button class="jor-talk" id="jorTalk">
+        <span class="jt-ic"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg></span>
+        <span><span class="jt1">Conversar com a Lúmen</span><span class="jt2">estou aqui quando você quiser — sem pressa</span></span>
+      </button>
+
+      <div class="jor-card jor-step hide" id="jorStepCard">
+        <div class="jor-lab">🌱 <span id="jorStepLab">Seu passo de hoje</span></div>
+        <div class="jor-step-body">
+          <button class="jor-check" id="jorStepCheck" aria-label="marcar como feito"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></button>
+          <div><div class="jor-step-txt" id="jorStepTxt"></div><span class="jor-step-hint" id="jorStepHint"></span></div>
+        </div>
+      </div>
+
+      <div class="jor-card jor-word hide" id="jorWordCard">
+        <div class="jor-lab">🕊️ Sua Palavra de hoje</div>
+        <div class="jor-verse" id="jorVerse"></div>
+        <div class="jor-ref" id="jorRef"></div>
+      </div>
+
+      <button class="jor-checkin" id="jorCheckin">
+        <span id="jorCheckinTxt">🌤️ Como estou hoje</span>
+      </button>
+
+      <div class="jor-card jor-journey hide" id="jorJourneyCard">
+        <div class="jor-lab">✨ Sua jornada</div>
+        <div class="jor-cont" id="jnStreak"></div>
+        <div class="jor-spheres" id="jorSpheres"></div>
+        <div class="jor-wins" id="jorWins"></div>
+      </div>
+
+      <div class="jor-mirror serif hide" id="jorMirror"></div>
+    </div>
+
     <!-- ============ CONVERSA ============ -->
-    <div class="view active" id="view-conversa">
+    <div class="view" id="view-conversa">
       <div class="chat-scroll" id="chatScroll"></div>
       <div class="composer">
         <div class="composer-row">
@@ -780,7 +870,11 @@
   <div class="toast" id="toast"></div>
 
   <div class="nav">
-    <button class="nav-btn active" data-v="conversa">
+    <button class="nav-btn active" data-v="jornada">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 7v10a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1V10z"/></svg>
+      Jornada
+    </button>
+    <button class="nav-btn" data-v="conversa">
       <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg>
       Conversa
     </button>
@@ -833,13 +927,109 @@ const EMO_COLORS = { paz:'#7fbf9a', gratidão:'#E8C76A', ansiedade:'#e0a04a', tr
    NAVEGAÇÃO
 ========================================================= */
 document.querySelectorAll('.nav-btn').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('.nav-btn').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    document.getElementById('view-' + b.dataset.v).classList.add('active');
-  };
+  b.onclick = () => irParaView(b.dataset.v);
 });
+function irParaView(v){
+  document.querySelectorAll('.nav-btn').forEach(x => x.classList.toggle('active', x.dataset.v === v));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+}
+
+/* =========================================================
+   JORNADA — a tela inicial (ser lembrado · passo concreto ·
+   progresso com graça · conversa a um toque). Nunca obrigação.
+========================================================= */
+document.getElementById('jorTalk').onclick = () => irParaView('conversa');
+document.getElementById('jorCheckin').onclick = () => abrirCheckin();
+document.getElementById('jorStepCheck').onclick = function(){
+  document.getElementById('jorStepCard').classList.toggle('done');
+};
+
+// abre o check-in (que virou um ritual opcional, não mais a porta de entrada)
+function abrirCheckin(){
+  const ob = document.getElementById('onboarding');
+  ob.classList.remove('hide');
+}
+
+async function renderJornada(){
+  if(!AUTH.token) return;
+  const primeiro = (AUTH.name || state.name || '').trim().split(/\s+/)[0] || '';
+  const hora = new Date().getHours();
+  const periodo = hora < 12 ? 'Bom dia' : (hora < 18 ? 'Boa tarde' : 'Boa noite');
+  document.getElementById('jorDay').textContent = periodo + (primeiro ? ', ' + primeiro : '') + '.';
+
+  // busca tudo em paralelo (tolerante a falhas)
+  const get = p => fetch(API_BASE + p, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const [hist, plan, palavra, jornada, chk] = await Promise.all([
+    get('/api/auth/history'), get('/api/me/plan'), get('/api/me/palavra'), get('/api/me/journey'), get('/api/checkin')
+  ]);
+
+  const temHistorico = !!(hist && (hist.history || []).length);
+
+  // 1 · saudação / convite — no PRIMEIRO acesso, o convite caloroso
+  document.getElementById('jorMem').innerHTML = temHistorico
+    ? 'Que bom te ver. Tô por aqui — é só começar quando você quiser.'
+    : 'Me conta como você está. Tô aqui pra te ouvir, sem pressa.';
+
+  // 2 · passo de hoje — vem do plano de ação do mentor
+  const p = plan && plan.plano;
+  const stepCard = document.getElementById('jorStepCard');
+  if(p && p.passos && p.passos.length){
+    const passo = p.passos[0];
+    document.getElementById('jorStepLab').textContent = p.foco ? 'Seu foco: ' + p.foco : 'Seu passo de hoje';
+    document.getElementById('jorStepTxt').textContent = (passo.titulo || '') + (passo.descricao ? ' — ' + passo.descricao : '');
+    document.getElementById('jorStepHint').textContent = 'um passo de cada vez. toque no círculo quando fizer.';
+    stepCard.classList.remove('hide', 'done');
+  } else {
+    stepCard.classList.add('hide');
+  }
+
+  // 3 · Palavra do dia (ritual)
+  const pv = palavra && palavra.palavra;
+  const wordCard = document.getElementById('jorWordCard');
+  if(pv && pv.reflexao){
+    document.getElementById('jorVerse').textContent = '“' + (pv.versiculo || pv.reflexao) + '”';
+    document.getElementById('jorRef').textContent = pv.referencia || '';
+    wordCard.classList.remove('hide');
+  } else { wordCard.classList.add('hide'); }
+
+  // 4 · check-in de hoje — feito ou convite
+  const btn = document.getElementById('jorCheckin');
+  if(chk && chk.hoje){
+    document.getElementById('jorCheckinTxt').textContent = '🌱 Check-in de hoje registrado';
+    btn.classList.add('feito');
+  } else {
+    document.getElementById('jorCheckinTxt').textContent = '🌤️ Como estou hoje';
+    btn.classList.remove('feito');
+  }
+
+  // 5 · a jornada, visível e com graça (só se já há caminho)
+  const jc = document.getElementById('jorJourneyCard');
+  const esf = jornada && jornada.esferas;
+  const temJornada = jornada && (jornada.streak > 0 || (esf && esf.amostras > 0) || (jornada.vitorias||[]).length);
+  if(temJornada){
+    document.getElementById('jnStreak').innerHTML = jornada.streak > 1
+      ? '🌿 Você tem caminhado — <b>' + jornada.streak + ' dias seguidos</b> de check-in.'
+      : '🌿 Você começou. Um passo já é caminhada.';
+    const bar = (nome, val) => {
+      const pct = Math.max(4, Math.min(100, Math.round((Number(val)||0)*10)));
+      const v = val != null ? Number(val).toFixed(1) : '—';
+      return '<div class="jor-sph"><span class="nm">'+nome+'</span><div class="jor-bar"><span style="width:'+pct+'%"></span></div><span class="jor-delta">'+v+'</span></div>';
+    };
+    document.getElementById('jorSpheres').innerHTML = esf
+      ? bar('🫀 Corpo', esf.corpo) + bar('💭 Alma', esf.alma) + bar('🕊️ Espírito', esf.espirito) : '';
+    const vits = (jornada.vitorias || []).slice(-3).reverse();
+    document.getElementById('jorWins').innerHTML = vits.map(v => '<span class="jor-win">✓ ' + escAc(v.texto) + '</span>').join('');
+    jc.classList.remove('hide');
+  } else { jc.classList.add('hide'); }
+
+  // 6 · reflexo do crescimento — honesto, só quando há constância
+  const mir = document.getElementById('jorMirror');
+  if(jornada && jornada.streak >= 3){
+    mir.innerHTML = 'Você tem voltado, dia após dia.<br><b>Isso já é a caminhada.</b>';
+    mir.classList.remove('hide');
+  } else { mir.classList.add('hide'); }
+}
 
 /* =========================================================
    DETECÇÃO DE CRISE (rede de segurança no cliente)
@@ -1623,11 +1813,8 @@ function continuarAposMapa(){
         state.history = h.map(m => ({ role: m.role, content: m.content }));
       }
     }).catch(()=>{});
-  // se o check-in de hoje já foi feito, não repete o filtro: vai direto pra conversa
-  fetch(API_BASE + '/api/checkin', { headers: authHeaders() })
-    .then(r => r.ok ? r.json() : { hoje: null })
-    .then(d => { if(d.hoje) skipToChat(d.hoje); })
-    .catch(()=>{});
+  // a tela inicial agora é a JORNADA (não mais o check-in obrigatório)
+  renderJornada();
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
   loadPalavra();          // Palavra Viva do dia (personalizada)
@@ -2094,12 +2281,11 @@ function startWithMood(mood){
     espirito: Number(document.getElementById('trEspirito').value)
   };
   if(AUTH.token) fetch(API_BASE + '/api/checkin', { method:'POST', headers: authHeaders(), body: JSON.stringify(tri) })
-    .then(()=>loadJourney()).catch(()=>{});
+    .then(()=>{ loadJourney(); renderJornada(); }).catch(()=>{});
 
-  // a primeira fala já parte da IA, acolhendo pelo nome, pelo humor e pela tríade de hoje
-  const abertura = (nm ? 'Meu nome é ' + nm + '. ' : '') + 'Cheguei aqui me sentindo ' + mood +
-    '. No meu check-in de hoje: corpo ' + tri.corpo + '/10, alma ' + tri.alma + '/10, espírito ' + tri.espirito + '/10.';
-  sendMessage(abertura);
+  // check-in é um ritual, não um gatilho de conversa: volta pra Jornada acolhedora
+  irParaView('jornada');
+  toast('🌱 Check-in de hoje registrado. Tô aqui quando você quiser conversar.');
 }
 
 /* volta no mesmo dia: check-in já feito, vai direto para a conversa */
