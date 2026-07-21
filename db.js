@@ -112,6 +112,9 @@ export async function initDb() {
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_bussola TEXT;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_em TIMESTAMPTZ;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS mapa_risco BOOLEAN DEFAULT false;
+    -- saudação da Jornada: uma linha humana que retoma o assunto real da última conversa
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS saudacao TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS saudacao_base TIMESTAMPTZ;
     -- check-in diário (o "filtro" de consciência: como estou hoje em corpo/alma/espírito)
     CREATE TABLE IF NOT EXISTS checkins (
       id BIGSERIAL PRIMARY KEY,
@@ -1963,12 +1966,13 @@ export async function deliveriesByClient(clientId, orgId) {
 export async function ultimoEncontro(userId) {
   if (!pool || !userId) return null;
   const r = await pool.query(`
-    SELECT role, content, meta,
+    SELECT role, content, meta, created_at,
            (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
            ((now() AT TIME ZONE 'America/Sao_Paulo')::date
             - (created_at AT TIME ZONE 'America/Sao_Paulo')::date) AS dias_atras
     FROM messages WHERE user_id=$1 ORDER BY created_at DESC LIMIT 24`, [userId]);
   if (!r.rows.length) return null;
+  const ultimaEm = r.rows[0].created_at || null;
   const ultimoDia = String(r.rows[0].dia);
   const doDia = r.rows.filter(m => String(m.dia) === ultimoDia).reverse();
   const falas = doDia.filter(m => m.role === 'user')
@@ -1981,11 +1985,23 @@ export async function ultimoEncontro(userId) {
   return {
     dia: ultimoDia,
     dias_atras: Number(r.rows[0].dias_atras),
+    ultima_em: ultimaEm,
     falas,
     emocao: meta?.emocao || null,
     status: meta?.status || null,
     risco: meta?.risco || null
   };
+}
+// cache da saudação da Jornada (regenera só quando há conversa nova)
+export async function getSaudacao(userId) {
+  if (!pool || !userId) return null;
+  const r = await pool.query('SELECT saudacao, saudacao_base FROM profiles WHERE user_id=$1', [userId]);
+  return r.rows[0] || null;
+}
+export async function setSaudacao(userId, texto, base) {
+  if (!pool || !userId) return;
+  await pool.query(`INSERT INTO profiles (user_id, saudacao, saudacao_base) VALUES ($1,$2,$3)
+    ON CONFLICT (user_id) DO UPDATE SET saudacao=$2, saudacao_base=$3`, [userId, texto || null, base || null]);
 }
 
 // médias da tríade nos últimos N dias (para as esferas do painel)

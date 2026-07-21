@@ -960,16 +960,20 @@ async function renderJornada(){
 
   // busca tudo em paralelo (tolerante a falhas)
   const get = p => fetch(API_BASE + p, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null);
-  const [hist, plan, palavra, jornada, chk] = await Promise.all([
-    get('/api/auth/history'), get('/api/me/plan'), get('/api/me/palavra'), get('/api/me/journey'), get('/api/checkin')
+  const [saud, plan, palavra, jornada, chk] = await Promise.all([
+    get('/api/me/greeting'), get('/api/me/plan'), get('/api/me/palavra'), get('/api/me/journey'), get('/api/checkin')
   ]);
 
-  const temHistorico = !!(hist && (hist.history || []).length);
-
-  // 1 · saudação / convite — no PRIMEIRO acesso, o convite caloroso
-  document.getElementById('jorMem').innerHTML = temHistorico
-    ? 'Que bom te ver. Tô por aqui — é só começar quando você quiser.'
-    : 'Me conta como você está. Tô aqui pra te ouvir, sem pressa.';
+  // 1 · saudação — retoma o assunto REAL da última conversa (humano, sem enrolação).
+  //     No PRIMEIRO acesso (sem histórico), o convite caloroso.
+  const mem = document.getElementById('jorMem');
+  if(saud && saud.saudacao){
+    mem.textContent = saud.saudacao;                 // linha gerada citando o assunto real
+  } else if(saud && saud.tem_historico){
+    mem.textContent = 'Tô por aqui. Como você está desde a última vez?';
+  } else {
+    mem.textContent = 'Me conta como você está. Tô aqui pra te ouvir, sem pressa.';
+  }
 
   // 2 · passo de hoje — vem do plano de ação do mentor
   const p = plan && plan.plano;

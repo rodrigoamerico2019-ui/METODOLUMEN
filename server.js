@@ -29,7 +29,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
-         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro,
+         mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro, getSaudacao, setSaudacao,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
@@ -724,6 +724,49 @@ app.get('/api/me/shared', requireAuth, async (req, res) => {
 app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
   try { const b = req.body || {}; res.json(await concluirTarefaCliente(Number(b.taskId), req.user.uid, b.feito)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// SAUDAÇÃO DA JORNADA — uma linha humana e real que retoma o ASSUNTO concreto
+// da última conversa (nada de "de onde paramos"). Gerada 1x por conversa (cache).
+async function gerarSaudacaoJornada(ultimo) {
+  if (!process.env.ANTHROPIC_API_KEY || !ultimo || !ultimo.falas?.length) return null;
+  const d = Number(ultimo.dias_atras);
+  const quando = d <= 0 ? 'mais cedo hoje' : d === 1 ? 'ontem' : d < 7 ? `há ${d} dias` : d < 30 ? 'na semana passada' : 'há um tempo';
+  const contexto = `Última conversa foi ${quando}. Nas palavras da própria pessoa:\n`
+    + ultimo.falas.map(f => '- "' + f + '"').join('\n')
+    + (ultimo.emocao ? `\nComo ela estava: ${ultimo.emocao}.` : '')
+    + (ultimo.risco && ultimo.risco !== 'nenhum' ? '\nHavia sinais de dor forte/risco — seja gentil e cuidadosa, nunca leve.' : '');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        system: `Você é a Lúmen. A pessoa vai abrir o app agora e verá UMA frase sua na tela inicial. Escreva UMA frase curta (máx 18 palavras), humana e real, que RETOME o assunto CONCRETO da última conversa dela: a pessoa, a situação, a decisão que estava em jogo. Regras: cite o assunto real com naturalidade; PROIBIDO "de onde paramos", "na última conversa", "retomando", qualquer clichê, travessão em prosa e construções "não é X, é Y"; sem enrolação, sem melação; fale "você" por extenso. Pode terminar com uma pergunta curta e genuína, ou não. Se havia dor forte ou risco, seja gentil, nunca leve. Responda SÓ a frase, sem aspas.`,
+        messages: [{ role: 'user', content: contexto }]
+      })
+    });
+    const data = await r.json();
+    if (data.error) return null;
+    let t = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
+    t = t.replace(/^["'“”]+|["'“”]+$/g, '').trim();
+    return t.length > 4 ? tirarCe(t) : null;
+  } catch { return null; }
+}
+app.get('/api/me/greeting', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const ultimo = await ultimoEncontro(uid).catch(() => null);
+    if (!ultimo) return res.json({ saudacao: null, tem_historico: false });
+    const base = ultimo.ultima_em ? new Date(ultimo.ultima_em).toISOString() : null;
+    const cache = await getSaudacao(uid).catch(() => null);
+    const cacheBase = cache?.saudacao_base ? new Date(cache.saudacao_base).toISOString() : null;
+    if (cache?.saudacao && cacheBase && cacheBase === base) return res.json({ saudacao: cache.saudacao, tem_historico: true });
+    const nova = await gerarSaudacaoJornada(ultimo);
+    if (nova) { await setSaudacao(uid, nova, ultimo.ultima_em).catch(() => {}); return res.json({ saudacao: nova, tem_historico: true }); }
+    res.json({ saudacao: cache?.saudacao || null, tem_historico: true });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // ===== ETAPA 7: relatórios (PDF leve, sem Chromium) + impressão =====
