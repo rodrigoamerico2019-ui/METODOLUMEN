@@ -941,8 +941,13 @@ function irParaView(v){
 ========================================================= */
 document.getElementById('jorTalk').onclick = () => irParaView('conversa');
 document.getElementById('jorCheckin').onclick = () => abrirCheckin();
-document.getElementById('jorStepCheck').onclick = function(){
-  document.getElementById('jorStepCard').classList.toggle('done');
+document.getElementById('jorStepCheck').onclick = async function(){
+  const card = document.getElementById('jorStepCard');
+  const idx = card.dataset.idx;
+  if(idx === '' || idx == null) return;         // nada a marcar (todos feitos)
+  card.classList.add('done');                    // feedback imediato
+  try{ await fetch(API_BASE + '/api/me/plan/step', { method:'POST', headers: authHeaders(), body: JSON.stringify({ index:Number(idx), feito:true }) }); }catch(_){}
+  setTimeout(renderJornada, 500);                // avança pro próximo passo (já persistido)
 };
 
 // abre o check-in (que virou um ritual opcional, não mais a porta de entrada)
@@ -959,7 +964,7 @@ async function renderJornada(){
   document.getElementById('jorDay').textContent = periodo + (primeiro ? ', ' + primeiro : '') + '.';
 
   // busca tudo em paralelo (tolerante a falhas)
-  const get = p => fetch(API_BASE + p, { headers: authHeaders() }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const get = p => fetch(API_BASE + p, { headers: authHeaders(), cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
   const [saud, plan, palavra, jornada, chk] = await Promise.all([
     get('/api/me/greeting'), get('/api/me/plan'), get('/api/me/palavra'), get('/api/me/journey'), get('/api/checkin')
   ]);
@@ -975,15 +980,32 @@ async function renderJornada(){
     mem.textContent = 'Me conta como você está. Tô aqui pra te ouvir, sem pressa.';
   }
 
-  // 2 · passo de hoje — vem do plano de ação do mentor
+  // 2 · passo de hoje — vem do plano do mentor; mostra o PRÓXIMO ainda não feito
+  //     e o progresso persiste (marcar "feito" fica salvo).
   const p = plan && plan.plano;
   const stepCard = document.getElementById('jorStepCard');
+  const check = document.getElementById('jorStepCheck');
   if(p && p.passos && p.passos.length){
-    const passo = p.passos[0];
-    document.getElementById('jorStepLab').textContent = p.foco ? 'Seu foco: ' + p.foco : 'Seu passo de hoje';
-    document.getElementById('jorStepTxt').textContent = (passo.titulo || '') + (passo.descricao ? ' — ' + passo.descricao : '');
-    document.getElementById('jorStepHint').textContent = 'um passo de cada vez. toque no círculo quando fizer.';
-    stepCard.classList.remove('hide', 'done');
+    const feitos = (p.passos_feitos || []).map(Number);
+    const total = p.passos.length;
+    const idx = p.passos.findIndex((_, i) => !feitos.includes(i));
+    document.getElementById('jorStepLab').textContent = p.foco ? 'Seu foco: ' + p.foco : 'Seu passo';
+    if(idx === -1){
+      // todos concluídos — celebra, sem cobrar
+      stepCard.dataset.idx = '';
+      document.getElementById('jorStepTxt').textContent = 'Você concluiu os passos do seu plano. Que caminhada. 🌱';
+      document.getElementById('jorStepHint').textContent = total + ' de ' + total + ' concluídos.';
+      stepCard.classList.add('done'); check.style.visibility = 'hidden';
+    } else {
+      const passo = p.passos[idx];
+      stepCard.dataset.idx = String(idx);
+      document.getElementById('jorStepTxt').textContent = (passo.titulo || '') + (passo.descricao ? ' — ' + passo.descricao : '');
+      document.getElementById('jorStepHint').textContent = total > 1
+        ? ('passo ' + (feitos.length + 1) + ' de ' + total + ' · toque quando fizer')
+        : 'toque no círculo quando fizer';
+      stepCard.classList.remove('done'); check.style.visibility = '';
+    }
+    stepCard.classList.remove('hide');
   } else {
     stepCard.classList.add('hide');
   }

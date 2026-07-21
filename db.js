@@ -428,6 +428,7 @@ export async function initDb() {
       entregue_em TIMESTAMPTZ,
       updated_at TIMESTAMPTZ DEFAULT now()
     );
+    ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS passos_feitos JSONB DEFAULT '[]';
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -1194,16 +1195,31 @@ export async function scalesForPatient(userId) {
 // =========================================================
 export async function getActionPlan(userId) {
   if (!pool || !userId) return null;
-  const r = await pool.query('SELECT foco, passos, entregue, gerado_em, entregue_em FROM action_plans WHERE user_id=$1', [userId]);
+  const r = await pool.query('SELECT foco, passos, passos_feitos, entregue, gerado_em, entregue_em FROM action_plans WHERE user_id=$1', [userId]);
   return r.rows[0] || null;
 }
 export async function saveActionPlan(userId, { foco, passos }) {
   if (!pool || !userId) throw new Error('banco não configurado');
-  await pool.query(`INSERT INTO action_plans (user_id, foco, passos, gerado_em, updated_at)
-    VALUES ($1,$2,$3,now(),now())
-    ON CONFLICT (user_id) DO UPDATE SET foco=$2, passos=$3, gerado_em=now(), updated_at=now()`,
+  // plano novo/alterado zera o progresso dos passos (é outra semana de foco)
+  await pool.query(`INSERT INTO action_plans (user_id, foco, passos, passos_feitos, gerado_em, updated_at)
+    VALUES ($1,$2,$3,'[]',now(),now())
+    ON CONFLICT (user_id) DO UPDATE SET foco=$2, passos=$3, passos_feitos='[]', gerado_em=now(), updated_at=now()`,
     [userId, String(foco || '').slice(0, 400), JSON.stringify(Array.isArray(passos) ? passos.slice(0, 8) : [])]);
   return getActionPlan(userId);
+}
+// paciente marca/desmarca um passo do plano entregue (persiste o progresso)
+export async function setPassoFeito(userId, index, feito) {
+  if (!pool || !userId) throw new Error('banco não configurado');
+  const r = await pool.query('SELECT passos, passos_feitos FROM action_plans WHERE user_id=$1 AND entregue=true', [userId]);
+  if (!r.rows[0]) throw new Error('Você ainda não tem um plano.');
+  const total = Array.isArray(r.rows[0].passos) ? r.rows[0].passos.length : 0;
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 0 || i >= total) throw new Error('Passo inválido.');
+  let feitos = Array.isArray(r.rows[0].passos_feitos) ? r.rows[0].passos_feitos.map(Number) : [];
+  feitos = feitos.filter(x => x !== i);
+  if (feito) feitos.push(i);
+  await pool.query('UPDATE action_plans SET passos_feitos=$2, updated_at=now() WHERE user_id=$1', [userId, JSON.stringify(feitos)]);
+  return { ok: true, passos_feitos: feitos };
 }
 export async function setPlanDelivered(userId, entregue) {
   if (!pool || !userId) return;
@@ -1214,7 +1230,7 @@ export async function setPlanDelivered(userId, entregue) {
 // plano visível ao paciente (só se o mentor entregou)
 export async function deliveredPlan(userId) {
   if (!pool || !userId) return null;
-  const r = await pool.query('SELECT foco, passos, entregue_em FROM action_plans WHERE user_id=$1 AND entregue=true', [userId]);
+  const r = await pool.query('SELECT foco, passos, passos_feitos, entregue_em FROM action_plans WHERE user_id=$1 AND entregue=true', [userId]);
   return r.rows[0] || null;
 }
 

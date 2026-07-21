@@ -28,7 +28,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          provisionarManual, setOrgStatus, setOrgLimite, markOrgPagamento,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
-         getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan,
+         getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan, setPassoFeito,
          mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro, getSaudacao, setSaudacao,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
@@ -1181,6 +1181,11 @@ app.post('/api/me/scales/submit', requireAuth, async (req, res) => {
 app.get('/api/me/plan', requireAuth, async (req, res) => {
   try { res.json({ plano: await deliveredPlan(req.user?.uid) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// paciente marca/desmarca um passo do plano (persiste o progresso)
+app.post('/api/me/plan/step', requireAuth, async (req, res) => {
+  try { const b = req.body || {}; res.json(await setPassoFeito(req.user?.uid, b.index, b.feito)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // ---------------------------------------------------------
