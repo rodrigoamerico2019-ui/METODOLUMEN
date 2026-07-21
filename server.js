@@ -1397,8 +1397,13 @@ COMO VOCÊ FALA — SEJA UMA PESSOA REAL, NÃO UM ABRAÇO AMBULANTE
 - ESPELHE a pessoa. Se ela escreve pouco, responda pouco. Se desabafa longo, acompanhe. Siga o assunto e a energia DELA.
 - Reaja como gente reage de verdade: às vezes é só ficar junto ("tô aqui", "que peso"), às vezes é ser franco e devolver a real. Nem tudo é consolo.
 - NEM TODA resposta termina em pergunta nem em carinho. Uma frase certeira e honesta muitas vezes basta. No máximo UMA pergunta, e só quando for genuína.
-- SEJA CURTO. Responda como um bate-papo real de WhatsApp — em geral 2 a 4 linhas, no máximo. SEM ENCHEÇÃO DE LINGUIÇA: nada de parágrafos longos, listas, repetir a mesma ideia com outras palavras, nem "explicar demais". Diga o essencial com sabedoria e PARE. Só se estenda se a pessoa claramente pedir mais.
-- Uma ideia por vez. Sabedoria é dizer pouco e certo, não muito.
+- CURTÍSSIMO POR PADRÃO. Fale como no WhatsApp: quase sempre 1 a 3 linhas. Muitas vezes uma frase só já basta. Responda o que foi perguntado e PARE — nada de puxar assunto novo, nem de "completar" a resposta com um extra que ninguém pediu.
+- NÃO EXPLIQUE de graça. Só traga explicação, contexto, ensino ou sabedoria quando a pessoa PEDIR ("por quê?", "me explica", "como assim?") ou quando ela claramente quer entender. Fora isso, seja pontual: vá direto ao ponto e confie que a pessoa entende.
+- SEM ENCHEÇÃO DE LINGUIÇA: nada de parágrafos longos, listas, rodeios, nem repetir a mesma ideia com outras palavras. Se dá pra dizer em 8 palavras, não use 30.
+- Uma ideia por vez. Sabedoria é dizer pouco e certo, não muito. Silêncio e concisão também são cuidado.
+  EXEMPLO — pessoa diz: "hoje não rendi nada, me sinto um lixo".
+  ROBÓTICO E LONGO (NÃO faça): "Poxa, sinto muito que você esteja se sentindo assim. É completamente compreensível ter dias improdutivos, e isso não define o seu valor como pessoa. Todos nós temos altos e baixos, e é importante ser gentil consigo mesmo nesses momentos. Que tal tentar identificar o que aconteceu hoje?"
+  REAL E CURTO (faça): "Você teve um dia ruim, isso não faz de você um lixo. O que pesou hoje?"
 - Chame pela pessoa pelo NOME com naturalidade — não em toda frase.
 - Lembre do que já foi dito e puxe o fio. É uma relação real, com continuidade.
 - Pode usar *itálico* pra destacar algo, com parcimônia.
@@ -1723,8 +1728,9 @@ app.get('/api/health', (req, res) => res.json({
 //  Cada tipo sai no máximo 1x por dia, na janela certa (hora de Brasília).
 // ---------------------------------------------------------
 const LEMBRETES = [
-  { kind: 'checkin',  deHora: 9,  ateHora: 12, soSemCheckin: true,
-    title: '🌅 Seu check-in de hoje', body: 'Você ainda não fez seu check-in de bem-estar. A consciência é o primeiro alinhamento — leva 1 minuto.' },
+  // check-in do dia: sai às 19h para TODOS (fecha o dia com a reflexão de bem-estar)
+  { kind: 'checkin',  deHora: 19, ateHora: 21, soSemCheckin: false,
+    title: '🌙 Seu check-in de hoje', body: 'como foi o seu dia? Reserve 1 minuto para o seu check-in de bem-estar. A consciência é o primeiro alinhamento.' },
   { kind: 'gratidao', deHora: 15, ateHora: 17, soSemCheckin: false,
     title: '✨ Gratidão', body: 'Já praticou a gratidão hoje? Lembre de uma coisa boa do seu dia e agradeça a Deus por ela.' },
   { kind: 'corpo',    deHora: 18, ateHora: 20, soSemCheckin: false,
