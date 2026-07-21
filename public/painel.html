@@ -206,6 +206,10 @@
   .ag-form select:focus,.ag-form input:focus{outline:none;border-color:var(--gold)}
   .ag-form #agPac,.ag-form #agLocal{flex:1;min-width:150px}
   .ag-item{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .rel-hist{display:flex;flex-direction:column;gap:2px;margin-top:5px}
+  .rel-env{font-size:11px}
+  .rel-env.ok{color:#7fb069}
+  .rel-env.falha{color:var(--vermelho)}
   .ag-item:first-child{border-top:0}
   .ag-item.done{opacity:.55}
   .ag-when{flex:0 0 120px;font-weight:600;color:var(--gold2);font-size:13px}
@@ -1433,12 +1437,18 @@ async function renderCliRelatorios(body){
   let reps=[]; try{ reps=(await api('/api/admin/clients/reports?id='+clienteAtual.id)).reports||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const hoje=new Date().toISOString().slice(0,10);
   const ini=new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+  let entregas={}; try{ entregas=(await api('/api/admin/clients/reports/deliveries?id='+clienteAtual.id)).deliveries||{}; }catch(e){}
   const lista=reps.length?reps.map(r=>{
     const per=(r.periodo_inicio?new Date(r.periodo_inicio).toLocaleDateString('pt-BR'):'início')+' a '+(r.periodo_fim?new Date(r.periodo_fim).toLocaleDateString('pt-BR'):'hoje');
     const kb=r.bytes?Math.max(1,Math.round(r.bytes/1024))+' KB':'—';
     const et=r.tipo==='clinico'?'<span class="lic-st inativa">clínico · interno</span>':'<span class="lic-st ativa">do cliente</span>';
-    return '<div class="ag-item"><div class="ag-info"><b>'+escHtml(r.doc_uid||('#'+r.id))+'</b><small>'+per+' · '+new Date(r.created_at).toLocaleDateString('pt-BR')+' · '+kb+(r.gerado_por?' · '+escHtml(r.gerado_por):'')+'</small></div>'+
-      et+'<div class="fin-act"><button onclick="verRelatorio('+r.id+')">abrir/imprimir</button><button onclick="baixarRelatorio('+r.id+')">baixar</button></div></div>';
+    const envs=entregas[r.id]||[];
+    const hist=envs.length?'<div class="rel-hist">'+envs.map(e=>{
+      const ok=e.status==='enviado';
+      return '<span class="rel-env '+(ok?'ok':'falha')+'">'+(ok?'✓ enviado':'✕ falhou')+' → '+escHtml(e.destinatario||'')+' · '+new Date(e.enviado_em).toLocaleDateString('pt-BR')+'</span>';
+    }).join('')+'</div>':'';
+    return '<div class="ag-item"><div class="ag-info"><b>'+escHtml(r.doc_uid||('#'+r.id))+'</b><small>'+per+' · '+new Date(r.created_at).toLocaleDateString('pt-BR')+' · '+kb+(r.gerado_por?' · '+escHtml(r.gerado_por):'')+'</small>'+hist+'</div>'+
+      et+'<div class="fin-act"><button onclick="verRelatorio('+r.id+')">abrir</button><button onclick="baixarRelatorio('+r.id+')">baixar</button><button onclick="enviarRelatorio('+r.id+",'"+r.tipo+"')\">enviar e-mail</button></div></div>";
   }).join(''):'<p class="muted">Nenhum relatório gerado ainda.</p>';
   body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
     '<select id="relTipo" title="Tipo"><option value="cliente">Relatório do cliente (só o compartilhado)</option><option value="clinico">Relatório clínico (interno, com prontuário)</option></select>'+
@@ -1459,6 +1469,26 @@ async function gerarRelatorio(){
     $('relStatus').textContent='relatório '+d.doc_uid+' gerado ✓';
     verRelatorio(d.id);
   }catch(e){ $('relStatus').textContent='erro: '+e.message; }
+}
+async function enviarRelatorio(id, tipo, confirmaClinico){
+  const emailCli=(clienteAtual.basico&&clienteAtual.basico.email&&!clienteAtual.basico.email.includes('@sem-email.'))?clienteAtual.basico.email:'';
+  const sugestao = tipo==='clinico' ? '' : emailCli;
+  const aviso = tipo==='clinico' ? 'RELATÓRIO CLÍNICO (uso interno). Digite o e-mail de destino — NÃO envie ao cliente.\n\n' : '';
+  const to=prompt(aviso+'Enviar para qual e-mail?', sugestao);
+  if(to===null) return;
+  if(!to.trim()){ $('relStatus').textContent='informe um e-mail.'; return; }
+  $('relStatus').textContent='enviando…';
+  try{
+    await postAdmin('/api/admin/clients/reports/send?id='+clienteAtual.id,{ reportId:id, to:to.trim(), confirmaClinico:!!confirmaClinico });
+    await renderCliRelatorios($('cliTabBody'));
+    $('relStatus').textContent='enviado para '+to.trim()+' ✓';
+  }catch(e){
+    // trava do clínico ao e-mail do próprio cliente: pede confirmação e repete
+    if(/uso interno/i.test(e.message) && confirm('Este é um relatório CLÍNICO indo para o e-mail do próprio cliente. Tem certeza que quer enviar?')){
+      return enviarRelatorio(id, tipo, true);
+    }
+    $('relStatus').textContent='erro: '+e.message;
+  }
 }
 
 /* ===== VISÃO GERAL ===== */

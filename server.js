@@ -45,7 +45,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          sharedForClient, concluirTarefaCliente,
-         reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf } from './db.js';
+         reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf,
+         reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
 import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
@@ -750,6 +751,58 @@ app.get('/api/admin/clients/reports/pdf', ...clin, async (req, res) => {
     res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + r.doc_uid + '.pdf"');
     res.send(r.pdf);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ===== ETAPA 8: enviar o relatório por e-mail (com anexo PDF) + histórico =====
+const emailValido = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim());
+// histórico de entregas de todos os relatórios do cliente
+app.get('/api/admin/clients/reports/deliveries', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json({ deliveries: await deliveriesByClient(id, req.orgId) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/reports/send', ...clin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const info = await reportParaEnvio(Number(b.reportId), req.orgId);
+    if (!info || !info.pdf) return res.status(404).json({ error: 'relatório não encontrado' });
+    // destinatário: informado, senão o e-mail do próprio cliente (só faz sentido no relatório do cliente)
+    const to = String(b.to || '').trim() || info.cliente_email;
+    if (!to) return res.status(400).json({ error: 'Informe o e-mail de destino (o cliente não tem e-mail cadastrado).' });
+    if (!emailValido(to)) return res.status(400).json({ error: 'E-mail de destino inválido.' });
+    // trava de privacidade: relatório clínico é interno — nunca ao e-mail do cliente sem confirmação explícita
+    if (info.tipo === 'clinico' && to === info.cliente_email && !b.confirmaClinico)
+      return res.status(409).json({ error: 'Este é um relatório CLÍNICO (uso interno). Enviar ao e-mail do próprio cliente precisa de confirmação.', precisaConfirmar: true });
+
+    const t = mailer();
+    const clinica = info.clinica || 'TriLumen';
+    const primeiro = String(info.cliente_nome || '').split(' ')[0];
+    const assunto = (info.tipo === 'clinico' ? 'Relatório clínico' : 'Seu relatório de acompanhamento') + ' — ' + clinica;
+    const corpo = String(b.mensagem || '').trim();
+    const html = info.tipo === 'clinico'
+      ? `<p>Segue em anexo o relatório clínico de <b>${info.cliente_nome}</b> (${info.doc_uid}).</p>
+         ${corpo ? `<p>${corpo.replace(/\n/g, '<br>')}</p>` : ''}
+         <p style="color:#999;font-size:12px">Documento clínico de uso interno — contém informações sensíveis. — ${clinica}</p>`
+      : `<p>Olá, ${primeiro}.</p>
+         ${corpo ? `<p>${corpo.replace(/\n/g, '<br>')}</p>` : `<p>Segue em anexo o seu relatório de acompanhamento em <b>${clinica}</b>, com o resumo da sua caminhada até aqui.</p>`}
+         <p style="color:#999;font-size:12px">Este relatório não substitui avaliação profissional. — ${clinica}</p>`;
+
+    if (!t) {
+      await registrarEntrega({ reportId: info.id, orgId: req.orgId, canal: 'email', destinatario: to, assunto, mensagem: corpo, status: 'falhou', erro: 'e-mail não configurado no servidor', uid: req.mentorUid });
+      return res.status(503).json({ error: 'E-mail não está configurado no servidor.' });
+    }
+    try {
+      await t.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject: assunto, html,
+        attachments: [{ filename: info.doc_uid + '.pdf', content: info.pdf, contentType: 'application/pdf' }]
+      });
+      await registrarEntrega({ reportId: info.id, orgId: req.orgId, canal: 'email', destinatario: to, assunto, mensagem: corpo, status: 'enviado', uid: req.mentorUid });
+      res.json({ ok: true, enviado: true, destinatario: to });
+    } catch (e) {
+      await registrarEntrega({ reportId: info.id, orgId: req.orgId, canal: 'email', destinatario: to, assunto, mensagem: corpo, status: 'falhou', erro: String(e.message || e), uid: req.mentorUid });
+      res.status(502).json({ error: 'Não consegui enviar: ' + String(e.message || e) });
+    }
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // mensagem do mentor → salva e notifica o celular do paciente

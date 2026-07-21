@@ -1900,6 +1900,50 @@ export async function getReportPdf(reportId, orgId) {
     WHERE v.report_id=$1 AND ($2::bigint IS NULL OR r.org_id=$2) ORDER BY v.versao DESC LIMIT 1`, [reportId, orgId]);
   return r.rows[0] || null;
 }
+// dados para preparar um envio: confere a org, pega o PDF, o tipo e o e-mail do cliente
+export async function reportParaEnvio(reportId, orgId) {
+  if (!pool || !reportId) return null;
+  const r = await pool.query(`SELECT r.id, r.tipo, r.client_user_id, v.pdf, v.doc_uid,
+      u.name AS cliente_nome, u.email AS cliente_email, o.nome AS clinica
+    FROM reports r
+    JOIN report_versions v ON v.report_id=r.id AND v.versao=1
+    JOIN users u ON u.id=r.client_user_id
+    LEFT JOIN organizations o ON o.id=r.org_id
+    WHERE r.id=$1 AND ($2::bigint IS NULL OR r.org_id=$2)`, [reportId, orgId]);
+  const row = r.rows[0];
+  if (!row) return null;
+  const semEmail = !row.cliente_email || row.cliente_email.includes('@sem-email.');
+  row.cliente_email = semEmail ? null : row.cliente_email;
+  return row;
+}
+export async function registrarEntrega({ reportId, orgId, canal, destinatario, assunto, mensagem, status, erro, uid }) {
+  if (!pool) return;
+  await pool.query(`INSERT INTO report_deliveries (org_id, report_id, canal, destinatario, assunto, mensagem, status, erro, enviado_por)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [orgId, reportId, canal || 'email', destinatario || null, assunto || null, mensagem || null, status || null, erro || null, uid || null]);
+  const acao = status === 'enviado' ? 'relatorio_enviado' : 'relatorio_envio_falhou';
+  await registrarAuditoria({ orgId, userId: uid, clientId: null, acao, entidade: 'report', entidadeId: reportId, dados: { canal, destinatario, status } });
+}
+export async function listDeliveries(reportId, orgId) {
+  if (!pool || !reportId) return [];
+  const r = await pool.query(`SELECT d.canal, d.destinatario, d.status, d.erro, d.enviado_em, u.name AS enviado_por
+    FROM report_deliveries d LEFT JOIN users u ON u.id=d.enviado_por
+    WHERE d.report_id=$1 AND ($2::bigint IS NULL OR d.org_id=$2) ORDER BY d.enviado_em DESC`, [reportId, orgId]);
+  return r.rows;
+}
+// histórico de entregas do cliente inteiro (para a aba de relatórios)
+export async function deliveriesByClient(clientId, orgId) {
+  if (!pool || !clientId) return {};
+  const r = await pool.query(`SELECT d.report_id, d.canal, d.destinatario, d.status, d.enviado_em, u.name AS enviado_por
+    FROM report_deliveries d
+    JOIN reports r ON r.id=d.report_id
+    LEFT JOIN users u ON u.id=d.enviado_por
+    WHERE r.client_user_id=$1 AND ($2::bigint IS NULL OR d.org_id=$2)
+    ORDER BY d.enviado_em DESC`, [clientId, orgId]);
+  const out = {};
+  for (const row of r.rows) (out[row.report_id] = out[row.report_id] || []).push(row);
+  return out;
+}
 
 // ÚLTIMO ENCONTRO — o que a pessoa trouxe, com as palavras dela, na última
 // conversa. Serve para a IA abrir o dia citando o assunto REAL (não "de onde
