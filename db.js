@@ -89,6 +89,8 @@ export async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
     -- foto do paciente (data URL pequena, redimensionada no cliente) para o prontuário
     ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT;
+    -- opt-out de lembretes por WhatsApp (proteção/consentimento; o paciente pode não querer)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS whats_optout BOOLEAN DEFAULT false;
     -- áudios "Fala como está" (dado original separado da interpretação da IA)
     CREATE TABLE IF NOT EXISTS audio_entries (
       id BIGSERIAL PRIMARY KEY,
@@ -1326,7 +1328,8 @@ export async function receivablesForReminder() {
   if (!pool) return [];
   const r = await pool.query(`
     SELECT r.id, r.valor, r.vencimento::text AS vencimento, u.name AS paciente, u.email, u.phone,
-           o.nome AS clinica
+           u.whats_optout, o.nome AS clinica,
+           (SELECT m.name FROM users m WHERE m.org_id=u.org_id AND m.role IN ('mentor','owner') ORDER BY m.id LIMIT 1) AS profissional
     FROM receivables r
     JOIN users u ON u.id=r.user_id
     JOIN patient_plans p ON p.user_id=r.user_id
@@ -1395,7 +1398,8 @@ export async function appointmentsForReminder(kind) {
     : "a.quando BETWEEN now() + interval '90 minutes' AND now() + interval '24 hours'";
   const r = await pool.query(`
     SELECT a.id, a.modalidade, a.local, ${FMT_LOCAL} AS quando_local,
-           u.name AS paciente, u.email, u.phone, o.nome AS clinica
+           u.name AS paciente, u.email, u.phone, u.whats_optout, o.nome AS clinica,
+           (SELECT m.name FROM users m WHERE m.org_id=u.org_id AND m.role IN ('mentor','owner') ORDER BY m.id LIMIT 1) AS profissional
     FROM appointments a JOIN users u ON u.id=a.user_id
     LEFT JOIN organizations o ON o.id=u.org_id
     WHERE a.status='agendada' AND a.${col} IS NULL AND ${janela}`);
@@ -1491,7 +1495,7 @@ export async function getClientFull(userId) {
   if (!pool || !userId) return null;
   const [basic, det, prof, emerg, guard] = await Promise.all([
     pool.query(`SELECT id, name, email, phone, birth_date, marital_status, city, address, emergency_name, emergency_phone, photo,
-       date_part('year', age(birth_date))::int AS idade, org_id, (password_hash <> '') AS tem_acesso FROM users WHERE id=$1`, [userId]),
+       date_part('year', age(birth_date))::int AS idade, org_id, whats_optout, (password_hash <> '') AS tem_acesso FROM users WHERE id=$1`, [userId]),
     pool.query('SELECT * FROM client_details WHERE user_id=$1', [userId]),
     pool.query(`SELECT cp.id, cp.principal, om.role, u.name FROM client_professionals cp
        JOIN org_members om ON om.id=cp.member_id JOIN users u ON u.id=om.user_id WHERE cp.client_user_id=$1`, [userId]),
@@ -1797,6 +1801,14 @@ export async function revogarAcessoCliente(clientId, orgId, uid) {
   await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_revogado', entidade: 'client_access', entidadeId: clientId });
   return { ok: true };
 }
+// opt-out de WhatsApp: o paciente pode não querer receber lembretes por WhatsApp
+export async function setWhatsOptout(clientId, orgId, valor, uid) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  await pool.query(`UPDATE users SET whats_optout=$2 WHERE id=$1 AND role='paciente'`, [clientId, !!valor]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: valor ? 'whats_optout_ativado' : 'whats_optout_desativado', entidade: 'client', entidadeId: clientId });
+  return { ok: true, whats_optout: !!valor };
+}
+
 // PORTAL DO CLIENTE: só o que o profissional liberou explicitamente
 export async function sharedForClient(clientId) {
   if (!pool || !clientId) return { resumos: [], tarefas: [] };

@@ -1407,7 +1407,20 @@ async function renderCliAcesso(body){
     '<button class="btn" style="padding:9px 20px" onclick="gerarAcesso(false)">'+(st.convite?'Gerar novo link':'Gerar link de acesso')+'</button>'+
     (temEmail?'<button class="btn ghost" style="padding:9px 20px" onclick="gerarAcesso(true)">Gerar e enviar por e-mail</button>':'')+
     (st.tem_acesso?'<button class="btn ghost" style="padding:9px 20px" onclick="revogarAcesso()">Revogar acesso</button>':'')+
-    '</div><div class="muted" id="acStatus" style="margin-top:10px"></div>';
+    '</div><div class="muted" id="acStatus" style="margin-top:10px"></div>'+
+    // preferência de WhatsApp (opt-out): os lembretes saem do número central da TriLumen, assinados por você
+    '<hr style="margin:20px 0;border:none;border-top:1px solid var(--line)"/>'+
+    '<div class="section-title" style="font-size:14px">Lembretes por WhatsApp</div>'+
+    '<p class="subc" style="margin:4px 0 10px">Consultas e mensalidades são enviados do número da TriLumen, assinados com o seu nome e o da clínica. '+((clienteAtual.basico&&clienteAtual.basico.phone)?'':'⚠️ este cliente não tem telefone cadastrado.')+'</p>'+
+    '<label class="fin-chk"><input type="checkbox" id="whatsOpt" '+((clienteAtual.basico&&clienteAtual.basico.whats_optout)?'checked':'')+' onchange="alternarWhatsOptout(this.checked)"/> Este cliente <b>não</b> quer receber lembretes por WhatsApp</label>'+
+    '<span class="muted" id="whatsOptStatus" style="margin-left:10px"></span>';
+}
+async function alternarWhatsOptout(optout){
+  $('whatsOptStatus').textContent='salvando…';
+  try{ const d=await postAdmin('/api/admin/clients/whats-optout?id='+clienteAtual.id,{optout:!!optout});
+    clienteAtual.basico.whats_optout=d.whats_optout;
+    $('whatsOptStatus').textContent = optout?'não receberá WhatsApp ✓':'voltará a receber ✓';
+  }catch(e){ $('whatsOptStatus').textContent='erro: '+e.message; }
 }
 function copiarLink(){
   const el=$('acLink'); if(!el) return;

@@ -44,7 +44,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listSessions, createSession, getSessionFull, updateSession, deleteSession,
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
-         sharedForClient, concluirTarefaCliente,
+         sharedForClient, concluirTarefaCliente, setWhatsOptout,
          reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf,
          reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
@@ -699,6 +699,12 @@ app.post('/api/admin/clients/access/revoke', ...clin, async (req, res) => {
     res.json(await revogarAcessoCliente(id, req.orgId, req.mentorUid)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
+// paciente não quer (ou volta a querer) lembretes por WhatsApp
+app.post('/api/admin/clients/whats-optout', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json(await setWhatsOptout(id, req.orgId, !!(req.body || {}).optout, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
 // --- lado do cliente (público: só o token vale) ---
 app.get('/api/access/check', authLimiter, async (req, res) => {
   try { const d = await checarAcessoToken(req.query.t);
@@ -1333,11 +1339,16 @@ async function rodarLembretesFinanceiros() {
       const primeiro = String(r.paciente || '').trim().split(' ')[0] || 'você';
       const venc = new Date(r.vencimento + 'T12:00:00').toLocaleDateString('pt-BR');
       const valor = 'R$ ' + Number(r.valor).toFixed(2).replace('.', ',');
-      const texto = `Oi ${primeiro}, tudo bem? 🌿\n\nPassando com carinho só pra lembrar que a sua mensalidade do acompanhamento (${valor}) vence no dia ${venc}.\n\nSe precisar de qualquer coisa, estou por aqui. Cuide-se com carinho. 💛${r.clinica ? '\n\n— ' + r.clinica : ''}`;
+      const corpo = `Passando com carinho só pra lembrar que a sua mensalidade do acompanhamento (${valor}) vence no dia ${venc}.\n\nSe precisar de qualquer coisa, estou por aqui. Cuide-se com carinho. 💛`;
+      const emailTexto = `Oi ${primeiro}, tudo bem? 🌿\n\n${corpo}${r.clinica ? '\n\n— ' + r.clinica : ''}`;
       if (t && r.email) {
-        try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: r.email, subject: 'Um lembrete carinhoso 🌿', text: texto }); } catch (_) {}
+        try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: r.email, subject: 'Um lembrete carinhoso 🌿', text: emailTexto }); } catch (_) {}
       }
-      if (whatsOn && r.phone) { try { await sendWhatsApp(r.phone, texto); } catch (_) {} }
+      if (whatsOn && r.phone && !r.whats_optout) {
+        const texto = msgWhatsCentral({ primeiro, clinica: r.clinica, profissional: r.profissional, corpo });
+        try { await sendWhatsApp(r.phone, texto); } catch (_) {}
+        await sleepMs(2500 + Math.floor(Math.random() * 2500));   // espaça os envios (anti-spam)
+      }
       await markReceivableReminded(r.id);
     }
     console.log(`  Lembretes financeiros enviados: ${pend.length}.`);
@@ -1364,9 +1375,14 @@ async function enviarLembretesConsulta(kind) {
     const dia = String(c.quando_local || '').slice(8, 10) + '/' + String(c.quando_local || '').slice(5, 7);
     const quandoTxt = kind === '1h' ? `hoje às ${hora}` : `dia ${dia} às ${hora}`;
     const abertura = kind === '1h' ? 'Nossa consulta é daqui a pouco' : 'Passando com carinho pra lembrar da nossa consulta';
-    const texto = `Oi ${primeiro}, tudo bem? 🌿\n\n${abertura} — ${quandoTxt} (${c.modalidade}).${detalheModalidade(c)}\n\nTe espero com carinho. 💛${c.clinica ? '\n\n— ' + c.clinica : ''}`;
-    if (t && c.email) { try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: c.email, subject: kind === '1h' ? 'Sua consulta é daqui a pouco 🌿' : 'Lembrete da sua consulta 🌿', text: texto }); } catch (_) {} }
-    if (whatsOn && c.phone) { try { await sendWhatsApp(c.phone, texto); } catch (_) {} }
+    const corpo = `${abertura} — ${quandoTxt} (${c.modalidade}).${detalheModalidade(c)}\n\nTe espero com carinho. 💛`;
+    const emailTexto = `Oi ${primeiro}, tudo bem? 🌿\n\n${corpo}${c.clinica ? '\n\n— ' + c.clinica : ''}`;
+    if (t && c.email) { try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: c.email, subject: kind === '1h' ? 'Sua consulta é daqui a pouco 🌿' : 'Lembrete da sua consulta 🌿', text: emailTexto }); } catch (_) {} }
+    if (whatsOn && c.phone && !c.whats_optout) {
+      const texto = msgWhatsCentral({ primeiro, clinica: c.clinica, profissional: c.profissional, corpo });
+      try { await sendWhatsApp(c.phone, texto); } catch (_) {}
+      await sleepMs(2500 + Math.floor(Math.random() * 2500));   // espaça os envios (anti-spam)
+    }
     await markAppointmentReminded(c.id, kind);
   }
   console.log(`  Lembretes de consulta (${kind}) enviados: ${lista.length}.`);
@@ -1657,6 +1673,19 @@ async function sendWhatsApp(to, body) {
   // provider = none -> só registra no console (útil para testar sem provedor)
   console.log(`[WhatsApp:none] Para ${phone}:\n${body}\n`);
   return { sent: false, provider: 'none', note: 'Configure WHATSAPP_PROVIDER para enviar de verdade.' };
+}
+
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+// MENSAGEM DO NÚMERO CENTRAL DA TRILÚMEN.
+// Como é UM número só para todas as clínicas, o paciente não conhece o remetente:
+// a mensagem se identifica logo na abertura (nome da clínica), assina com o
+// PROFISSIONAL responsável e deixa claro que veio pela TriLumen — além de uma
+// linha de descadastro. Isso reduz "denúncia de spam" e o risco de banimento.
+function msgWhatsCentral({ primeiro, clinica, profissional, corpo }) {
+  const clin = String(clinica || 'TriLumen').trim();
+  const prof = String(profissional || clin).trim();
+  const assina = (prof && clin && prof !== clin) ? `— ${prof} · ${clin}` : `— ${clin}`;
+  return `Oi ${primeiro || 'você'}, tudo bem? 🌿\nAqui é da *${clin}*.\n\n${corpo}\n\n${assina}\n_Mensagem enviada pela TriLumen a pedido de ${prof}. Se preferir não receber lembretes por aqui, é só avisar._`;
 }
 
 // ---------------------------------------------------------
