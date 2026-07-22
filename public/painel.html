@@ -232,9 +232,11 @@
   .cli-tab{background:transparent;border:none;color:var(--dim);font-size:12.5px;padding:8px 12px;border-radius:8px 8px 0 0;cursor:pointer;font-family:inherit}
   .cli-tab.on{color:var(--gold2);border-bottom:2px solid var(--gold)}
   .cli-tab:hover{color:var(--ink)}
-  .dp-grid{display:flex;flex-wrap:wrap;gap:12px 14px;margin-bottom:16px}
+  .dp-grid{display:flex;flex-wrap:wrap;gap:12px 14px;margin-bottom:8px}
   .dp-grid>div{flex:1 1 100%;display:flex;flex-direction:column;min-width:0}
-  .dp-grid label{font-size:11px;color:var(--faint);margin-bottom:4px;letter-spacing:.3px}
+  .dp-grid label{font-size:12.5px;color:var(--dim);margin-bottom:5px;letter-spacing:.2px}
+  .dp-sec{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--gold-2);font-weight:600;margin:20px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+  .dp-sec:first-child{margin-top:0}
   .dp-grid input,.dp-grid select,.dp-grid textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:11px 13px;font-size:14px;font-family:inherit}
   .dp-grid textarea{min-height:72px;resize:vertical}
   .dp-grid input:focus,.dp-grid select:focus,.dp-grid textarea:focus{outline:none;border-color:var(--gold)}
@@ -1216,8 +1218,8 @@ async function toggleCadRapido(){
     '<input id="crNome" class="cad-full" placeholder="Nome completo *"/>'+
     '<input id="crSocial" placeholder="Nome social"/>'+
     '<input id="crNasc" type="date" title="Nascimento"/>'+
-    '<input id="crFone" placeholder="Telefone"/>'+
-    '<input id="crWhats" placeholder="WhatsApp"/>'+
+    '<input id="crFone" placeholder="Telefone" onblur="if(this.value&&!document.getElementById(\'crWhats\').value.trim())document.getElementById(\'crWhats\').value=this.value"/>'+
+    '<input id="crWhats" placeholder="WhatsApp (repete o telefone se for o mesmo)"/>'+
     '<input id="crEmail" type="email" placeholder="E-mail (opcional)"/>'+
     '<select id="crTipo"><option value="">Tipo de acompanhamento…</option>'+tipos+'</select>'+
     '<select id="crProf">'+profs+'</select>'+
@@ -1254,6 +1256,7 @@ async function abrirCliente(id){
   cliTab('visao');
 }
 function cliTab(t){
+  cliBodySeq++;   // troca de aba invalida qualquer render assíncrono pendente
   document.querySelectorAll('#cliTabs .cli-tab').forEach(x=>x.classList.toggle('on', x.dataset.t===t));
   const body=$('cliTabBody');
   if(t==='visao') return renderCliVisao(body);
@@ -1274,7 +1277,7 @@ let cliBodySeq=0;
 const esferaBar=(nome,v)=>{ const val=(v!=null&&!isNaN(v))?Number(v):null; const pct=val!=null?Math.max(5,Math.min(100,Math.round(val*10))):0;
   return '<div class="cli-esfrow"><span>'+nome+'</span><div class="cli-esfbar"><span style="width:'+pct+'%"></span></div><span class="cli-esfv">'+(val!=null?val.toFixed(1):'—')+'</span></div>'; };
 async function renderCliVisao(body){
-  const mySeq=++cliBodySeq;
+  const mySeq=cliBodySeq;   // cliTab já incrementou; capturo o valor atual
   body.innerHTML='<p class="muted">carregando…</p>';
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
   const prof=(clienteAtual.profissionais||[]).map(p=>p.name+(p.principal?' (principal)':'')).join(', ')||'—';
@@ -1335,28 +1338,76 @@ async function renderCliVisao(body){
 }
 function campoCli(id,label,val,opts){
   opts=opts||{}; const cls=opts.w?('dp-'+opts.w):'';
-  const el = opts.ta ? '<textarea id="'+id+'">'+(val!=null?String(val):'')+'</textarea>'
-    : '<input id="'+id+'" type="'+(opts.type||'text')+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/>';
+  const el = opts.ta ? '<textarea id="'+id+'"'+(opts.attr||'')+'>'+(val!=null?String(val):'')+'</textarea>'
+    : '<input id="'+id+'" type="'+(opts.type||'text')+'"'+(opts.attr||'')+' value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"/>';
   return '<div class="'+cls+'"><label>'+label+'</label>'+el+'</div>';
 }
+// campo de SELEÇÃO pronta (dropdown). options: ['A','B'] ou [[valor,rótulo]]
+function campoSel(id,label,val,options,opts){
+  opts=opts||{}; const cls=opts.w?('dp-'+opts.w):''; const cur=(val!=null?String(val).trim():''); let matched=false;
+  let ops='<option value="">— selecione —</option>'+options.map(o=>{
+    const v=Array.isArray(o)?o[0]:o, t=Array.isArray(o)?o[1]:o;
+    const sel=cur && cur.toLowerCase()===String(v).toLowerCase(); if(sel) matched=true;
+    return '<option value="'+String(v).replace(/"/g,'&quot;')+'"'+(sel?' selected':'')+'>'+t+'</option>';
+  }).join('');
+  if(cur && !matched) ops+='<option value="'+cur.replace(/"/g,'&quot;')+'" selected>'+escHtml(cur)+'</option>';
+  return '<div class="'+cls+'"><label>'+label+'</label><select id="'+id+'"'+(opts.onchange?' onchange="'+opts.onchange+'"':'')+'>'+ops+'</select></div>';
+}
+const SEXO_OPC=['Masculino','Feminino'];
+const GENERO_OPC=['Homem','Mulher'];
+const CIVIL_OPC=['Solteiro(a)','Casado(a)','União estável','Divorciado(a)','Separado(a)','Viúvo(a)'];
+const ESCOL_OPC=['Fundamental incompleto','Fundamental completo','Médio incompleto','Médio completo','Superior incompleto','Superior completo','Pós-graduação'];
 function renderCliDados(body){
   const b=clienteAtual.basico, d=clienteAtual.detalhes||{};
   const nasc = b.birth_date?String(b.birth_date).slice(0,10):'';
-  body.innerHTML='<div class="dp-grid">'+
-    campoCli('dpNome','Nome completo',b.name,{w:'full'})+
-    campoCli('dpSocial','Nome social',d.nome_social,{w:'full'})+
-    campoCli('dpNasc','Nascimento',nasc,{w:'quarter',type:'date'})+campoCli('dpSexo','Sexo',d.sexo,{w:'quarter'})+campoCli('dpGenero','Gênero',d.genero,{w:'quarter'})+campoCli('dpEstadoCivil','Estado civil',b.marital_status,{w:'quarter'})+
-    campoCli('dpCpf','CPF',d.cpf,{w:'half'})+campoCli('dpRg','RG',d.rg,{w:'half'})+
-    campoCli('dpProfissao','Profissão',d.profissao,{w:'half'})+campoCli('dpEmpresa','Empresa',d.empresa,{w:'half'})+
-    campoCli('dpEscolaridade','Escolaridade',d.escolaridade,{w:'half'})+campoCli('dpIdioma','Idioma',d.idioma,{w:'half'})+
-    campoCli('dpFone','Telefone',b.phone,{w:'half'})+campoCli('dpWhats','WhatsApp',d.whatsapp,{w:'half'})+
-    campoCli('dpCidade','Cidade',b.city,{w:'half'})+campoCli('dpEstado','Estado',d.estado,{w:'quarter'})+campoCli('dpCep','CEP',d.cep,{w:'quarter'})+
-    campoCli('dpPais','País',d.pais,{w:'half'})+campoCli('dpReside','Com quem reside',d.com_quem_reside,{w:'half'})+
-    campoCli('dpFilhos','Qtd. filhos',d.qtd_filhos,{w:'quarter',type:'number'})+
-    campoCli('dpEndereco','Endereço',b.address,{w:'full'})+
-    campoCli('dpAcess','Necessidades de acessibilidade',d.acessibilidade,{w:'full'})+
-    campoCli('dpObs','Observações',d.obs,{w:'full',ta:true})+'</div>'+
-    '<button class="btn" style="padding:9px 22px" onclick="salvarDadosCliente()">Salvar dados</button> <span class="muted" id="dpStatus"></span>';
+  body.innerHTML=
+    '<div class="dp-sec">👤 Identificação</div><div class="dp-grid">'+
+      campoCli('dpNome','Nome completo',b.name,{w:'full'})+
+      campoCli('dpSocial','Nome social (como prefere ser chamado)',d.nome_social,{w:'full'})+
+      campoCli('dpNasc','Data de nascimento',nasc,{w:'quarter',type:'date'})+
+      campoSel('dpSexo','Sexo',d.sexo,SEXO_OPC,{w:'quarter',onchange:'sexoParaGenero()'})+
+      campoSel('dpGenero','Gênero',d.genero,GENERO_OPC,{w:'quarter'})+
+      campoSel('dpEstadoCivil','Estado civil',b.marital_status,CIVIL_OPC,{w:'quarter'})+
+    '</div>'+
+    '<div class="dp-sec">🪪 Documentos</div><div class="dp-grid">'+
+      campoCli('dpCpf','CPF',d.cpf,{w:'half'})+campoCli('dpRg','RG',d.rg,{w:'half'})+
+    '</div>'+
+    '<div class="dp-sec">💼 Vida & trabalho</div><div class="dp-grid">'+
+      campoCli('dpProfissao','Profissão',d.profissao,{w:'half'})+campoCli('dpEmpresa','Empresa',d.empresa,{w:'half'})+
+      campoSel('dpEscolaridade','Escolaridade',d.escolaridade,ESCOL_OPC,{w:'half'})+campoCli('dpIdioma','Idioma',d.idioma,{w:'half'})+
+    '</div>'+
+    '<div class="dp-sec">📞 Contato</div><div class="dp-grid">'+
+      campoCli('dpFone','Telefone',b.phone,{w:'half',attr:' onblur="copiaFoneWhats()"'})+
+      campoCli('dpWhats','WhatsApp (repete o telefone se for o mesmo)',d.whatsapp,{w:'half'})+
+    '</div>'+
+    '<div class="dp-sec">🏠 Endereço</div><div class="dp-grid">'+
+      campoCli('dpCep','CEP (preenche cidade e estado sozinho)',d.cep,{w:'quarter',attr:' onblur="buscaCep()" inputmode="numeric"'})+
+      campoCli('dpCidade','Cidade',b.city,{w:'half'})+campoCli('dpEstado','Estado (UF)',d.estado,{w:'quarter'})+
+      campoCli('dpPais','País',d.pais||'Brasil',{w:'quarter'})+
+      campoCli('dpEndereco','Endereço (rua e número)',b.address,{w:'full'})+
+    '</div>'+
+    '<div class="dp-sec">👪 Família & mais</div><div class="dp-grid">'+
+      campoCli('dpReside','Com quem reside',d.com_quem_reside,{w:'half'})+
+      campoCli('dpFilhos','Quantos filhos',d.qtd_filhos,{w:'quarter',type:'number'})+
+      campoCli('dpAcess','Necessidades de acessibilidade',d.acessibilidade,{w:'full'})+
+      campoCli('dpObs','Observações',d.obs,{w:'full',ta:true})+
+    '</div>'+
+    '<button class="btn" style="padding:12px 28px;font-size:15px" onclick="salvarDadosCliente()">💾 Salvar dados</button> <span class="muted" id="dpStatus" style="margin-left:8px"></span>';
+}
+// auto-preenchimento — os campos se conversam
+function sexoParaGenero(){ const s=($('dpSexo')||{}).value, g=$('dpGenero'); if(g && !g.value){ if(s==='Masculino') g.value='Homem'; else if(s==='Feminino') g.value='Mulher'; } }
+function copiaFoneWhats(){ const f=($('dpFone').value||'').trim(), w=$('dpWhats'); if(f && w && !w.value.trim()) w.value=f; }
+async function buscaCep(){
+  const cep=($('dpCep').value||'').replace(/\D/g,''); if(cep.length!==8) return;
+  $('dpStatus').textContent='buscando CEP…';
+  try{
+    const d=await fetch('https://viacep.com.br/ws/'+cep+'/json/').then(r=>r.json());
+    if(d.erro){ $('dpStatus').textContent='CEP não encontrado'; return; }
+    if(d.localidade) $('dpCidade').value=d.localidade;
+    if(d.uf) $('dpEstado').value=d.uf;
+    if(d.logradouro && !$('dpEndereco').value.trim()) $('dpEndereco').value=d.logradouro+(d.bairro?', '+d.bairro:'');
+    $('dpStatus').textContent='cidade e estado preenchidos pelo CEP ✓';
+  }catch(_){ $('dpStatus').textContent=''; }
 }
 async function salvarDadosCliente(){
   const g=id=>$(id).value.trim();
@@ -1366,8 +1417,13 @@ async function salvarDadosCliente(){
     city:g('dpCidade'), address:g('dpEndereco'), cep:g('dpCep'), estado:g('dpEstado'), pais:g('dpPais'),
     com_quem_reside:g('dpReside'), qtd_filhos:$('dpFilhos').value, acessibilidade:g('dpAcess'), obs:g('dpObs') };
   $('dpStatus').textContent='salvando…';
-  try{ await postAdmin('/api/admin/clients/update?id='+clienteAtual.id, body); $('dpStatus').textContent='salvo ✓'; }
-  catch(e){ $('dpStatus').textContent='erro: '+e.message; }
+  try{
+    const cid=clienteAtual.id;
+    await postAdmin('/api/admin/clients/update?id='+cid, body);
+    // re-busca pra o cache refletir o que foi salvo (senão o form volta com dado velho)
+    try{ clienteAtual = await api('/api/admin/clients/full?id='+cid); clienteAtual.id=cid; }catch(_){}
+    $('dpStatus').textContent='salvo ✓';
+  }catch(e){ $('dpStatus').textContent='erro: '+e.message; }
 }
 async function renderCliAudit(body){
   body.innerHTML='<p class="muted">carregando…</p>';
