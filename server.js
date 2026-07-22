@@ -45,6 +45,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
+         listDocuments, addDocument, getDocument, deleteDocument,
          reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf,
          reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
@@ -661,6 +662,39 @@ app.post('/api/admin/clients/tasks', ...clin, async (req, res) => {
 app.post('/api/admin/clients/tasks/update', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
     res.json(await updateSessionTask(Number(req.query.taskId), req.orgId, id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== DOCUMENTOS do cliente (exames, laudos, contratos) — RBAC clínico =====
+app.get('/api/admin/clients/documents', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ documentos: await listDocuments(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/documents', ...clin,
+  express.raw({ type: ['application/pdf', 'image/*', 'application/octet-stream', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], limit: '12mb' }),
+  async (req, res) => {
+    try {
+      const id = await clienteDaOrg(req, res); if (id == null) return;
+      const buf = req.body;
+      if (!buf || !buf.length) return res.status(400).json({ error: 'arquivo vazio ou tipo não aceito' });
+      const nome = req.query.nome ? decodeURIComponent(String(req.query.nome)) : 'documento';
+      const tipo = req.query.tipo ? String(req.query.tipo) : null;
+      const mime = req.headers['content-type'] || 'application/octet-stream';
+      res.json({ ok: true, ...(await addDocument(id, req.orgId, { nome, tipo, mime, bytes: buf }, req.mentorUid)) });
+    } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
+app.get('/api/admin/clients/documents/file', ...clin, async (req, res) => {
+  try {
+    const d = await getDocument(Number(req.query.docId), req.orgId);
+    if (!d || !d.bytes) return res.status(404).json({ error: 'documento não encontrado' });
+    if (req.orgId && (await patientOrg(d.client_user_id)) !== req.orgId) return res.status(403).json({ error: 'de outra organização' });
+    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + encodeURIComponent(d.nome || 'documento') + '"');
+    res.send(d.bytes);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/documents/delete', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json(await deleteDocument(Number(req.query.docId), req.orgId, id, req.mentorUid)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 

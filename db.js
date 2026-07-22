@@ -1867,6 +1867,36 @@ export async function revogarAcessoCliente(clientId, orgId, uid) {
   await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_revogado', entidade: 'client_access', entidadeId: clientId });
   return { ok: true };
 }
+// ---- DOCUMENTOS do cliente (exames, laudos, contratos, imagens) ----
+export async function listDocuments(clientId) {
+  if (!pool || !clientId) return [];
+  const r = await pool.query(`SELECT d.id, d.nome, d.tipo, d.mime, d.tamanho, d.created_at, u.name AS enviado_por
+    FROM client_documents d LEFT JOIN users u ON u.id=d.uploaded_by
+    WHERE d.client_user_id=$1 AND d.deleted_at IS NULL ORDER BY d.created_at DESC`, [clientId]);
+  return r.rows;
+}
+export async function addDocument(clientId, orgId, { nome, tipo, mime, bytes }, uid) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  if (!bytes || !bytes.length) throw new Error('arquivo vazio');
+  const r = await pool.query(`INSERT INTO client_documents (org_id, client_user_id, nome, tipo, mime, tamanho, bytes, uploaded_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [orgId, clientId, String(nome || 'documento').slice(0, 200), tipo || null, mime || null, bytes.length, bytes, uid || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'documento_enviado', entidade: 'document', entidadeId: r.rows[0].id, dados: { nome, tipo, tamanho: bytes.length } });
+  return { id: r.rows[0].id };
+}
+export async function getDocument(docId, orgId) {
+  if (!pool || !docId) return null;
+  const r = await pool.query(`SELECT nome, mime, bytes, client_user_id FROM client_documents
+    WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2) AND deleted_at IS NULL`, [docId, orgId]);
+  return r.rows[0] || null;
+}
+export async function deleteDocument(docId, orgId, clientId, uid) {
+  if (!pool) return;
+  await pool.query('UPDATE client_documents SET deleted_at=now() WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [docId, orgId]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'documento_excluido', entidade: 'document', entidadeId: docId });
+  return { ok: true };
+}
+
 // opt-out de WhatsApp: o paciente pode não querer receber lembretes por WhatsApp
 export async function setWhatsOptout(clientId, orgId, valor, uid) {
   if (!pool || !clientId) throw new Error('banco não configurado');

@@ -1268,9 +1268,10 @@ function cliTab(t){
   if(t==='objetivos') return renderCliObj(body);
   if(t==='sessoes') return renderCliSessoes(body);
   if(t==='acesso') return renderCliAcesso(body);
+  if(t==='documentos') return renderCliDocumentos(body);
   if(t==='relatorios') return renderCliRelatorios(body);
   if(t==='auditoria') return renderCliAudit(body);
-  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
+  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Consentimentos.</small></div>';
 }
 // evita corrida entre renders assíncronos no cliTabBody: o mais recente vence
 let cliBodySeq=0;
@@ -1730,6 +1731,41 @@ async function enviarRelatorio(id, tipo, confirmaClinico){
     $('relStatus').textContent='erro: '+e.message;
   }
 }
+
+/* ===== DOCUMENTOS (exames, laudos, contratos) ===== */
+const DOC_TIPOS=['Exame','Laudo','Receita','Contrato','Termo','Imagem','Outro'];
+function iconeDoc(m){ m=m||''; if(m.includes('pdf'))return '📄'; if(m.startsWith('image/'))return '🖼️'; if(m.includes('word')||m.includes('document'))return '📝'; return '📎'; }
+function tamDoc(n){ return n?(n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB'):'—'; }
+async function renderCliDocumentos(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let docs=[]; try{ docs=(await api('/api/admin/clients/documents?id='+clienteAtual.id)).documentos||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const lista=docs.length?docs.map(d=>
+    '<div class="ag-item"><div class="ag-info"><b>'+iconeDoc(d.mime)+' '+escHtml(d.nome)+'</b><small>'+[d.tipo,tamDoc(d.tamanho),new Date(d.created_at).toLocaleDateString('pt-BR'),d.enviado_por].filter(Boolean).join(' · ')+'</small></div>'+
+      '<div class="fin-act"><button onclick="abrirDoc('+d.id+')">abrir</button><button onclick="baixarDoc('+d.id+')">baixar</button><button onclick="delDoc('+d.id+')">excluir</button></div></div>'
+  ).join(''):'<p class="muted">Nenhum documento ainda.</p>';
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Documentos sensíveis (exames, laudos, contratos) — guardados com segurança, acesso restrito à equipe clínica. Até 12 MB por arquivo.</p>'+
+    '<div class="cad-form" style="margin-bottom:14px;align-items:center">'+
+    '<select id="docTipo"><option value="">Tipo do documento…</option>'+DOC_TIPOS.map(t=>'<option>'+t+'</option>').join('')+'</select>'+
+    '<input type="file" id="docFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" style="flex:1 1 220px"/>'+
+    '<button class="btn" style="padding:9px 18px" onclick="enviarDoc()">📎 Enviar documento</button>'+
+    '<div id="docStatus" style="width:100%"></div></div>'+lista;
+}
+async function enviarDoc(){
+  const f=($('docFile').files||[])[0]; const tipo=$('docTipo').value;
+  if(!f){ $('docStatus').textContent='Escolha um arquivo.'; return; }
+  if(f.size>12*1048576){ $('docStatus').textContent='Arquivo muito grande (máx 12 MB).'; return; }
+  $('docStatus').textContent='enviando…';
+  try{
+    const url=authQS('/api/admin/clients/documents?id='+clienteAtual.id+'&nome='+encodeURIComponent(f.name)+(tipo?'&tipo='+encodeURIComponent(tipo):''));
+    const r=await fetch(url,{ method:'POST', headers:{ 'Content-Type': f.type||'application/octet-stream', ...authHead() }, body:f });
+    const j=await r.json(); if(j.error) throw new Error(j.error);
+    cliTab('documentos');
+  }catch(e){ $('docStatus').textContent='erro: '+e.message; }
+}
+function docUrl(id,dl){ return '/api/admin/clients/documents/file?id='+clienteAtual.id+'&docId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
+function abrirDoc(id){ window.open(docUrl(id,false),'_blank'); }
+function baixarDoc(id){ window.open(docUrl(id,true),'_blank'); }
+async function delDoc(id){ if(!confirm('Excluir este documento?')) return; try{ await postAdmin('/api/admin/clients/documents/delete?id='+clienteAtual.id+'&docId='+id,{}); cliTab('documentos'); }catch(e){ alert('Erro: '+e.message); } }
 
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){
