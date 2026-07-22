@@ -33,7 +33,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
          listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
-         listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment,
+         listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
          getMemberRole, listOrgMembers, registrarAuditoria, listAudit,
          criarClienteRapido, listClients, getClientFull, updateClientDetails,
@@ -536,6 +536,11 @@ async function clienteDaOrg(req, res) {
   return id;
 }
 const clin = [requireAdmin, soMentor, carregaPapel, permite(...CLINICO)];
+// realizar a consulta = marca realizada E cria/vincula o prontuário da sessão
+app.post('/api/admin/agenda/realizar', ...clin, async (req, res) => {
+  try { res.json(await realizarConsulta(Number(req.query.id), req.orgId, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
 // Saúde
 app.get('/api/admin/clients/health', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ perfil: await getHealthProfile(id) }); }

@@ -429,6 +429,9 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
     ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS passos_feitos JSONB DEFAULT '[]';
+    -- vínculo Agenda <-> Sessão: a consulta realizada vira/aponta o prontuário da sessão
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS session_id BIGINT;
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS appointment_id BIGINT;
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -1394,7 +1397,7 @@ export async function listAppointments(orgId, days = 45) {
   if (!pool) return [];
   const r = await pool.query(`
     SELECT a.id, a.user_id, u.name AS paciente, a.quando, ${FMT_LOCAL} AS quando_local,
-           a.duracao_min, a.modalidade, a.local, a.obs, a.status,
+           a.duracao_min, a.modalidade, a.local, a.obs, a.status, a.session_id,
            (a.quando < now()) AS passou
     FROM appointments a LEFT JOIN users u ON u.id=a.user_id
     WHERE ($1::bigint IS NULL OR a.org_id=$1)
@@ -1405,7 +1408,7 @@ export async function listAppointments(orgId, days = 45) {
 export async function patientAppointments(userId, limit = 20) {
   if (!pool || !userId) return [];
   const r = await pool.query(`
-    SELECT id, ${FMT_LOCAL} AS quando_local, modalidade, local, status, (quando < now()) AS passou
+    SELECT id, user_id, ${FMT_LOCAL} AS quando_local, modalidade, local, status, session_id, (quando < now()) AS passou
     FROM appointments WHERE user_id=$1 ORDER BY quando DESC LIMIT $2`, [userId, limit]);
   return r.rows;
 }
@@ -1675,7 +1678,7 @@ export async function deleteGoal(id, orgId) {
 export async function listSessions(userId, { limit = 100 } = {}) {
   if (!pool || !userId) return [];
   const r = await pool.query(`
-    SELECT s.id, s.quando, s.duracao_min, s.modalidade, s.tipo, s.status, s.created_at,
+    SELECT s.id, s.quando, s.duracao_min, s.modalidade, s.tipo, s.status, s.created_at, s.appointment_id,
            u.name AS profissional,
            (sr.session_id IS NOT NULL) AS tem_prontuario,
            COALESCE(ss.compartilhado,false) AS resumo_compartilhado,
@@ -1701,6 +1704,26 @@ export async function createSession(userId, orgId, s = {}, uid) {
      s.modalidade || null, s.tipo || null, s.status || 'realizada']);
   await registrarAuditoria({ orgId, userId: uid, clientId: userId, acao: 'sessao_criada', entidade: 'session', entidadeId: r.rows[0].id });
   return { id: r.rows[0].id };
+}
+// INTEGRAÇÃO AGENDA -> SESSÃO: marca a consulta como realizada e cria (ou reusa)
+// o prontuário da sessão a partir dela. Fecha o fluxo agendar -> atender -> prontuário.
+export async function realizarConsulta(appointmentId, orgId, uid) {
+  if (!pool || !appointmentId) throw new Error('consulta inválida');
+  const a = await pool.query(`SELECT id, user_id, org_id, quando, modalidade, session_id
+    FROM appointments WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`, [appointmentId, orgId]);
+  if (!a.rows[0]) throw new Error('consulta não encontrada');
+  const ap = a.rows[0];
+  if (ap.session_id) {   // já tem prontuário: só garante o status
+    await pool.query(`UPDATE appointments SET status='realizada' WHERE id=$1`, [appointmentId]);
+    return { session_id: ap.session_id, client_user_id: ap.user_id, ja_existia: true };
+  }
+  const s = await pool.query(`INSERT INTO sessions (org_id, client_user_id, quando, modalidade, tipo, status, appointment_id)
+    VALUES ($1,$2,$3,$4,'acompanhamento','realizada',$5) RETURNING id`,
+    [ap.org_id, ap.user_id, ap.quando, ap.modalidade || null, appointmentId]);
+  const sid = s.rows[0].id;
+  await pool.query(`UPDATE appointments SET status='realizada', session_id=$2 WHERE id=$1`, [appointmentId, sid]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: ap.user_id, acao: 'consulta_realizada', entidade: 'session', entidadeId: sid, dados: { appointment_id: appointmentId } });
+  return { session_id: sid, client_user_id: ap.user_id, ja_existia: false };
 }
 export async function getSessionFull(sessionId, orgId) {
   if (!pool || !sessionId) return null;

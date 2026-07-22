@@ -1133,8 +1133,10 @@ function renderAgLista(box, consultas, comPaciente){
       : c.status==='cancelada' ? '<span class="lic-st inativa">cancelada</span>'
       : '<span class="lic-st pend">agendada</span>';
     const acoes = c.status==='agendada'
-      ? `<div class="fin-act"><button onclick="statusConsulta(${c.id},'realizada')">✓ feita</button><button onclick="statusConsulta(${c.id},'cancelada')">cancelar</button><button onclick="delConsulta(${c.id})">excluir</button></div>`
-      : `<div class="fin-act"><button onclick="delConsulta(${c.id})">excluir</button></div>`;
+      ? `<div class="fin-act"><button onclick="feitaConsulta(${c.id})">✓ realizar</button><button onclick="statusConsulta(${c.id},'cancelada')">cancelar</button><button onclick="delConsulta(${c.id})">excluir</button></div>`
+      : (c.status==='realizada' && c.session_id && c.user_id
+        ? `<div class="fin-act"><button onclick="abrirProntuarioSessao(${c.user_id},${c.session_id})">📋 ver prontuário</button><button onclick="delConsulta(${c.id})">excluir</button></div>`
+        : `<div class="fin-act"><button onclick="delConsulta(${c.id})">excluir</button></div>`);
     return `<div class="ag-item ${c.status!=='agendada'?'done':''}">
       <div class="ag-when">${w.h}<small>${w.d}</small></div>
       <div class="ag-info">${comPaciente?(c.paciente||'—'):''}${c.local?`<small>${c.local}</small>`:''}</div>
@@ -1156,6 +1158,21 @@ async function statusConsulta(id, status){
   try{ await postAdmin('/api/admin/agenda/status?id='+id, {status});
     if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
   }catch(e){ alert('Erro: '+e.message); }
+}
+// realizar = marca feita E cria o prontuário da sessão (fluxo agendar→atender→prontuário)
+async function feitaConsulta(id){
+  if(!confirm('Marcar como realizada? Isso já cria o prontuário desta sessão.')) return;
+  try{
+    const d = await postAdmin('/api/admin/agenda/realizar?id='+id, {});
+    if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
+    if(d.session_id && confirm('Consulta realizada ✓\nAbrir o prontuário desta sessão agora?'))
+      abrirProntuarioSessao(d.client_user_id, d.session_id);
+  }catch(e){ alert('Erro: '+e.message); }
+}
+async function abrirProntuarioSessao(clientId, sessionId){
+  await abrirCliente(clientId);       // abre a ficha do cliente
+  document.querySelectorAll('#cliTabs .cli-tab').forEach(x=>x.classList.toggle('on', x.dataset.t==='sessoes'));
+  abrirSessaoCli(sessionId);          // abre direto o prontuário da sessão
 }
 async function delConsulta(id){
   if(!confirm('Excluir esta consulta?')) return;
@@ -1252,9 +1269,12 @@ function cliTab(t){
   if(t==='auditoria') return renderCliAudit(body);
   body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
 }
+// evita corrida entre renders assíncronos no cliTabBody: o mais recente vence
+let cliBodySeq=0;
 const esferaBar=(nome,v)=>{ const val=(v!=null&&!isNaN(v))?Number(v):null; const pct=val!=null?Math.max(5,Math.min(100,Math.round(val*10))):0;
   return '<div class="cli-esfrow"><span>'+nome+'</span><div class="cli-esfbar"><span style="width:'+pct+'%"></span></div><span class="cli-esfv">'+(val!=null?val.toFixed(1):'—')+'</span></div>'; };
 async function renderCliVisao(body){
+  const mySeq=++cliBodySeq;
   body.innerHTML='<p class="muted">carregando…</p>';
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
   const prof=(clienteAtual.profissionais||[]).map(p=>p.name+(p.principal?' (principal)':'')).join(', ')||'—';
@@ -1307,6 +1327,7 @@ async function renderCliVisao(body){
     (goals&&goals.length?goals.slice(0,3).map(g=>'<p class="cli-line">• '+escHtml(g.titulo)+' <span style="color:var(--faint)">('+(g.progresso||0)+'%)</span></p>').join('')
       :'<div class="cli-vaziosn">Nenhum objetivo definido.</div>')+'</div>';
 
+  if(mySeq!==cliBodySeq) return;   // outro render assumiu o corpo; não sobrescreve
   body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+
     (clienteAtual.emergencia&&clienteAtual.emergencia.length?'<p class="subc">🆘 Emergência: '+clienteAtual.emergencia.map(e=>escHtml(e.nome)+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
     (det.obs_inicial?'<p class="muted" style="margin-top:6px">Obs.: '+escHtml(det.obs_inicial)+'</p>':'')+
@@ -1454,7 +1475,8 @@ async function renderCliSessoes(body){
   let sessions=[]; try{ sessions=(await api('/api/admin/clients/sessions?id='+clienteAtual.id)).sessions||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const agora=new Date(); const dLocal=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,16);
   const lista=sessions.length?sessions.map(s=>{
-    const badges=[s.tem_prontuario?'<span class="lic-st ativa">prontuário</span>':'<span class="lic-st pend">sem prontuário</span>',
+    const badges=[s.appointment_id?'<span class="lic-st" style="background:rgba(212,175,55,.14);color:var(--gold-2);border:1px solid #4a4020">📅 da agenda</span>':'',
+      s.tem_prontuario?'<span class="lic-st ativa">prontuário</span>':'<span class="lic-st pend">sem prontuário</span>',
       s.resumo_compartilhado?'<span class="lic-st ativa">resumo enviado</span>':'',
       s.tarefas?('<span class="lic-st pend">'+s.tarefas+' tarefa(s)</span>'):''].filter(Boolean).join(' ');
     return '<div class="ag-item"><div class="ag-info"><b>'+fmtSessao(s.quando)+'</b>'+(s.status?' · '+s.status:'')+
@@ -1477,8 +1499,10 @@ async function criarSessao(){
 }
 async function delSessao(sid){ if(!confirm('Excluir sessão? (o prontuário será arquivado)')) return; try{ await postAdmin('/api/admin/clients/session/delete?sessionId='+sid,{}); cliTab('sessoes'); }catch(e){ alert('Erro: '+e.message); } }
 async function abrirSessaoCli(sid){
+  const mySeq=++cliBodySeq;
   const body=$('cliTabBody'); body.innerHTML='<p class="muted">carregando…</p>';
-  let d; try{ d=await api('/api/admin/clients/session?sessionId='+sid); }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  let d; try{ d=await api('/api/admin/clients/session?sessionId='+sid); }catch(e){ if(mySeq===cliBodySeq) body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  if(mySeq!==cliBodySeq) return;   // outro render assumiu o corpo
   const s=d.sessao, rec=d.prontuario||{}, sum=d.resumo||{}, tarefas=d.tarefas||[];
   const campos=REC_DEFS.map(([k,l])=>'<div class="dp-full"><label>'+l+'</label><textarea id="rc_'+k+'">'+escHtml(rec[k])+'</textarea></div>').join('');
   const chk=(id,lab,on)=>'<label class="fin-chk"><input type="checkbox" id="'+id+'" '+(on?'checked':'')+'/> '+lab+'</label>';
