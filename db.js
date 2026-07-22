@@ -1115,6 +1115,30 @@ export async function overviewStats(orgId = null) {
   return r.rows[0];
 }
 
+// TORRE DE CONTROLE — o que o mentor precisa ver HOJE, num só lugar:
+// consultas do dia + cobranças vencendo/atrasadas. (Atenção/sumidos/aniversariantes
+// saem da própria lista de pacientes, já carregada no painel.)
+export async function dashboardHoje(orgId) {
+  if (!pool) return { consultas: [], financeiro: [] };
+  const [cons, fin] = await Promise.all([
+    pool.query(`
+      SELECT a.id, a.user_id, u.name AS paciente, a.modalidade, a.local, a.status,
+        to_char(a.quando AT TIME ZONE 'America/Sao_Paulo','HH24:MI') AS hora, a.quando
+      FROM appointments a JOIN users u ON u.id=a.user_id
+      WHERE ($1::bigint IS NULL OR a.org_id=$1) AND a.status='agendada'
+        AND (a.quando AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date
+      ORDER BY a.quando`, [orgId]),
+    pool.query(`
+      SELECT r.id, r.user_id, u.name AS paciente, r.valor, r.vencimento::text AS vencimento, r.descricao,
+        (r.vencimento < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS atrasada
+      FROM receivables r JOIN users u ON u.id=r.user_id
+      WHERE ($1::bigint IS NULL OR r.org_id=$1) AND r.status='pendente'
+        AND r.vencimento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date + 7
+      ORDER BY r.vencimento`, [orgId])
+  ]);
+  return { consultas: cons.rows, financeiro: fin.rows };
+}
+
 // evolução emocional agregada dos pacientes DA ORGANIZAÇÃO (média da tríade por dia)
 export async function globalDaily(orgId = null, days = 30) {
   if (!pool) return [];

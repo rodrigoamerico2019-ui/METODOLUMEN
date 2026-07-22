@@ -267,6 +267,45 @@
   /* Central de Prioridades */
   .prio-resumo{font-size:13px;color:var(--dim);margin-bottom:16px}
   .prio-resumo b{color:var(--ink)}
+  /* Torre de Controle */
+  .torre-resumo{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .torre-kpi{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:center}
+  .torre-kpi.alerta{border-color:#4a2530;background:#241214}
+  .torre-kpi .v{font-family:'Cinzel';font-size:26px;color:var(--gold-2);line-height:1}
+  .torre-kpi.alerta .v{color:var(--vermelho)}
+  .torre-kpi .k{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);margin-top:6px}
+  .torre-bloco{margin-bottom:24px}
+  .torre-bloco.hide{display:none}
+  .torre-h{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .torre-cnt{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11px;color:var(--ink)}
+  .torre-item{display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .torre-item:first-child{border-top:0}
+  .torre-hora{font-family:'Cinzel';font-size:15px;color:var(--gold-2);min-width:46px}
+  .torre-info{flex:1;min-width:120px}
+  .torre-info b{font-size:14px;color:var(--ink)}
+  .torre-info small{display:block;color:var(--faint);font-size:11.5px;margin-top:1px}
+  .torre-item .val{font-size:13px;font-weight:600;color:var(--ink)}
+  .torre-item .val.atr{color:var(--vermelho)}
+  .torre-vazio{color:var(--faint);font-size:12.5px;padding:6px 2px;font-style:italic}
+  .tbtn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+  .tbtn:hover{border-color:var(--gold-soft)}
+  /* Visão clínica da ficha (raio-x do paciente) */
+  .cli-risco{border-radius:12px;padding:11px 14px;font-size:13px;margin-bottom:14px;font-weight:500}
+  .cli-risco.seguranca,.cli-risco.prioridade{background:#241214;border:1px solid #4a2530;color:var(--vermelho)}
+  .cli-risco.atencao{background:#2a2413;border:1px solid #4a4020;color:var(--amarelo)}
+  .cli-snap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+  @media(max-width:640px){.cli-snap{grid-template-columns:1fr}}
+  .cli-snap .csnap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
+  .cli-snap .csnap h4{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);margin:0 0 10px;font-weight:600}
+  .cli-esf{display:flex;flex-direction:column;gap:9px}
+  .cli-esfrow{display:grid;grid-template-columns:72px 1fr auto;align-items:center;gap:9px;font-size:12px;color:var(--ink)}
+  .cli-esfbar{height:6px;border-radius:4px;background:var(--line);overflow:hidden}
+  .cli-esfbar span{display:block;height:100%;background:linear-gradient(90deg,#C9A227,#E4C878)}
+  .cli-esfv{font-weight:700;font-size:12px;min-width:28px;text-align:right;color:var(--gold-2)}
+  .cli-chip{display:inline-block;font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:0 5px 6px 0;color:var(--ink)}
+  .cli-line{font-size:13px;color:var(--dim);margin:5px 0}
+  .cli-line b{color:var(--ink)}
+  .cli-vaziosn{font-size:12px;color:var(--faint);font-style:italic}
   .prio-card{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);
     border-left-width:4px;border-radius:14px;padding:14px 16px;margin-bottom:11px;flex-wrap:wrap}
   .prio-card.seguranca{border-left-color:var(--vermelho);background:linear-gradient(90deg,rgba(226,109,109,.06),var(--panel) 40%)}
@@ -364,9 +403,30 @@
 
     <!-- ===== CENTRAL DE PRIORIDADES ===== -->
     <section id="view-prioridades">
-      <div class="topline"><h2>Quem precisa de você hoje</h2><span class="sub">a luz encontra primeiro quem mais precisa</span></div>
-      <div id="prioResumo" class="prio-resumo"></div>
-      <div id="prioCards"></div>
+      <div class="topline"><h2>Sua clínica hoje</h2><span class="sub">tudo que pede sua atenção, num lugar só</span></div>
+      <div id="torreResumo" class="torre-resumo"></div>
+
+      <div class="torre-bloco" id="torreHojeBloco">
+        <div class="torre-h">📅 Consultas de hoje <span id="torreHojeN" class="torre-cnt"></span></div>
+        <div id="torreHoje"></div>
+      </div>
+
+      <div class="torre-bloco">
+        <div class="torre-h">💛 Quem precisa de você</div>
+        <div id="prioResumo" class="prio-resumo"></div>
+        <div id="prioCards"></div>
+      </div>
+
+      <div class="torre-bloco hide" id="torreFinanceBloco">
+        <div class="torre-h">💰 Pagamentos <span id="torreFinanceN" class="torre-cnt"></span></div>
+        <div id="torreFinance"></div>
+      </div>
+
+      <div class="torre-bloco hide" id="torreAniverBloco">
+        <div class="torre-h">🎂 Aniversariantes de hoje</div>
+        <div id="torreAniver"></div>
+      </div>
+
       <div class="prio-legenda">
         <span><span class="pdot seguranca"></span>Segurança — sinal de risco, agir primeiro</span>
         <span><span class="pdot prioridade"></span>Prioridade</span>
@@ -710,7 +770,7 @@ function nav(v){
 
 /* ===== CENTRAL DE PRIORIDADES ===== */
 function nivelPrioridade(p){
-  const dias = diasSem(p.last_seen_at);
+  const dias = diasSem(p.last_seen_at || p.ultima_conversa);
   const st = p.ultimo_meta?.status;
   const riscoAlto = p.risco_recente || p.ultimo_meta?.risco === 'ALTO';
   if(riscoAlto)                       return {nivel:'seguranca', ordem:5, motivo:'Sinal de risco identificado nos últimos 7 dias — acolher e acionar o protocolo de segurança'};
@@ -723,34 +783,72 @@ function nivelPrioridade(p){
   return {nivel:'informativo', ordem:1, motivo:'Acolhido, sem sinais de atenção'};
 }
 
-function renderPrioridades(){
+const kpi = (v,k,alerta) => `<div class="torre-kpi ${alerta?'alerta':''}"><div class="v">${v}</div><div class="k">${k}</div></div>`;
+async function renderPrioridades(){
   const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
   const nomes = {seguranca:'segurança', prioridade:'prioridade', atencao:'atenção', observar:'observar'};
+
+  // quem precisa de atenção (radar de risco — já usa risco do chat, mapa, sumiço)
   const com = pacientes.map(p => ({ p, ...nivelPrioridade(p) }));
-  const precisam = com.filter(x => x.ordem >= 2).sort((a,b)=> b.ordem - a.ordem || diasSem(b.p.last_seen_at) - diasSem(a.p.last_seen_at));
+  const precisam = com.filter(x => x.ordem >= 2).sort((a,b)=> b.ordem - a.ordem || diasSem(b.p.last_seen_at||b.p.ultima_conversa) - diasSem(a.p.last_seen_at||a.p.ultima_conversa));
   const tranquilos = com.length - precisam.length;
 
-  $('prioResumo').innerHTML = precisam.length
-    ? `<b>${precisam.length}</b> pessoa(s) pedindo sua atenção hoje · <b>${tranquilos}</b> em paz`
-    : `Todas as <b>${com.length}</b> pessoas estão acolhidas hoje. 🕊️`;
+  // consultas de hoje + cobranças (Torre)
+  let dash = { consultas:[], financeiro:[] };
+  try{ dash = await api('/api/admin/dashboard'); }catch(e){}
+  const fin = dash.financeiro || [];
+  const atrasadas = fin.filter(f=>f.atrasada);
 
-  if(!precisam.length){
-    $('prioCards').innerHTML = '<div class="prio-vazio">Nenhuma prioridade agora. Que continue assim — a luz está atravessando.</div>';
-    return;
-  }
-  $('prioCards').innerHTML = precisam.map(({p,nivel,motivo})=>{
-    const emerg = (nivel==='seguranca' && p.emergency_phone) ? '' : '';
-    return `<div class="prio-card ${nivel}">
-      <div class="prio-nome">
-        <b>${p.name}</b>
-        <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}</div>
-      </div>
-      <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens} interações</div>
-      <div class="prio-acoes">
-        <button class="pbtn forte" onclick="abrirPaciente(${p.id})">Abrir ficha →</button>
-      </div>
-    </div>`;
-  }).join('');
+  // KPIs do dia
+  $('torreResumo').innerHTML =
+    kpi(dash.consultas.length, 'consultas hoje') +
+    kpi(precisam.length, 'pedindo atenção', precisam.some(x=>x.nivel==='seguranca')) +
+    kpi(atrasadas.length, 'em atraso', atrasadas.length>0) +
+    kpi(tranquilos, 'em paz');
+
+  // consultas de hoje
+  $('torreHojeN').textContent = dash.consultas.length || '';
+  $('torreHoje').innerHTML = dash.consultas.length ? dash.consultas.map(c =>
+    `<div class="torre-item"><span class="torre-hora">${c.hora||'--:--'}</span>
+      <div class="torre-info"><b>${escHtml(c.paciente)}</b><small>${escHtml([c.modalidade, c.local].filter(Boolean).join(' · ')||'consulta')}</small></div>
+      <button class="tbtn" onclick="abrirCliente(${c.user_id})">abrir ficha</button></div>`
+  ).join('') : '<div class="torre-vazio">Nenhuma consulta agendada para hoje.</div>';
+
+  // quem precisa de você
+  $('prioResumo').innerHTML = precisam.length
+    ? `<b>${precisam.length}</b> pessoa(s) pedindo sua atenção · <b>${tranquilos}</b> em paz`
+    : `Todas as <b>${com.length||0}</b> pessoas estão acolhidas hoje. 🕊️`;
+  $('prioCards').innerHTML = precisam.length ? precisam.map(({p,nivel,motivo})=>
+    `<div class="prio-card ${nivel}">
+      <div class="prio-nome"><b>${escHtml(p.name)}</b>
+        <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}</div></div>
+      <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens||0} interações</div>
+      <div class="prio-acoes"><button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
+    </div>`).join('') : '<div class="prio-vazio">Nenhuma prioridade agora. A luz está atravessando. 🕊️</div>';
+
+  // pagamentos vencendo/atrasados
+  const finBloco = $('torreFinanceBloco');
+  if(fin.length){
+    $('torreFinanceN').textContent = fin.length;
+    $('torreFinance').innerHTML = fin.map(f=>{
+      const venc = new Date(f.vencimento+'T12:00').toLocaleDateString('pt-BR');
+      return `<div class="torre-item"><div class="torre-info"><b>${escHtml(f.paciente)}</b><small>${escHtml(f.descricao||'Mensalidade')} · vence ${venc}</small></div>
+        <span class="val ${f.atrasada?'atr':''}">R$ ${Number(f.valor).toFixed(2).replace('.',',')}${f.atrasada?' · atrasado':''}</span>
+        <button class="tbtn" onclick="abrirCliente(${f.user_id})">abrir</button></div>`;
+    }).join('');
+    finBloco.classList.remove('hide');
+  } else finBloco.classList.add('hide');
+
+  // aniversariantes de hoje
+  const dm = new Date(), diaHoje = dm.getDate(), mesHoje = dm.getMonth()+1;
+  const niver = pacientes.filter(p => Number(p.nasc_dia)===diaHoje && Number(p.nasc_mes)===mesHoje);
+  const nivBloco = $('torreAniverBloco');
+  if(niver.length){
+    $('torreAniver').innerHTML = niver.map(p=>
+      `<div class="torre-item"><div class="torre-info"><b>🎉 ${escHtml(p.name)}</b><small>faz aniversário hoje — um carinho faz diferença</small></div>
+        <button class="tbtn" onclick="abrirCliente(${p.id})">abrir ficha</button></div>`).join('');
+    nivBloco.classList.remove('hide');
+  } else nivBloco.classList.add('hide');
 }
 
 /* alterna entre os formulários do gate */
@@ -1154,16 +1252,65 @@ function cliTab(t){
   if(t==='auditoria') return renderCliAudit(body);
   body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Documentos, relatórios e consentimentos.</small></div>';
 }
-function renderCliVisao(body){
+const esferaBar=(nome,v)=>{ const val=(v!=null&&!isNaN(v))?Number(v):null; const pct=val!=null?Math.max(5,Math.min(100,Math.round(val*10))):0;
+  return '<div class="cli-esfrow"><span>'+nome+'</span><div class="cli-esfbar"><span style="width:'+pct+'%"></span></div><span class="cli-esfv">'+(val!=null?val.toFixed(1):'—')+'</span></div>'; };
+async function renderCliVisao(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
   const prof=(clienteAtual.profissionais||[]).map(p=>p.name+(p.principal?' (principal)':'')).join(', ')||'—';
+  // dados clínicos: reusa o endpoint que já agrega tudo do paciente (+ objetivos)
+  const [clin, goalsR] = await Promise.all([
+    api('/api/admin/patient?id='+clienteAtual.id).catch(()=>null),
+    api('/api/admin/clients/goals?id='+clienteAtual.id).catch(()=>null)
+  ]);
+  const goals=(goalsR&&goalsR.goals)||[];
+  const pac=(pacientes||[]).find(x=>x.id===clienteAtual.id);
+
+  // 1 · banner de risco (usa o mesmo radar da Torre)
+  let banner='';
+  if(pac){ const n=nivelPrioridade(pac); if(n.ordem>=3) banner='<div class="cli-risco '+n.nivel+'">⚠️ '+n.motivo+'</div>'; }
+
+  // 2 · chips administrativos (compactos)
   const linha=(k,v)=> v?('<span class="stat"><b>'+v+'</b>'+k+'</span>'):'';
-  body.innerHTML='<div id="dStats">'+
+  const chips='<div id="dStats">'+
     linha('código',det.codigo)+linha('status',det.status)+linha('tipo',det.tipo_acompanhamento)+
-    linha('idade',b.idade!=null?b.idade+' anos':'')+linha('telefone',b.phone)+linha('cidade',b.city)+
-    linha('profissional(is)',prof)+linha('acesso ao app',b.tem_acesso?'ativo':'não')+'</div>'+
-    (clienteAtual.emergencia.length?'<p class="subc" style="margin-top:14px">🆘 Emergência: '+clienteAtual.emergencia.map(e=>e.nome+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
-    (det.obs_inicial?'<p class="muted" style="margin-top:8px">Obs.: '+det.obs_inicial+'</p>':'');
+    linha('idade',b.idade!=null?b.idade+' anos':'')+linha('acesso ao app',b.tem_acesso?'ativo':'não')+'</div>';
+
+  // 3 · estado atual (esferas 7d + última conversa + sequência)
+  const esf=clin&&clin.esferas;
+  const ultima=pac&&pac.ultima_conversa?new Date(pac.ultima_conversa).toLocaleDateString('pt-BR'):null;
+  const estado='<div class="csnap"><h4>🌤️ Estado atual (7 dias)</h4>'+
+    (esf&&esf.amostras>0
+      ? '<div class="cli-esf">'+esferaBar('🫀 Corpo',esf.corpo)+esferaBar('💭 Alma',esf.alma)+esferaBar('🕊️ Espírito',esf.espirito)+'</div>'
+        +(clin.streak>1?'<p class="cli-line" style="margin-top:10px">🌿 <b>'+clin.streak+'</b> dias seguidos de check-in</p>':'')
+      : '<div class="cli-vaziosn">Sem check-ins recentes.</div>')+
+    (ultima?'<p class="cli-line">💬 última conversa: <b>'+ultima+'</b></p>':'<p class="cli-line">💬 ainda não conversou pelo app</p>')+'</div>';
+
+  // 4 · escalas (últimos escores)
+  const escalas=(clin&&clin.escalas||[]).filter(e=>e.ultimo&&e.ultimo.score!=null);
+  const escBloco='<div class="csnap"><h4>🌡️ Escalas</h4>'+
+    (escalas.length?escalas.map(e=>'<span class="cli-chip">'+escHtml(e.titulo)+': <b>'+e.ultimo.score+'</b></span>').join('')
+      :'<div class="cli-vaziosn">Nenhuma escala respondida ainda.</div>')+'</div>';
+
+  // 5 · próxima consulta + pendências
+  const cons=(clin&&clin.consultas||[]).filter(c=>c.status==='agendada'&&!c.passou).sort((a,b)=>String(a.quando_local||'').localeCompare(String(b.quando_local||'')));
+  const prox=cons[0];
+  const receber=((clin&&clin.financeiro&&clin.financeiro.receber)||[]).filter(r=>r.status==='pendente');
+  const totalRec=receber.reduce((s,r)=>s+Number(r.valor||0),0);
+  const agenda='<div class="csnap"><h4>📅 Agenda & pendências</h4>'+
+    (prox?'<p class="cli-line">próxima consulta: <b>'+new Date(prox.quando_local).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</b> ('+(prox.modalidade||'—')+')</p>'
+         :'<p class="cli-line">sem consulta agendada</p>')+
+    (receber.length?'<p class="cli-line" style="color:var(--vermelho)">💰 <b>'+receber.length+'</b> cobrança(s) em aberto — R$ '+totalRec.toFixed(2).replace('.',',')+'</p>':'<p class="cli-line">💰 financeiro em dia</p>')+'</div>';
+
+  // 6 · objetivos ativos
+  const objBloco='<div class="csnap"><h4>🎯 Objetivos</h4>'+
+    (goals&&goals.length?goals.slice(0,3).map(g=>'<p class="cli-line">• '+escHtml(g.titulo)+' <span style="color:var(--faint)">('+(g.progresso||0)+'%)</span></p>').join('')
+      :'<div class="cli-vaziosn">Nenhum objetivo definido.</div>')+'</div>';
+
+  body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+
+    (clienteAtual.emergencia&&clienteAtual.emergencia.length?'<p class="subc">🆘 Emergência: '+clienteAtual.emergencia.map(e=>escHtml(e.nome)+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
+    (det.obs_inicial?'<p class="muted" style="margin-top:6px">Obs.: '+escHtml(det.obs_inicial)+'</p>':'')+
+    '<p class="subc" style="margin-top:10px">Profissional(is): '+escHtml(prof)+(b.phone?' · 📞 '+escHtml(b.phone):'')+(b.city?' · '+escHtml(b.city):'')+'</p>';
 }
 function campoCli(id,label,val,opts){
   opts=opts||{}; const cls=opts.w?('dp-'+opts.w):'';

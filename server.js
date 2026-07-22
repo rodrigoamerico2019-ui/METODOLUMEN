@@ -18,7 +18,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
          todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
          emergencyContact, checkinStreak, getExtras, mergeVitorias, setNotasMentor,
-         overviewStats, globalDaily, emotionsPredominant,
+         overviewStats, globalDaily, emotionsPredominant, dashboardHoje,
          savePushSub, pushSubsOf, deletePushSub, saveMentorMessage, unreadMentorMessages, markMentorRead, mentorMessagesAll,
          usersForReminders, reminderSent, markReminderSent,
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
@@ -316,6 +316,11 @@ app.get('/api/admin/invite', requireAdmin, async (req, res) => {
 });
 app.get('/api/admin/users', requireAdmin, soMentor, async (req, res) => {
   try { res.json({ pacientes: await listUsers(req.orgId) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// Torre de Controle: consultas de hoje + cobranças vencendo/atrasadas
+app.get('/api/admin/dashboard', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await dashboardHoje(req.orgId)); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // agrupa as respostas de escalas por escala, com metadados, evolução e tendência
