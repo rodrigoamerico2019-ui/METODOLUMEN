@@ -1495,7 +1495,7 @@ const codigoCliente = () => 'CLI-' + Math.random().toString(36).slice(2, 7).toUp
 export async function criarClienteRapido(orgId, criadorUid, d = {}) {
   if (!pool) throw new Error('banco não configurado');
   const nome = String(d.name || '').trim();
-  if (nome.length < 2) throw new Error('Informe o nome do cliente.');
+  if (nome.length < 2) throw new Error('Informe o nome do paciente.');
   let email = norm(d.email);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
   if (!email) email = 'cliente_' + Date.now() + Math.random().toString(36).slice(2, 6) + '@sem-email.trilumen';
@@ -1828,7 +1828,7 @@ export async function statusAcessoCliente(clientId) {
 export async function criarAcessoCliente(clientId, orgId, uid) {
   if (!pool || !clientId) throw new Error('banco não configurado');
   const u = await pool.query(`SELECT name, email FROM users WHERE id=$1 AND role='paciente'`, [clientId]);
-  if (!u.rows[0]) throw new Error('Cliente não encontrado.');
+  if (!u.rows[0]) throw new Error('Paciente não encontrado.');
   // invalida convites anteriores ainda não usados
   await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
   const token = crypto.randomBytes(24).toString('hex');
@@ -1963,7 +1963,7 @@ export async function concluirTarefaCliente(taskId, clientId, feito) {
 //   'cliente' → só o que já foi compartilhado com ele (nunca o prontuário)
 //   'clinico' → documento interno da equipe (inclui prontuário, saúde, medicamentos)
 export async function reportData(clientId, orgId, { tipo = 'cliente', inicio, fim } = {}) {
-  if (!pool || !clientId) throw new Error('cliente inválido');
+  if (!pool || !clientId) throw new Error('paciente inválido');
   const ini = dateOrNull(inicio), f = dateOrNull(fim);
   const clinico = tipo === 'clinico';
   const [cli, org, sess, goals, tasks, emo, scales] = await Promise.all([

@@ -509,23 +509,23 @@ app.post('/api/admin/clients', requireAdmin, soMentor, carregaPapel, permite(...
 app.get('/api/admin/clients/full', requireAdmin, soMentor, carregaPapel, permite(...STAFF, 'financeiro'), async (req, res) => {
   try {
     const id = Number(req.query.id);
-    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
     const c = await getClientFull(id);
-    if (!c) return res.status(404).json({ error: 'cliente não encontrado' });
+    if (!c) return res.status(404).json({ error: 'paciente não encontrado' });
     res.json(c);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/clients/update', requireAdmin, soMentor, carregaPapel, permite(...CADASTRA), async (req, res) => {
   try {
     const id = Number(req.query.id);
-    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
     res.json(await updateClientDetails(id, req.orgId, req.mentorUid, { ...(req.body || {}), ip: req.ip }));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 app.get('/api/admin/clients/audit', requireAdmin, soMentor, carregaPapel, permite('owner', 'admin', 'professional'), async (req, res) => {
   try {
     const id = Number(req.query.id) || null;
-    if (id && req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'cliente de outra organização' });
+    if (id && req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
     res.json({ eventos: await listAudit(req.orgId, id) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -534,7 +534,7 @@ app.get('/api/admin/clients/audit', requireAdmin, soMentor, carregaPapel, permit
 const CLINICO = ['owner', 'admin', 'professional', 'professional_secondary'];
 async function clienteDaOrg(req, res) {
   const id = Number(req.query.id);
-  if (req.orgId && (await patientOrg(id)) !== req.orgId) { res.status(403).json({ error: 'cliente de outra organização' }); return null; }
+  if (req.orgId && (await patientOrg(id)) !== req.orgId) { res.status(403).json({ error: 'paciente de outra organização' }); return null; }
   return id;
 }
 const clin = [requireAdmin, soMentor, carregaPapel, permite(...CLINICO)];
@@ -758,7 +758,7 @@ app.post('/api/admin/clients/access', ...clin, async (req, res) => {
         });
         enviado = true;
       } catch (e) { erroEnvio = String(e.message || e); }
-    } else if ((req.body || {}).enviar && !a.email) erroEnvio = 'cliente sem e-mail cadastrado';
+    } else if ((req.body || {}).enviar && !a.email) erroEnvio = 'paciente sem e-mail cadastrado';
     else if ((req.body || {}).enviar && !t) erroEnvio = 'e-mail não configurado no servidor';
     res.json({ ok: true, link, email: a.email, enviado, erroEnvio });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
@@ -886,7 +886,7 @@ app.post('/api/admin/clients/reports/send', ...clin, async (req, res) => {
     if (!info || !info.pdf) return res.status(404).json({ error: 'relatório não encontrado' });
     // destinatário: informado, senão o e-mail do próprio cliente (só faz sentido no relatório do cliente)
     const to = String(b.to || '').trim() || info.cliente_email;
-    if (!to) return res.status(400).json({ error: 'Informe o e-mail de destino (o cliente não tem e-mail cadastrado).' });
+    if (!to) return res.status(400).json({ error: 'Informe o e-mail de destino (o paciente não tem e-mail cadastrado).' });
     if (!emailValido(to)) return res.status(400).json({ error: 'E-mail de destino inválido.' });
     // trava de privacidade: relatório clínico é interno — nunca ao e-mail do cliente sem confirmação explícita
     if (info.tipo === 'clinico' && to === info.cliente_email && !b.confirmaClinico)
