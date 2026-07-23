@@ -9,10 +9,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital@0;1&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --gold:#D4AF37; --gold2:#F5C76A; --bg:#0D0D0D; --panel:#161616; --panel2:#1E1E1E;
-    --line:#2b2b28; --ink:#f0ece2; --dim:#A6A6A6; --faint:#6d6a60;
-    --verde:#3fbf7f; --amarelo:#e0a04a; --vermelho:#e26d6d;
-    --grad:linear-gradient(135deg,#D4AF37 0%,#F5C76A 55%,#D4AF37 100%); }
+    /* Painel do mentor — tema CLARO, alinhado ao app do paciente (creme + dourado). */
+    --gold:#B8912F; --gold2:#C9A227; --bg:#F4EEE2; --panel:#FFFFFF; --panel2:#F7F2E8;
+    --line:#E7DECB; --ink:#1E1B16; --dim:#6B6355; --faint:#A79E8D;
+    --verde:#5a9068; --amarelo:#a9791f; --vermelho:#c0442f;
+    --grad:linear-gradient(135deg,#C9A227 0%,#E4C878 55%,#C9A227 100%);
+    /* status semânticos (tons claros): ok / atenção / risco */
+    --ok-bg:rgba(110,148,85,.12); --ok-tx:#41603a; --ok-bd:rgba(110,148,85,.34);
+    --warn-bg:rgba(201,162,39,.14); --warn-tx:#8a6a1f; --warn-bd:rgba(201,162,39,.36);
+    --danger-bg:rgba(192,68,47,.10); --danger-tx:#b23a2a; --danger-bd:rgba(192,68,47,.30); }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Montserrat',sans-serif;min-height:100vh}
 
@@ -69,7 +74,7 @@
   .stat-card .k{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);line-height:1.6}
   .stat-card .v{font-family:'Cinzel';font-size:34px;color:var(--ink);margin-top:6px}
   .stat-card.gold .v{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .stat-card.alerta{border-color:#4a2530}
+  .stat-card.alerta{border-color:var(--danger-bd)}
   .stat-card.alerta .v{color:var(--vermelho)}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:840px){.grid{grid-template-columns:1fr}}
@@ -96,7 +101,7 @@
   .dot.vermelho{background:var(--vermelho);box-shadow:0 0 10px var(--vermelho)}
   .dot.cinza{background:var(--faint)}
   .risco{color:var(--vermelho);font-weight:600;font-size:11px;letter-spacing:1px}
-  .badge-at{display:inline-block;background:#241214;border:1px solid #4a2530;color:var(--vermelho);font-size:9.5px;
+  .badge-at{display:inline-block;background:var(--danger-bg);border:1px solid var(--danger-bd);color:var(--vermelho);font-size:9.5px;
     letter-spacing:1px;border-radius:999px;padding:2px 9px;margin-left:8px;vertical-align:middle}
   .back{background:none;border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:7px 18px;cursor:pointer;font-size:12px;margin-bottom:16px}
   .back:hover{color:var(--gold2);border-color:var(--gold)}
@@ -135,7 +140,7 @@
   .pz-b p{color:var(--dim);font-size:12px;margin-top:3px;line-height:1.5}
   .plano-acoes{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
   .plano-badge{display:inline-block;font-size:11px;padding:4px 11px;border-radius:999px}
-  .plano-badge.on{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid #3a5a2e}
+  .plano-badge.on{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid var(--ok-bd)}
   .plano-badge.off{background:var(--panel2);color:var(--faint);border:1px solid var(--line)}
   .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
   /* Linha do tempo (painel) */
@@ -145,7 +150,7 @@
   .tl{position:relative;padding-left:22px}
   .tl:before{content:'';position:absolute;left:5px;top:4px;bottom:4px;width:2px;background:var(--line)}
   .tl-item{position:relative;padding:0 0 16px}
-  .tl-item:before{content:'';position:absolute;left:-21px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--dot,#F5C76A);border:2px solid var(--bg)}
+  .tl-item:before{content:'';position:absolute;left:-21px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--dot,#C9A227);border:2px solid var(--bg)}
   .tl-when{font-size:10.5px;color:var(--faint);letter-spacing:.3px}
   .tl-tit{font-size:13.5px;color:var(--ink);font-weight:500;margin-top:1px}
   .tl-det{font-size:12px;color:var(--dim);margin-top:2px;line-height:1.5}
@@ -164,20 +169,20 @@
   .lic-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin-top:5px}
   .lic-bar i{display:block;height:100%;background:var(--grad)}
   .lic-st{font-size:11px;padding:4px 10px;border-radius:999px;white-space:nowrap}
-  .lic-st.ativa{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid #3a5a2e}
-  .lic-st.inativa{background:#241214;color:var(--vermelho);border:1px solid #4a2530}
-  .lic-st.pend{background:#2a2413;color:var(--amarelo);border:1px solid #4a4020}
+  .lic-st.ativa{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid var(--ok-bd)}
+  .lic-st.inativa{background:var(--danger-bg);color:var(--vermelho);border:1px solid var(--danger-bd)}
+  .lic-st.pend{background:var(--warn-bg);color:var(--amarelo);border:1px solid var(--warn-bd)}
   .lic-wrap{overflow-x:auto}
   .cc-form{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   .cc-form input,.cc-form select{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);padding:10px 12px;font-size:13px;font-family:inherit}
   .cc-form input:focus,.cc-form select:focus{outline:none;border-color:var(--gold)}
-  .cc-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid #3a5a2e;border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7;margin-top:6px}
+  .cc-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid var(--ok-bd);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7;margin-top:6px}
   .cc-ok b{color:var(--gold2)}
   .lic-act{display:flex;gap:6px;flex-wrap:wrap}
   .lic-act button{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit}
   .lic-act button:hover{border-color:var(--gold);color:var(--gold2)}
   /* Mapa inicial (ficha do mentor) */
-  .mp-risco{display:inline-block;font-size:11px;padding:3px 11px;border-radius:999px;background:#2a2413;color:var(--amarelo);border:1px solid #4a4020;margin-left:8px;vertical-align:middle}
+  .mp-risco{display:inline-block;font-size:11px;padding:3px 11px;border-radius:999px;background:var(--warn-bg);color:var(--amarelo);border:1px solid var(--warn-bd);margin-left:8px;vertical-align:middle}
   .mp-item{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
   .mp-item:first-child{border-top:0}
   .mp-tema{flex:0 0 120px;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gold2);padding-top:2px}
@@ -217,7 +222,7 @@
   .ag-info{flex:1;min-width:150px;font-size:13px;color:var(--ink)}
   .ag-info small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;word-break:break-word}
   .ag-mod{font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
-  .ag-mod.online{color:#7ab8d9;border-color:#2e4a57} .ag-mod.presencial{color:#7fb069;border-color:#3a5a2e}
+  .ag-mod.online{color:#3a7ca5;border-color:rgba(58,124,165,.35)} .ag-mod.presencial{color:#7fb069;border-color:var(--ok-bd)}
   /* Módulo de clientes */
   .cli-filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   .cli-filtros input,.cli-filtros select,.cad-form input,.cad-form select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:11px 13px;font-size:14px;font-family:inherit}
@@ -226,7 +231,7 @@
   .cad-form{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px}
   .cad-form input,.cad-form select{flex:1 1 calc(50% - 6px);min-width:220px}
   .cad-form .cad-full{flex-basis:100%}
-  .cad-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid #3a5a2e;border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7}
+  .cad-ok{width:100%;background:rgba(127,176,105,.10);border:1px solid var(--ok-bd);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);line-height:1.7}
   .cad-ok b{color:var(--gold2)}
   .cli-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:14px 0 18px}
   .cli-tab{background:transparent;border:none;color:var(--dim);font-size:12.5px;padding:8px 12px;border-radius:8px 8px 0 0;cursor:pointer;font-family:inherit}
@@ -272,7 +277,7 @@
   /* Torre de Controle */
   .torre-resumo{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
   .torre-kpi{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:center}
-  .torre-kpi.alerta{border-color:#4a2530;background:#241214}
+  .torre-kpi.alerta{border-color:var(--danger-bd);background:var(--danger-bg)}
   .torre-kpi .v{font-family:'Cinzel';font-size:26px;color:var(--gold-2);line-height:1}
   .torre-kpi.alerta .v{color:var(--vermelho)}
   .torre-kpi .k{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);margin-top:6px}
@@ -293,8 +298,8 @@
   .tbtn:hover{border-color:var(--gold-soft)}
   /* Visão clínica da ficha (raio-x do paciente) */
   .cli-risco{border-radius:12px;padding:11px 14px;font-size:13px;margin-bottom:14px;font-weight:500}
-  .cli-risco.seguranca,.cli-risco.prioridade{background:#241214;border:1px solid #4a2530;color:var(--vermelho)}
-  .cli-risco.atencao{background:#2a2413;border:1px solid #4a4020;color:var(--amarelo)}
+  .cli-risco.seguranca,.cli-risco.prioridade{background:var(--danger-bg);border:1px solid var(--danger-bd);color:var(--vermelho)}
+  .cli-risco.atencao{background:var(--warn-bg);border:1px solid var(--warn-bd);color:var(--amarelo)}
   .cli-snap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
   @media(max-width:640px){.cli-snap{grid-template-columns:1fr}}
   .cli-snap .csnap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
@@ -319,10 +324,10 @@
   .prio-motivo{font-size:12px;color:var(--dim);margin-top:3px}
   .prio-motivo .selo{display:inline-block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
     padding:1px 8px;border-radius:999px;margin-right:7px;vertical-align:middle}
-  .selo.seguranca{background:#241214;border:1px solid #4a2530;color:var(--vermelho)}
-  .selo.prioridade{background:#241214;border:1px solid #4a2530;color:#f0a0a0}
-  .selo.atencao{background:#2a2413;border:1px solid #4a4020;color:var(--amarelo)}
-  .selo.observar{background:#221e12;border:1px solid #40381e;color:var(--gold2)}
+  .selo.seguranca{background:var(--danger-bg);border:1px solid var(--danger-bd);color:var(--vermelho)}
+  .selo.prioridade{background:var(--danger-bg);border:1px solid var(--danger-bd);color:var(--danger-tx)}
+  .selo.atencao{background:var(--warn-bg);border:1px solid var(--warn-bd);color:var(--amarelo)}
+  .selo.observar{background:var(--warn-bg);border:1px solid var(--warn-bd);color:var(--gold2)}
   .prio-meta{font-size:11px;color:var(--faint);flex:0 0 auto}
   .prio-acoes{display:flex;gap:8px;flex:0 0 auto}
   .pbtn{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:999px;
@@ -345,7 +350,7 @@
   .audio-resumo .lin{margin:5px 0}
   .audio-resumo .rot{color:var(--gold2);font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-right:6px}
   .audio-resumo .lim{color:var(--faint);font-style:italic;font-size:11.5px}
-  .audio-flag{display:inline-block;background:#241214;border:1px solid #4a2530;color:var(--vermelho);font-size:10px;padding:2px 9px;border-radius:999px}
+  .audio-flag{display:inline-block;background:var(--danger-bg);border:1px solid var(--danger-bd);color:var(--vermelho);font-size:10px;padding:2px 9px;border-radius:999px}
   .audio-pend{font-size:12px;color:var(--faint);font-style:italic}
   .h2c{font-family:'Cinzel';font-weight:500;font-size:16px;letter-spacing:1px;margin-bottom:4px}
   .subc{font-family:'Cormorant Garamond';font-style:italic;color:var(--dim);font-size:14px;margin-bottom:14px}
@@ -391,12 +396,12 @@
     <div class="brand"><span id="sideEmblema"></span><h1>TRILUMEN</h1></div>
     <div class="nav-item on" data-v="prioridades" onclick="nav('prioridades')"><span class="ic">✦</span> Prioridades</div>
     <div class="nav-item" data-v="geral" onclick="nav('geral')"><span class="ic">◈</span> Visão Geral</div>
-    <div class="nav-item" data-v="clientes" onclick="nav('clientes')"><span class="ic">☰</span> Clientes</div>
+    <div class="nav-item" data-v="clientes" onclick="nav('clientes')"><span class="ic">☰</span> Pacientes</div>
     <div class="nav-item" data-v="jornadas" onclick="nav('jornadas')"><span class="ic">☰</span> Jornadas</div>
     <div class="nav-item" data-v="alertas" onclick="nav('alertas')"><span class="ic">⚠</span> Alertas</div>
     <div class="nav-item" data-v="agenda" onclick="nav('agenda')"><span class="ic">◷</span> Agenda</div>
     <div class="nav-item" data-v="financeiro" onclick="nav('financeiro')"><span class="ic">₪</span> Financeiro</div>
-    <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Clientes</div>
+    <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Pacientes</div>
     <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
     <div class="foot"><span id="footWho"></span>TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
   </aside>
@@ -447,8 +452,8 @@
           <div id="chartEvolucao"></div>
           <div class="legend">
             <span><i style="background:#7fb069"></i>Corpo</span>
-            <span><i style="background:#F5C76A"></i>Alma</span>
-            <span><i style="background:#7ab8d9"></i>Espírito</span>
+            <span><i style="background:#C9A227"></i>Alma</span>
+            <span><i style="background:#3a7ca5"></i>Espírito</span>
           </div>
         </div>
         <div class="card">
@@ -520,8 +525,8 @@
           <div id="chartTriade"></div>
           <div class="legend">
             <span><i style="background:#7fb069"></i>Corpo</span>
-            <span><i style="background:#F5C76A"></i>Alma</span>
-            <span><i style="background:#7ab8d9"></i>Espírito</span>
+            <span><i style="background:#C9A227"></i>Alma</span>
+            <span><i style="background:#3a7ca5"></i>Espírito</span>
           </div>
         </div>
         <div class="card">
@@ -541,8 +546,8 @@
           <p class="subc">como a pessoa SE avalia (check-in) × como a Lúmen a percebe — linhas que convergem = consciência crescendo</p>
           <div id="chartConsciencia"></div>
           <div class="legend">
-            <span><i style="background:#A6A6A6"></i>autoavaliação (check-in)</span>
-            <span><i style="background:#F5C76A"></i>leitura da Lúmen</span>
+            <span><i style="background:#8a857c"></i>autoavaliação (check-in)</span>
+            <span><i style="background:#C9A227"></i>leitura da Lúmen</span>
           </div>
         </div>
         <div class="card">
@@ -615,11 +620,11 @@
 
     <!-- ===== CENTRAL DE LICENÇAS (super-admin) ===== -->
     <section id="view-licencas" class="hide">
-      <div class="topline"><h2>Central de Clientes</h2><span class="sub">licenças, uso e financeiro — este painel não acessa os pacientes</span></div>
+      <div class="topline"><h2>Central de Pacientes</h2><span class="sub">licenças, uso e financeiro — este painel não acessa os pacientes</span></div>
       <div class="lic-stats" id="licStats"></div>
       <div class="card">
         <div class="h2c">Clientes e planos
-          <button class="btn" style="float:right;padding:8px 18px" onclick="abrirCriarCliente()">+ Criar cliente</button></div>
+          <button class="btn" style="float:right;padding:8px 18px" onclick="abrirCriarCliente()">+ Criar paciente</button></div>
         <p class="subc">todas as organizações · uso vs. limite · situação financeira</p>
         <div id="criarClienteBox" style="display:none"></div>
         <div class="lic-wrap"><table class="lic-tabela" id="licTabela"></table></div>
@@ -680,9 +685,9 @@
 
     <!-- ===== MÓDULO DE CLIENTES — lista + cadastro rápido ===== -->
     <section id="view-clientes" class="hide">
-      <div class="topline"><h2>Clientes</h2><span class="sub">cadastro, ficha e prontuário — isolado por organização</span></div>
+      <div class="topline"><h2>Pacientes</h2><span class="sub">cadastro, ficha e prontuário — isolado por organização</span></div>
       <div class="card">
-        <div class="h2c">＋ Cadastro rápido <button class="btn" style="float:right;padding:8px 18px" onclick="toggleCadRapido()">Novo cliente</button></div>
+        <div class="h2c">＋ Cadastro rápido <button class="btn" style="float:right;padding:8px 18px" onclick="toggleCadRapido()">Novo paciente</button></div>
         <div id="cadRapidoBox" style="display:none"></div>
       </div>
       <div class="card">
@@ -730,10 +735,10 @@ let pacientes = [], pacienteAtual = null;
 function emblema(px){
   return `<svg width="${px}" height="${px*2.1}" viewBox="0 0 100 210">
     <defs><linearGradient id="ge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#D4AF37"/><stop offset="55%" stop-color="#F5C76A"/><stop offset="100%" stop-color="#D4AF37"/></linearGradient>
+      <stop offset="0%" stop-color="#D4AF37"/><stop offset="55%" stop-color="#C9A227"/><stop offset="100%" stop-color="#D4AF37"/></linearGradient>
       <linearGradient id="gf" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#F5C76A" stop-opacity="0"/><stop offset="50%" stop-color="#FFF4D6"/>
-        <stop offset="100%" stop-color="#F5C76A" stop-opacity="0"/></linearGradient></defs>
+        <stop offset="0%" stop-color="#C9A227" stop-opacity="0"/><stop offset="50%" stop-color="#FFF4D6"/>
+        <stop offset="100%" stop-color="#C9A227" stop-opacity="0"/></linearGradient></defs>
     ${[36,105,174].map(cy=>`<circle cx="50" cy="${cy}" r="31" fill="none" stroke="url(#ge)" stroke-width="2.4"/>`).join('')}
     <line x1="50" y1="0" x2="50" y2="210" stroke="url(#gf)" stroke-width="2"/>
     ${[5,70,140,205].map(y=>`<circle cx="50" cy="${y}" r="2.4" fill="#FFF4D6"/>`).join('')}
@@ -970,7 +975,7 @@ async function carregarLicencas(){
     const receita = orgs.filter(o=>o.status==='ativa').reduce((s,o)=>s+(o.preco||0),0);
     const aVencer = orgs.filter(o=>['a vencer','vencido'].includes(statusFinanceiro(o).txt)).length;
     $('licStats').innerHTML = `
-      <div class="lic-card"><div class="k">Clientes</div><div class="v">${orgs.length}</div></div>
+      <div class="lic-card"><div class="k">Pacientes</div><div class="v">${orgs.length}</div></div>
       <div class="lic-card"><div class="k">Licenças ativas</div><div class="v">${ativas}</div></div>
       <div class="lic-card"><div class="k">A vencer / vencidas</div><div class="v">${aVencer}</div></div>
       <div class="lic-card"><div class="k">Receita/mês</div><div class="v"><small>${brl(receita)}</small></div></div>`;
@@ -990,18 +995,18 @@ async function carregarLicencas(){
       </tr>`;
     }).join('');
     $('licTabela').innerHTML = `<thead><tr>
-      <th>Cliente</th><th>Plano</th><th>Uso</th><th>Financeiro</th><th>Ações</th>
-    </tr></thead><tbody>${linhas || '<tr><td colspan="5" class="muted">Nenhum cliente ainda.</td></tr>'}</tbody>`;
+      <th>Paciente</th><th>Plano</th><th>Uso</th><th>Financeiro</th><th>Ações</th>
+    </tr></thead><tbody>${linhas || '<tr><td colspan="5" class="muted">Nenhum paciente ainda.</td></tr>'}</tbody>`;
   }catch(e){ $('licTabela').innerHTML = '<tbody><tr><td class="muted">Erro ao carregar: '+e.message+'</td></tr></tbody>'; }
 }
-/* criar cliente manualmente */
+/* criar paciente manualmente */
 function abrirCriarCliente(){
   const box=$('criarClienteBox');
   if(box.style.display!=='none'){ box.style.display='none'; box.innerHTML=''; return; }
   box.style.display='block';
   box.innerHTML = `<div class="cc-form">
-    <input id="ccNome" placeholder="Nome do cliente / clínica" style="flex:1;min-width:180px"/>
-    <input id="ccEmail" type="email" placeholder="E-mail do cliente" style="flex:1;min-width:180px"/>
+    <input id="ccNome" placeholder="Nome do paciente / clínica" style="flex:1;min-width:180px"/>
+    <input id="ccEmail" type="email" placeholder="E-mail do paciente" style="flex:1;min-width:180px"/>
     <select id="ccPlano">
       <option value="essencial">Essencial · 30</option>
       <option value="profissional">Profissional · 100</option>
@@ -1021,10 +1026,10 @@ async function criarCliente(){
   try{
     const d=await postAdmin('/api/admin/orgs/create', body);
     const a=d.acesso;
-    $('ccResult').innerHTML=`<div class="cc-ok">✅ Cliente <b>${a.nome}</b> criado!<br>
+    $('ccResult').innerHTML=`<div class="cc-ok">✅ Paciente <b>${a.nome}</b> criado!<br>
       Usuário: <b>${a.username}</b> &nbsp;·&nbsp; Senha temporária: <b>${a.senha_temp}</b><br>
       Plano: ${a.plano_nome} · limite de <b>${a.limite}</b> pacientes<br>
-      <small>Envie esses dados ao cliente. Ele troca usuário e senha no 1º acesso.</small></div>`;
+      <small>Envie esses dados ao paciente. Ele troca usuário e senha no 1º acesso.</small></div>`;
     carregarLicencas();
   }catch(e){ $('ccResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
@@ -1033,7 +1038,7 @@ async function toggleCliente(orgId, status){
   catch(e){ alert('Erro: '+e.message); }
 }
 async function editarLimite(orgId, atual){
-  const v=prompt('Novo limite de pacientes deste cliente:', atual);
+  const v=prompt('Novo limite de pacientes deste paciente:', atual);
   if(!v) return;
   try{ await postAdmin('/api/admin/orgs/limite', {orgId, limite:Number(v)}); carregarLicencas(); }
   catch(e){ alert('Erro: '+e.message); }
@@ -1172,7 +1177,7 @@ async function feitaConsulta(id){
   }catch(e){ alert('Erro: '+e.message); }
 }
 async function abrirProntuarioSessao(clientId, sessionId){
-  await abrirCliente(clientId);       // abre a ficha do cliente
+  await abrirCliente(clientId);       // abre a ficha do paciente
   document.querySelectorAll('#cliTabs .cli-tab').forEach(x=>x.classList.toggle('on', x.dataset.t==='sessoes'));
   abrirSessaoCli(sessionId);          // abre direto o prontuário da sessão
 }
@@ -1203,8 +1208,8 @@ async function carregarClientes(){
         '<td>'+(c.profissional?escHtml(c.profissional):'<span class="muted">—</span>')+'</td><td>'+badge+'</td><td>'+acesso+'</td>'+
         '<td class="fin-act"><button onclick="abrirCliente('+c.id+')">Abrir ficha →</button></td></tr>';
     }).join('');
-    $('cliTabela').innerHTML = '<thead><tr><th>Cliente</th><th>Profissional</th><th>Status</th><th>Acesso</th><th></th></tr></thead>'+
-      '<tbody>'+(linhas||'<tr><td colspan="5" class="muted">Nenhum cliente ainda. Clique em “Novo cliente”.</td></tr>')+'</tbody>';
+    $('cliTabela').innerHTML = '<thead><tr><th>Paciente</th><th>Profissional</th><th>Status</th><th>Acesso</th><th></th></tr></thead>'+
+      '<tbody>'+(linhas||'<tr><td colspan="5" class="muted">Nenhum paciente ainda. Clique em “Novo paciente”.</td></tr>')+'</tbody>';
   }catch(e){ $('cliTabela').innerHTML='<tbody><tr><td class="muted">Erro: '+e.message+'</td></tr></tbody>'; }
 }
 async function toggleCadRapido(){
@@ -1227,7 +1232,7 @@ async function toggleCadRapido(){
     '<input id="crOrigem" placeholder="Origem (indicação, site…)"/>'+
     '<input id="crCanal" placeholder="Canal preferencial"/>'+
     '<input id="crObs" placeholder="Observação inicial" style="flex-basis:100%"/>'+
-    '<button class="btn" style="padding:9px 20px" onclick="salvarCadRapido()">Salvar cliente</button>'+
+    '<button class="btn" style="padding:9px 20px" onclick="salvarCadRapido()">Salvar paciente</button>'+
     '<div id="crResult" style="width:100%"></div></div>';
 }
 async function salvarCadRapido(){
@@ -1239,12 +1244,12 @@ async function salvarCadRapido(){
   $('crResult').innerHTML='salvando…';
   try{
     const d=await postAdmin('/api/admin/clients', body);
-    $('crResult').innerHTML='<div class="cad-ok">✅ Cliente criado — código <b>'+d.cliente.codigo+'</b>. '+
+    $('crResult').innerHTML='<div class="cad-ok">✅ Paciente criado — código <b>'+d.cliente.codigo+'</b>. '+
       '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="abrirCliente('+d.cliente.id+')">Abrir ficha</button></div>';
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do cliente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ alert('Erro: '+e.message); return; }
   clienteAtual.id=id; nav('cliente');
@@ -1430,7 +1435,7 @@ async function salvarDadosCliente(){
 async function renderCliAudit(body){
   body.innerHTML='<p class="muted">carregando…</p>';
   try{ const d=await api('/api/admin/clients/audit?id='+clienteAtual.id); const evs=d.eventos||[];
-    body.innerHTML = evs.length ? '<div class="tl">'+evs.map(e=>'<div class="tl-item" style="--dot:#F5C76A"><div class="tl-when">'+new Date(e.created_at).toLocaleString('pt-BR')+'</div><div class="tl-tit">'+e.acao+'</div><div class="tl-det">'+(e.quem||'sistema')+(e.entidade?' · '+e.entidade:'')+'</div></div>').join('')+'</div>' : '<p class="muted">Sem eventos.</p>';
+    body.innerHTML = evs.length ? '<div class="tl">'+evs.map(e=>'<div class="tl-item" style="--dot:#C9A227"><div class="tl-when">'+new Date(e.created_at).toLocaleString('pt-BR')+'</div><div class="tl-tit">'+e.acao+'</div><div class="tl-det">'+(e.quem||'sistema')+(e.entidade?' · '+e.entidade:'')+'</div></div>').join('')+'</div>' : '<p class="muted">Sem eventos.</p>';
   }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; }
 }
 
@@ -1455,7 +1460,7 @@ const ESP_DEFS=[['tradicao','Tradição religiosa','text'],['comunidade','Igreja
 async function renderCliEsp(body){
   let p={ativo:false,dados:{}}; try{ p=(await api('/api/admin/clients/spiritual?id='+clienteAtual.id)).perfil||{ativo:false,dados:{}}; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const dados=p.dados||{};
-  body.innerHTML='<label class="fin-chk" style="margin-bottom:12px"><input type="checkbox" id="espAtivo" '+(p.ativo?'checked':'')+'/> Incluir espiritualidade (com autorização do cliente e habilitação da organização)</label>'+
+  body.innerHTML='<label class="fin-chk" style="margin-bottom:12px"><input type="checkbox" id="espAtivo" '+(p.ativo?'checked':'')+'/> Incluir espiritualidade (com autorização do paciente e habilitação da organização)</label>'+
     '<div class="dp-grid">'+ESP_DEFS.map(([k,l,t])=>campoJ('sp_',k,l,t,dados[k])).join('')+'</div>'+
     '<button class="btn" style="padding:9px 22px" onclick="salvarEsp()">Salvar espiritual</button> <span class="muted" id="spStatus"></span>';
 }
@@ -1533,7 +1538,7 @@ async function renderCliSessoes(body){
   let sessions=[]; try{ sessions=(await api('/api/admin/clients/sessions?id='+clienteAtual.id)).sessions||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const agora=new Date(); const dLocal=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,16);
   const lista=sessions.length?sessions.map(s=>{
-    const badges=[s.appointment_id?'<span class="lic-st" style="background:rgba(212,175,55,.14);color:var(--gold-2);border:1px solid #4a4020">📅 da agenda</span>':'',
+    const badges=[s.appointment_id?'<span class="lic-st" style="background:var(--warn-bg);color:var(--gold);border:1px solid var(--warn-bd)">📅 da agenda</span>':'',
       s.tem_prontuario?'<span class="lic-st ativa">prontuário</span>':'<span class="lic-st pend">sem prontuário</span>',
       s.resumo_compartilhado?'<span class="lic-st ativa">resumo enviado</span>':'',
       s.tarefas?('<span class="lic-st pend">'+s.tarefas+' tarefa(s)</span>'):''].filter(Boolean).join(' ');
@@ -1574,15 +1579,15 @@ async function abrirSessaoCli(sid){
   body.innerHTML='<button class="btn ghost" style="padding:6px 14px;margin-bottom:12px" onclick="cliTab(\'sessoes\')">← Voltar às sessões</button>'+
     '<h3 style="margin:0 0 4px">Sessão de '+fmtSessao(s.quando)+'</h3>'+
     '<p class="subc" style="margin-bottom:14px">'+[s.status,s.modalidade,s.tipo,s.profissional].filter(Boolean).join(' · ')+'</p>'+
-    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Prontuário PRIVADO — visível só à equipe clínica. Nunca é enviado ao cliente automaticamente.</p>'+
+    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Prontuário PRIVADO — visível só à equipe clínica. Nunca é enviado ao paciente automaticamente.</p>'+
     '<div class="dp-grid">'+campos+'</div>'+
     '<button class="btn" style="padding:9px 22px" onclick="salvarProntuario('+sid+')">Salvar prontuário</button> <span class="muted" id="rcStatus"></span>'+
     '<hr style="margin:22px 0;border:none;border-top:1px solid var(--line)"/>'+
     '<h3 style="margin:0 0 4px">📤 Resumo compartilhável</h3>'+
-    '<p class="subc" style="margin-bottom:10px">O que o cliente pode ver — escrito por você, liberado manualmente.</p>'+
-    '<div class="dp-grid"><div class="dp-full"><label>Resumo para o cliente</label><textarea id="sumResumo" style="min-height:110px">'+escHtml(sum.resumo)+'</textarea></div></div>'+
+    '<p class="subc" style="margin-bottom:10px">O que o paciente pode ver — escrito por você, liberado manualmente.</p>'+
+    '<div class="dp-grid"><div class="dp-full"><label>Resumo para o paciente</label><textarea id="sumResumo" style="min-height:110px">'+escHtml(sum.resumo)+'</textarea></div></div>'+
     '<div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 12px">'+
-      chk('sumCompart','✅ Compartilhar com o cliente',sum.compartilhado)+
+      chk('sumCompart','✅ Compartilhar com o paciente',sum.compartilhado)+
       chk('sumTarefas','Incluir tarefas',sum.compartilha_tarefas)+
       chk('sumRelatorio','Incluir em relatório',sum.incluir_relatorio)+
       chk('sumDownload','Permitir download',sum.permite_download)+
@@ -1614,23 +1619,23 @@ async function toggleTarefa(sid,taskId,status){
   try{ await postAdmin('/api/admin/clients/tasks/update?id='+clienteAtual.id+'&taskId='+taskId,{status}); abrirSessaoCli(sid); }catch(e){ alert('Erro: '+e.message); }
 }
 
-/* ===== ETAPA 6: acesso do cliente ao app (convite de uso único) ===== */
+/* ===== ETAPA 6: acesso do paciente ao app (convite de uso único) ===== */
 async function renderCliAcesso(body){
   body.innerHTML='<p class="muted">carregando…</p>';
   let st; try{ st=await api('/api/admin/clients/access?id='+clienteAtual.id); }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const temEmail=!!st.email;
   const cabeca = st.tem_acesso
     ? '<div id="dStats"><span class="stat"><b>ativo</b>acesso ao app</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail de login</span>':'')+'</div>'+
-      '<p class="subc" style="margin-top:12px">O cliente já tem senha e entra no app pelo e-mail dele. Ele vê apenas os resumos e tarefas que você compartilhou — nunca o prontuário.</p>'
+      '<p class="subc" style="margin-top:12px">O paciente já tem senha e entra no app pelo e-mail dele. Ele vê apenas os resumos e tarefas que você compartilhou — nunca o prontuário.</p>'
     : '<div id="dStats"><span class="stat"><b>sem acesso</b>ainda não entrou</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail</span>':'<span class="stat"><b>sem e-mail</b>use o link</span>')+'</div>'+
-      '<p class="subc" style="margin-top:12px">Gere um convite para o cliente criar a própria senha. O link vale 7 dias e só pode ser usado uma vez.</p>';
+      '<p class="subc" style="margin-top:12px">Gere um convite para o paciente criar a própria senha. O link vale 7 dias e só pode ser usado uma vez.</p>';
   const pend = st.convite
     ? '<div class="cad-ok" style="margin:14px 0">🔗 Convite pendente — <small>expira '+new Date(st.convite.expira_em).toLocaleDateString('pt-BR')+'</small>'+
       '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
       '<input id="acLink" readonly value="'+escHtml(st.convite.link||'')+'" style="flex:1 1 260px;font-size:12px"/>'+
       '<button class="btn ghost" style="padding:8px 16px" onclick="copiarLink()">copiar link</button></div></div>'
     : '';
-  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O acesso é do cliente: a senha é criada por ele e você nunca a vê.</p>'+
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O acesso é do paciente: a senha é criada por ele e você nunca a vê.</p>'+
     cabeca + pend +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'+
     '<button class="btn" style="padding:9px 20px" onclick="gerarAcesso(false)">'+(st.convite?'Gerar novo link':'Gerar link de acesso')+'</button>'+
@@ -1640,8 +1645,8 @@ async function renderCliAcesso(body){
     // preferência de WhatsApp (opt-out): os lembretes saem do número central da TriLumen, assinados por você
     '<hr style="margin:20px 0;border:none;border-top:1px solid var(--line)"/>'+
     '<div class="section-title" style="font-size:14px">Lembretes por WhatsApp</div>'+
-    '<p class="subc" style="margin:4px 0 10px">Consultas e mensalidades são enviados do número da TriLumen, assinados com o seu nome e o da clínica. '+((clienteAtual.basico&&clienteAtual.basico.phone)?'':'⚠️ este cliente não tem telefone cadastrado.')+'</p>'+
-    '<label class="fin-chk"><input type="checkbox" id="whatsOpt" '+((clienteAtual.basico&&clienteAtual.basico.whats_optout)?'checked':'')+' onchange="alternarWhatsOptout(this.checked)"/> Este cliente <b>não</b> quer receber lembretes por WhatsApp</label>'+
+    '<p class="subc" style="margin:4px 0 10px">Consultas e mensalidades são enviados do número da TriLumen, assinados com o seu nome e o da clínica. '+((clienteAtual.basico&&clienteAtual.basico.phone)?'':'⚠️ este paciente não tem telefone cadastrado.')+'</p>'+
+    '<label class="fin-chk"><input type="checkbox" id="whatsOpt" '+((clienteAtual.basico&&clienteAtual.basico.whats_optout)?'checked':'')+' onchange="alternarWhatsOptout(this.checked)"/> Este paciente <b>não</b> quer receber lembretes por WhatsApp</label>'+
     '<span class="muted" id="whatsOptStatus" style="margin-left:10px"></span>';
 }
 async function alternarWhatsOptout(optout){
@@ -1664,11 +1669,11 @@ async function gerarAcesso(enviar){
     await renderCliAcesso($('cliTabBody'));
     $('acStatus').textContent = enviar
       ? (d.enviado ? 'convite enviado para '+d.email+' ✓' : 'link gerado — não deu para enviar o e-mail'+(d.erroEnvio?' ('+d.erroEnvio+')':'')+'. Copie o link acima.')
-      : 'link gerado ✓ — copie e envie ao cliente.';
+      : 'link gerado ✓ — copie e envie ao paciente.';
   }catch(e){ $('acStatus').textContent='erro: '+e.message; }
 }
 async function revogarAcesso(){
-  if(!confirm('Revogar o acesso do cliente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
+  if(!confirm('Revogar o acesso do paciente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
   try{ await postAdmin('/api/admin/clients/access/revoke?id='+clienteAtual.id,{}); cliTab('acesso'); }
   catch(e){ alert('Erro: '+e.message); }
 }
@@ -1683,7 +1688,7 @@ async function renderCliRelatorios(body){
   const lista=reps.length?reps.map(r=>{
     const per=(r.periodo_inicio?new Date(r.periodo_inicio).toLocaleDateString('pt-BR'):'início')+' a '+(r.periodo_fim?new Date(r.periodo_fim).toLocaleDateString('pt-BR'):'hoje');
     const kb=r.bytes?Math.max(1,Math.round(r.bytes/1024))+' KB':'—';
-    const et=r.tipo==='clinico'?'<span class="lic-st inativa">clínico · interno</span>':'<span class="lic-st ativa">do cliente</span>';
+    const et=r.tipo==='clinico'?'<span class="lic-st inativa">clínico · interno</span>':'<span class="lic-st ativa">do paciente</span>';
     const envs=entregas[r.id]||[];
     const hist=envs.length?'<div class="rel-hist">'+envs.map(e=>{
       const ok=e.status==='enviado';
@@ -1693,10 +1698,10 @@ async function renderCliRelatorios(body){
       et+'<div class="fin-act"><button onclick="verRelatorio('+r.id+')">abrir</button><button onclick="baixarRelatorio('+r.id+')">baixar</button><button onclick="enviarRelatorio('+r.id+",'"+r.tipo+"')\">enviar e-mail</button></div></div>";
   }).join(''):'<p class="muted">Nenhum relatório gerado ainda.</p>';
   body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
-    '<select id="relTipo" title="Tipo"><option value="cliente">Relatório do cliente (só o compartilhado)</option><option value="clinico">Relatório clínico (interno, com prontuário)</option></select>'+
+    '<select id="relTipo" title="Tipo"><option value="cliente">Relatório do paciente (só o compartilhado)</option><option value="clinico">Relatório clínico (interno, com prontuário)</option></select>'+
     '<input id="relIni" type="date" value="'+ini+'" title="Início"/><input id="relFim" type="date" value="'+hoje+'" title="Fim"/>'+
     '<button class="btn" style="padding:9px 18px" onclick="gerarRelatorio()">Gerar PDF</button><div id="relStatus" style="width:100%"></div></div>'+
-    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O <b>relatório do cliente</b> traz apenas os resumos e tarefas que você compartilhou. O <b>clínico</b> inclui o prontuário e é de uso interno — não entregue ao cliente.</p>'+
+    '<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O <b>relatório do paciente</b> traz apenas os resumos e tarefas que você compartilhou. O <b>clínico</b> inclui o prontuário e é de uso interno — não entregue ao paciente.</p>'+
     lista;
 }
 function relUrl(id, dl){ return '/api/admin/clients/reports/pdf?id='+clienteAtual.id+'&reportId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
@@ -1715,7 +1720,7 @@ async function gerarRelatorio(){
 async function enviarRelatorio(id, tipo, confirmaClinico){
   const emailCli=(clienteAtual.basico&&clienteAtual.basico.email&&!clienteAtual.basico.email.includes('@sem-email.'))?clienteAtual.basico.email:'';
   const sugestao = tipo==='clinico' ? '' : emailCli;
-  const aviso = tipo==='clinico' ? 'RELATÓRIO CLÍNICO (uso interno). Digite o e-mail de destino — NÃO envie ao cliente.\n\n' : '';
+  const aviso = tipo==='clinico' ? 'RELATÓRIO CLÍNICO (uso interno). Digite o e-mail de destino — NÃO envie ao paciente.\n\n' : '';
   const to=prompt(aviso+'Enviar para qual e-mail?', sugestao);
   if(to===null) return;
   if(!to.trim()){ $('relStatus').textContent='informe um e-mail.'; return; }
@@ -1725,8 +1730,8 @@ async function enviarRelatorio(id, tipo, confirmaClinico){
     await renderCliRelatorios($('cliTabBody'));
     $('relStatus').textContent='enviado para '+to.trim()+' ✓';
   }catch(e){
-    // trava do clínico ao e-mail do próprio cliente: pede confirmação e repete
-    if(/uso interno/i.test(e.message) && confirm('Este é um relatório CLÍNICO indo para o e-mail do próprio cliente. Tem certeza que quer enviar?')){
+    // trava do clínico ao e-mail do próprio paciente: pede confirmação e repete
+    if(/uso interno/i.test(e.message) && confirm('Este é um relatório CLÍNICO indo para o e-mail do próprio paciente. Tem certeza que quer enviar?')){
       return enviarRelatorio(id, tipo, true);
     }
     $('relStatus').textContent='erro: '+e.message;
@@ -1853,7 +1858,7 @@ async function carregarColetivo(){
 /* rosca de emoções predominantes */
 function donut(em){
   if(!em.length) return '<p class="muted">As emoções aparecem aqui conforme as conversas acontecem.</p>';
-  const cores = ['#D4AF37','#7ab8d9','#e0a04a','#7fb069','#A6A6A6','#e26d6d'];
+  const cores = ['#D4AF37','#3a7ca5','#c9871f','#7fb069','#8a857c','#e26d6d'];
   const total = em.reduce((a,b)=>a+Number(b.n),0);
   const cx=80, cy=80, R=58, W2=22;
   let ang = -Math.PI/2, segs = '';
@@ -1871,14 +1876,14 @@ function donut(em){
   return `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
     <svg width="160" height="160" viewBox="0 0 160 160">${segs}
       <text x="80" y="78" text-anchor="middle" font-size="20" fill="#f0ece2" font-family="Cinzel">${total}</text>
-      <text x="80" y="94" text-anchor="middle" font-size="8.5" fill="#A6A6A6" letter-spacing="1">LEITURAS</text></svg>
+      <text x="80" y="94" text-anchor="middle" font-size="8.5" fill="#8a857c" letter-spacing="1">LEITURAS</text></svg>
     <div class="legend" style="flex-direction:column;align-items:flex-start;gap:8px">${leg}</div></div>`;
 }
 
 /* ===== JORNADAS ===== */
 const diasSem = s => s ? Math.floor((Date.now() - new Date(s).getTime())/86400000) : 999;
 const dia = s => { const d=new Date((s.length===10?s+'T12:00:00':s)); return (d.getDate()+'').padStart(2,'0')+'/'+((d.getMonth()+1)+'').padStart(2,'0'); };
-function cor(s){ return s==='verde'?'#3fbf7f':s==='amarelo'?'#e0a04a':s==='vermelho'?'#e26d6d':'#6d6a60'; }
+function cor(s){ return s==='verde'?'#3fbf7f':s==='amarelo'?'#c9871f':s==='vermelho'?'#e26d6d':'#6d6a60'; }
 
 function renderLista(soAlertas){
   const fmt = s => s ? new Date(s).toLocaleDateString('pt-BR') : '—';
@@ -1995,18 +2000,18 @@ function desenharEsferas(e){
   let svg = `<svg viewBox="0 0 300 ${H}" style="width:100%;max-width:320px;display:block;margin:0 auto">
     <defs>
       <linearGradient id="gradOuro" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#D4AF37"/><stop offset="55%" stop-color="#F5C76A"/><stop offset="100%" stop-color="#D4AF37"/>
+        <stop offset="0%" stop-color="#D4AF37"/><stop offset="55%" stop-color="#C9A227"/><stop offset="100%" stop-color="#D4AF37"/>
       </linearGradient>
       <linearGradient id="feixe" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#F5C76A" stop-opacity="0"/>
+        <stop offset="0%" stop-color="#C9A227" stop-opacity="0"/>
         <stop offset="12%" stop-color="#F5E3B0" stop-opacity=".9"/>
         <stop offset="50%" stop-color="#FFF4D6"/>
         <stop offset="88%" stop-color="#F5E3B0" stop-opacity=".9"/>
-        <stop offset="100%" stop-color="#F5C76A" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#C9A227" stop-opacity="0"/>
       </linearGradient>
       <linearGradient id="flareH" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="#F5C76A" stop-opacity="0"/><stop offset="50%" stop-color="#FFF4D6"/>
-        <stop offset="100%" stop-color="#F5C76A" stop-opacity="0"/>
+        <stop offset="0%" stop-color="#C9A227" stop-opacity="0"/><stop offset="50%" stop-color="#FFF4D6"/>
+        <stop offset="100%" stop-color="#C9A227" stop-opacity="0"/>
       </linearGradient>
       <radialGradient id="interior">
         <stop offset="0%" stop-color="#17140e"/><stop offset="75%" stop-color="#0b0906"/><stop offset="100%" stop-color="#060504"/>
@@ -2029,8 +2034,8 @@ function desenharEsferas(e){
       <circle cx="${CX}" cy="${cy}" r="${R}" fill="none" stroke="url(#gradOuro)" stroke-width="4"
         stroke-dasharray="${(circ*preench).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
         transform="rotate(-90 ${CX} ${cy})" opacity=".95"/>
-      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#F5C76A">${pct}</text>
-      <text class="nomeEsf" x="${CX+R+18}" y="${cy+4}" font-size="10.5" letter-spacing="3" fill="#A6A6A6"
+      <text class="pct" x="${CX}" y="${cy+9}" text-anchor="middle" font-size="26" fill="#C9A227">${pct}</text>
+      <text class="nomeEsf" x="${CX+R+18}" y="${cy+4}" font-size="10.5" letter-spacing="3" fill="#8a857c"
         transform="rotate(90 ${CX+R+18} ${cy+4})" text-anchor="middle">${o.nome}</text>
       <title>${o.nome}: ${v==null?'sem dados ainda':v+'/10 na última semana ('+pct+')'}</title>
     </g>`;
@@ -2079,7 +2084,7 @@ function sparkline(serie, cor){
   const pts = serie.map((s,i) => `${x(i).toFixed(1)},${y(s.score).toFixed(1)}`).join(' ');
   const last = serie[serie.length-1];
   return `<svg width="100%" height="34" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <line x1="${pad}" y1="${y(50)}" x2="${w-pad}" y2="${y(50)}" stroke="#2b2b28" stroke-width="1" stroke-dasharray="2 3"/>
+    <line x1="${pad}" y1="${y(50)}" x2="${w-pad}" y2="${y(50)}" stroke="#E7DECB" stroke-width="1" stroke-dasharray="2 3"/>
     <polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${x(n-1).toFixed(1)}" cy="${y(last.score).toFixed(1)}" r="2.6" fill="${cor}"/>
   </svg>`;
@@ -2102,10 +2107,10 @@ function renderMapa(mapa){
 
 /* ===== LINHA DO TEMPO ===== */
 const TL_TIPOS = {
-  sessao:   { rot:'Conversas', cor:'#7ab8d9' },
-  escala:   { rot:'Escalas',   cor:'#F5C76A' },
+  sessao:   { rot:'Conversas', cor:'#3a7ca5' },
+  escala:   { rot:'Escalas',   cor:'#C9A227' },
   audio:    { rot:'Áudios',    cor:'#d98b5f' },
-  checkin:  { rot:'Check-ins', cor:'#A6A6A6' },
+  checkin:  { rot:'Check-ins', cor:'#8a857c' },
   mensagem: { rot:'Mensagens', cor:'#7fb069' },
   plano:    { rot:'Plano',     cor:'#8a7fd9' }
 };
@@ -2129,7 +2134,7 @@ function renderTimeline(){
   const evs = tlFiltro==='tudo' ? timelineAll : timelineAll.filter(e=>e.tipo===tlFiltro);
   if(!evs.length){ box.innerHTML = '<p class="muted">Ainda sem eventos nesta jornada — eles aparecem aqui conforme a pessoa usa o app.</p>'; return; }
   box.innerHTML = '<div class="tl">' + evs.map(e => {
-    const t = TL_TIPOS[e.tipo] || { cor:'#F5C76A' };
+    const t = TL_TIPOS[e.tipo] || { cor:'#C9A227' };
     return `<div class="tl-item" style="--dot:${t.cor}">
       <div class="tl-when">${dataHora(e.ts)}</div>
       <div class="tl-tit">${e.titulo||''}</div>
@@ -2211,12 +2216,12 @@ function chartLinhas(rows){
     return `<polyline points="${pts}" fill="none" stroke="${corL}" stroke-width="2.2" stroke-linejoin="round"/>` +
       rows.map((r,i)=>`<circle cx="${xs[i]}" cy="${esc(r[campo]==null?5:Number(r[campo]),0,10,H2-P,P)}" r="3" fill="${corL}"/>`).join('');
   };
-  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H2-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H2-P,P)}" stroke="#2b2b28" stroke-dasharray="3 4"/>
+  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H2-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H2-P,P)}" stroke="#E7DECB" stroke-dasharray="3 4"/>
     <text x="6" y="${esc(v,0,10,H2-P,P)+4}" font-size="9" fill="#6d6a60">${v}</text>`).join('');
   const labels = rows.map((r,i)=> (rows.length<=10 || i%Math.ceil(rows.length/8)===0)
     ? `<text x="${xs[i]}" y="${H2-6}" font-size="8.5" fill="#6d6a60" text-anchor="middle">${dia(r.dia)}</text>` : '').join('');
   return `<svg viewBox="0 0 ${W} ${H2}" style="width:100%">${grade}${labels}
-    ${linha('corpo','#7fb069')}${linha('alma','#F5C76A')}${linha('espirito','#7ab8d9')}</svg>`;
+    ${linha('corpo','#7fb069')}${linha('alma','#C9A227')}${linha('espirito','#3a7ca5')}</svg>`;
 }
 
 function chartBarras(rows){
@@ -2228,7 +2233,7 @@ function chartBarras(rows){
     const y = esc(v,0,10,H2-P,P);
     return `<rect x="${x-bw/2}" y="${y}" width="${bw}" height="${H2-P-y}" rx="3" fill="${cor(r.status)}" opacity=".85">
       <title>${dia(r.dia)} — ${r.emocao||''} (${v}/10), ${r.conversas} conversa(s)</title></rect>
-      <text x="${x}" y="${y-5}" font-size="8.5" fill="#A6A6A6" text-anchor="middle">${r.emocao? r.emocao.slice(0,9):''}</text>`;
+      <text x="${x}" y="${y-5}" font-size="8.5" fill="#8a857c" text-anchor="middle">${r.emocao? r.emocao.slice(0,9):''}</text>`;
   }).join('');
   const labels = rows.map((r,i)=> (rows.length<=10 || i%Math.ceil(rows.length/8)===0)
     ? `<text x="${esc(i,0,Math.max(rows.length-1,1),P,W-P)}" y="${H2-6}" font-size="8.5" fill="#6d6a60" text-anchor="middle">${dia(r.dia)}</text>` : '').join('');
@@ -2248,12 +2253,12 @@ function chartConsciencia(checkins, diario){
     const pts = dias.map((dd,i)=> mapa[dd][campo]!=null ? xs[i]+','+esc(mapa[dd][campo],0,10,H2-P,P) : null).filter(Boolean).join(' ');
     return `<polyline points="${pts}" fill="none" stroke="${corL}" stroke-width="2.2" ${tracejado?'stroke-dasharray="5 4"':''} stroke-linejoin="round"/>`;
   };
-  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H2-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H2-P,P)}" stroke="#2b2b28" stroke-dasharray="3 4"/>
+  const grade = [0,5,10].map(v=>`<line x1="${P}" y1="${esc(v,0,10,H2-P,P)}" x2="${W-P}" y2="${esc(v,0,10,H2-P,P)}" stroke="#E7DECB" stroke-dasharray="3 4"/>
     <text x="6" y="${esc(v,0,10,H2-P,P)+4}" font-size="9" fill="#6d6a60">${v}</text>`).join('');
   const labels = dias.map((dd,i)=> (dias.length<=10 || i%Math.ceil(dias.length/8)===0)
     ? `<text x="${xs[i]}" y="${H2-6}" font-size="8.5" fill="#6d6a60" text-anchor="middle">${dia(dd)}</text>` : '').join('');
   return `<svg viewBox="0 0 ${W} ${H2}" style="width:100%">${grade}${labels}
-    ${linha('auto','#A6A6A6',true)}${linha('lumen','#F5C76A',false)}</svg>`;
+    ${linha('auto','#8a857c',true)}${linha('lumen','#C9A227',false)}</svg>`;
 }
 
 /* ===== ÁUDIOS — voz + leitura estruturada da IA ===== */
