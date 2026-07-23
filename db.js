@@ -432,6 +432,8 @@ export async function initDb() {
     -- vínculo Agenda <-> Sessão: a consulta realizada vira/aponta o prontuário da sessão
     ALTER TABLE appointments ADD COLUMN IF NOT EXISTS session_id BIGINT;
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS appointment_id BIGINT;
+    -- como o consentimento foi obtido (presencial, documento assinado, verbal, digital)
+    ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS metodo TEXT;
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -1867,6 +1869,32 @@ export async function revogarAcessoCliente(clientId, orgId, uid) {
   await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_revogado', entidade: 'client_access', entidadeId: clientId });
   return { ok: true };
 }
+// ---- CONSENTIMENTOS (LGPD): registro de aceites com trilha de auditoria ----
+export async function listConsents(clientId) {
+  if (!pool || !clientId) return [];
+  const r = await pool.query(`SELECT c.id, c.tipo, c.versao, c.texto, c.status, c.metodo, c.aceito_em, c.revogado_em,
+      c.motivo_revogacao, u.name AS registrado_por
+    FROM client_consents c LEFT JOIN users u ON u.id=c.usuario_id
+    WHERE c.client_user_id=$1 ORDER BY c.created_at DESC`, [clientId]);
+  return r.rows;
+}
+export async function addConsent(clientId, orgId, { tipo, versao, texto, metodo }, uid, ip) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  if (!String(tipo || '').trim()) throw new Error('Informe o tipo de consentimento.');
+  const r = await pool.query(`INSERT INTO client_consents (org_id, client_user_id, tipo, versao, texto, status, metodo, usuario_id, ip, aceito_em)
+    VALUES ($1,$2,$3,$4,$5,'aceito',$6,$7,$8,now()) RETURNING id`,
+    [orgId, clientId, String(tipo).trim().slice(0, 160), String(versao || '1.0').slice(0, 20), String(texto || '').slice(0, 5000), metodo || null, uid || null, ip || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'consentimento_registrado', entidade: 'consent', entidadeId: r.rows[0].id, dados: { tipo, versao, metodo }, ip });
+  return { id: r.rows[0].id };
+}
+export async function revokeConsent(consentId, orgId, clientId, motivo, uid) {
+  if (!pool) throw new Error('banco não configurado');
+  await pool.query(`UPDATE client_consents SET status='revogado', revogado_em=now(), motivo_revogacao=$3
+    WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2) AND status='aceito'`, [consentId, orgId, motivo || null]);
+  await registrarAuditoria({ orgId, userId: uid, clientId: clientId || null, acao: 'consentimento_revogado', entidade: 'consent', entidadeId: consentId, dados: { motivo } });
+  return { ok: true };
+}
+
 // ---- DOCUMENTOS do cliente (exames, laudos, contratos, imagens) ----
 export async function listDocuments(clientId) {
   if (!pool || !clientId) return [];

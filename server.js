@@ -46,6 +46,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
+         listConsents, addConsent, revokeConsent,
          reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf,
          reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
@@ -662,6 +663,24 @@ app.post('/api/admin/clients/tasks', ...clin, async (req, res) => {
 app.post('/api/admin/clients/tasks/update', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
     res.json(await updateSessionTask(Number(req.query.taskId), req.orgId, id, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== CONSENTIMENTOS (LGPD) — RBAC clínico =====
+app.get('/api/admin/clients/consents', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return; res.json({ consents: await listConsents(id) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/consents', ...clin, async (req, res) => {
+  try {
+    const id = await clienteDaOrg(req, res); if (id == null) return;
+    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+    res.json({ ok: true, ...(await addConsent(id, req.orgId, req.body || {}, req.mentorUid, ip)) });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/clients/consents/revoke', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    res.json(await revokeConsent(Number(req.query.consentId), req.orgId, id, (req.body || {}).motivo, req.mentorUid)); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 

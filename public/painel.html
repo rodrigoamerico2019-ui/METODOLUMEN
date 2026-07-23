@@ -1270,8 +1270,9 @@ function cliTab(t){
   if(t==='acesso') return renderCliAcesso(body);
   if(t==='documentos') return renderCliDocumentos(body);
   if(t==='relatorios') return renderCliRelatorios(body);
+  if(t==='consentimentos') return renderCliConsentimentos(body);
   if(t==='auditoria') return renderCliAudit(body);
-  body.innerHTML='<div class="cli-vazio">Este módulo entra nas próximas etapas.<br><small>Consentimentos.</small></div>';
+  body.innerHTML='<div class="cli-vazio">Módulo não encontrado.</div>';
 }
 // evita corrida entre renders assíncronos no cliTabBody: o mais recente vence
 let cliBodySeq=0;
@@ -1730,6 +1731,59 @@ async function enviarRelatorio(id, tipo, confirmaClinico){
     }
     $('relStatus').textContent='erro: '+e.message;
   }
+}
+
+/* ===== CONSENTIMENTOS (LGPD) ===== */
+const CONSENT_TEMPLATES=[
+  {tipo:'Tratamento de dados pessoais (LGPD)',texto:'Autorizo o tratamento dos meus dados pessoais por esta clínica, para os fins do meu acompanhamento, conforme a Lei nº 13.709/2018 (LGPD). Fui informado(a) sobre as finalidades, o armazenamento seguro e o meu direito de acessar, corrigir ou solicitar a exclusão dos meus dados a qualquer momento.'},
+  {tipo:'Dados sensíveis de saúde',texto:'Autorizo o registro e o tratamento dos meus dados sensíveis de saúde (histórico, avaliações e evolução) para fins do meu acompanhamento clínico, com sigilo profissional garantido.'},
+  {tipo:'Uso de imagem e voz',texto:'Autorizo o registro de áudio e/ou imagem durante o acompanhamento, exclusivamente para fins clínicos e de evolução, com armazenamento seguro.'},
+  {tipo:'Comunicações (e-mail/WhatsApp)',texto:'Autorizo receber lembretes e comunicações do meu acompanhamento por e-mail e/ou WhatsApp.'},
+  {tipo:'Acesso ao aplicativo',texto:'Autorizo o acesso ao aplicativo, onde poderei acompanhar minha jornada e o que for compartilhado pelo profissional.'}
+];
+const CONSENT_METODOS=['Presencial','Documento assinado','Verbal','Digital (app)','Por telefone'];
+async function renderCliConsentimentos(body){
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let cs=[]; try{ cs=(await api('/api/admin/clients/consents?id='+clienteAtual.id)).consents||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  const lista=cs.length?cs.map(c=>{
+    const ativo=c.status==='aceito';
+    const quando=ativo?('aceito em '+new Date(c.aceito_em).toLocaleDateString('pt-BR')):('revogado em '+new Date(c.revogado_em).toLocaleDateString('pt-BR'));
+    return '<div class="ag-item" style="align-items:flex-start"><div class="ag-info"><b>'+escHtml(c.tipo)+' <small style="color:var(--faint)">v'+escHtml(c.versao||'1.0')+'</small></b>'+
+      '<small>'+[quando,c.metodo,c.registrado_por].filter(Boolean).join(' · ')+(c.motivo_revogacao?' · motivo: '+escHtml(c.motivo_revogacao):'')+'</small>'+
+      (c.texto?'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--gold-2)">ver termo</summary><p class="subc" style="white-space:pre-wrap;margin-top:6px">'+escHtml(c.texto)+'</p></details>':'')+'</div>'+
+      '<span class="lic-st '+(ativo?'ativa':'inativa')+'">'+(ativo?'aceito':'revogado')+'</span>'+
+      (ativo?'<div class="fin-act"><button onclick="revogarConsent('+c.id+')">revogar</button></div>':'')+'</div>';
+  }).join(''):'<p class="muted">Nenhum consentimento registrado ainda.</p>';
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Registro de consentimentos (LGPD). Cada aceite guarda o termo, a data, o método e quem registrou — trilha para conformidade legal.</p>'+
+    '<div class="cad-form" style="margin-bottom:8px">'+
+    '<select id="csTipo" onchange="preencheTermo()" style="flex:1 1 100%"><option value="">Escolha um termo pronto…</option>'+CONSENT_TEMPLATES.map((t,i)=>'<option value="'+i+'">'+t.tipo+'</option>').join('')+'<option value="livre">Outro (escrever à mão)</option></select>'+
+    '</div>'+
+    '<div class="dp-grid">'+
+    '<div class="dp-full"><label>Título do consentimento</label><input id="csTitulo"/></div>'+
+    '<div class="dp-full"><label>Texto do termo (o que a pessoa está consentindo)</label><textarea id="csTexto" style="min-height:90px"></textarea></div>'+
+    '<div class="dp-half"><label>Como foi obtido</label><select id="csMetodo"><option value="">—</option>'+CONSENT_METODOS.map(m=>'<option>'+m+'</option>').join('')+'</select></div>'+
+    '<div class="dp-quarter"><label>Versão</label><input id="csVersao" value="1.0"/></div>'+
+    '</div>'+
+    '<button class="btn" style="padding:10px 22px" onclick="registrarConsent()">✍️ Registrar consentimento</button> <span class="muted" id="csStatus"></span>'+
+    '<hr style="margin:20px 0;border:none;border-top:1px solid var(--line)"/><div class="section-title" style="font-size:14px">Histórico</div>'+lista;
+}
+function preencheTermo(){
+  const v=$('csTipo').value;
+  if(v==='livre'){ $('csTitulo').value=''; $('csTexto').value=''; return; }
+  if(v==='') return;
+  const t=CONSENT_TEMPLATES[Number(v)]; if(t){ $('csTitulo').value=t.tipo; $('csTexto').value=t.texto; }
+}
+async function registrarConsent(){
+  const body={ tipo:$('csTitulo').value.trim(), texto:$('csTexto').value.trim(), metodo:$('csMetodo').value, versao:$('csVersao').value.trim()||'1.0' };
+  if(!body.tipo){ $('csStatus').textContent='Escolha um termo ou dê um título.'; return; }
+  $('csStatus').textContent='registrando…';
+  try{ await postAdmin('/api/admin/clients/consents?id='+clienteAtual.id,body); cliTab('consentimentos'); }
+  catch(e){ $('csStatus').textContent='erro: '+e.message; }
+}
+async function revogarConsent(id){
+  const motivo=prompt('Motivo da revogação (opcional):'); if(motivo===null) return;
+  try{ await postAdmin('/api/admin/clients/consents/revoke?id='+clienteAtual.id+'&consentId='+id,{motivo}); cliTab('consentimentos'); }
+  catch(e){ alert('Erro: '+e.message); }
 }
 
 /* ===== DOCUMENTOS (exames, laudos, contratos) ===== */
