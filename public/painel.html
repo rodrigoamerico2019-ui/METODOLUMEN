@@ -1120,7 +1120,7 @@ function fmtWhen(local){
 }
 function agLocalHint(){ $('agLocal').placeholder = $('agMod').value==='presencial' ? 'Endereço do consultório' : 'Link da sessão online'; }
 function preencheAgPac(){
-  $('agPac').innerHTML = '<option value="">Paciente…</option>' + (pacientes||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  $('agPac').innerHTML = '<option value="">Paciente…</option>' + (pacientes||[]).map(p=>`<option value="${p.id}">${escHtml(p.name||'—')}</option>`).join('');
 }
 async function carregarAgenda(){
   preencheAgPac();
@@ -1199,8 +1199,8 @@ async function carregarClientes(){
     const linhas = (d.clientes||[]).map(c=>{
       const badge = '<span class="lic-st '+(c.status==='ativo'?'ativa':(['inativo','desistente'].includes(c.status)?'inativa':'pend'))+'">'+(c.status||'—')+'</span>';
       const acesso = c.tem_acesso ? '<span class="lic-st ativa">com acesso</span>' : '<span class="muted">sem acesso</span>';
-      return '<tr><td class="lic-cliente"><b>'+(c.name||'—')+'</b><small>'+(c.codigo||'')+(c.tipo_acompanhamento?' · '+c.tipo_acompanhamento:'')+'</small></td>'+
-        '<td>'+(c.profissional||'<span class="muted">—</span>')+'</td><td>'+badge+'</td><td>'+acesso+'</td>'+
+      return '<tr><td class="lic-cliente"><b>'+escHtml(c.name||'—')+'</b><small>'+escHtml(c.codigo||'')+(c.tipo_acompanhamento?' · '+escHtml(c.tipo_acompanhamento):'')+'</small></td>'+
+        '<td>'+(c.profissional?escHtml(c.profissional):'<span class="muted">—</span>')+'</td><td>'+badge+'</td><td>'+acesso+'</td>'+
         '<td class="fin-act"><button onclick="abrirCliente('+c.id+')">Abrir ficha →</button></td></tr>';
     }).join('');
     $('cliTabela').innerHTML = '<thead><tr><th>Cliente</th><th>Profissional</th><th>Status</th><th>Acesso</th><th></th></tr></thead>'+
@@ -2295,7 +2295,7 @@ async function abrirSessao(diaISO){
     const texto = m.content.replace(/##META\{[\s\S]*?\}##\s*/,'');
     const metaTxt = m.meta ? `<div class="t-meta">emoção: ${m.meta.emocao||'—'} · intensidade ${m.meta.intensidade??'—'}/10 · estado ${m.meta.status||'—'}${m.meta.corpo!=null?` · corpo ${m.meta.corpo} alma ${m.meta.alma} espírito ${m.meta.espirito}`:''}</div>` : '';
     return `<div class="tmsg ${m.role==='user'?'user':'lumen'}">
-      <div class="quem">${m.role==='user'?pacienteAtual.name.split(' ')[0]:'Lúmen'} · ${hora}</div>
+      <div class="quem">${m.role==='user'?escHtml(pacienteAtual.name.split(' ')[0]):'Lúmen'} · ${hora}</div>
       <div class="balao">${texto.replace(/</g,'&lt;')}</div>${metaTxt}</div>`;
   }).join('');
   box.innerHTML = `<button class="dl" onclick="baixarSessao('${diaISO}')">⬇ baixar .txt</button>

@@ -690,7 +690,7 @@ app.get('/api/admin/clients/documents', ...clin, async (req, res) => {
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/clients/documents', ...clin,
-  express.raw({ type: ['application/pdf', 'image/*', 'application/octet-stream', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], limit: '12mb' }),
+  express.raw({ type: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/octet-stream', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], limit: '12mb' }),
   async (req, res) => {
     try {
       const id = await clienteDaOrg(req, res); if (id == null) return;
@@ -702,13 +702,19 @@ app.post('/api/admin/clients/documents', ...clin,
       res.json({ ok: true, ...(await addDocument(id, req.orgId, { nome, tipo, mime, bytes: buf }, req.mentorUid)) });
     } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
   });
+// tipos que podem abrir INLINE com segurança (não executam script). SVG/HTML/XML → download forçado.
+const INLINE_SEGURO = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']);
 app.get('/api/admin/clients/documents/file', ...clin, async (req, res) => {
   try {
     const d = await getDocument(Number(req.query.docId), req.orgId);
     if (!d || !d.bytes) return res.status(404).json({ error: 'documento não encontrado' });
     if (req.orgId && (await patientOrg(d.client_user_id)) !== req.orgId) return res.status(403).json({ error: 'de outra organização' });
-    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
-    res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + encodeURIComponent(d.nome || 'documento') + '"');
+    const mime = String(d.mime || 'application/octet-stream').toLowerCase().split(';')[0].trim();
+    const seguroInline = INLINE_SEGURO.has(mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');                    // impede o navegador de "adivinhar" o tipo
+    res.setHeader('Content-Type', seguroInline ? mime : 'application/octet-stream');
+    const inline = !req.query.download && seguroInline;                    // só abre inline o que é seguro
+    res.setHeader('Content-Disposition', (inline ? 'inline' : 'attachment') + '; filename="' + encodeURIComponent(d.nome || 'documento') + '"');
     res.send(d.bytes);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
