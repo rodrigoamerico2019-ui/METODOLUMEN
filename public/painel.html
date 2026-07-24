@@ -368,6 +368,13 @@
   .modal-body iframe{width:100%;height:72vh;border:1px solid var(--line);border-radius:10px;background:#fff}
   @keyframes mpop{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
   @keyframes mfade{from{opacity:0}to{opacity:1}}
+  /* aviso (toast in-app, substitui alert do navegador) */
+  .aviso-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,140%);z-index:300;max-width:90vw;
+    background:var(--ink);color:#fff;padding:12px 20px;border-radius:12px;font-size:13.5px;box-shadow:0 14px 40px -10px rgba(0,0,0,.4);
+    transition:transform .3s cubic-bezier(.2,.9,.3,1.2);pointer-events:none}
+  .aviso-toast.show{transform:translate(-50%,0)}
+  .aviso-toast.ok{background:#41603a}
+  .aviso-toast.erro{background:var(--vermelho)}
 </style>
 </head>
 <body>
@@ -744,17 +751,52 @@
 
 <script>
 const $ = id => document.getElementById(id);
-/* ===== JANELA (modal dentro do sistema) ===== */
+/* ===== JANELA (modal dentro do sistema) + diálogos in-app (sem popup do navegador) ===== */
+let _modalClose=null;
 function modalAbrir(titulo, corpoHTML, opts){
   opts = opts || {};
+  _modalClose = opts.onClose || null;
   $('modalTit').textContent = titulo || '';
   $('modalBody').innerHTML = corpoHTML || '';
   $('modalWin').classList.toggle('wide', !!opts.wide);
   $('modalBg').classList.remove('hide');
 }
-function modalFechar(){ $('modalBg').classList.add('hide'); $('modalBody').innerHTML=''; }
+function modalFechar(){ const f=_modalClose; _modalClose=null; $('modalBg').classList.add('hide'); $('modalBody').innerHTML=''; if(f) f(); }
 function modalArquivo(titulo, url){ modalAbrir(titulo, '<iframe src="'+url+'" title="'+titulo+'"></iframe>', {wide:true}); }
 function baixarArquivo(url){ const a=document.createElement('a'); a.href=url; a.download=''; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+// aviso (substitui alert) — notificação in-app
+let _avisoT;
+function aviso(msg, tipo){
+  let t=$('avisoToast');
+  if(!t){ t=document.createElement('div'); t.id='avisoToast'; t.className='aviso-toast'; document.body.appendChild(t); }
+  t.textContent=String(msg); t.className='aviso-toast show'+(tipo==='ok'?' ok':(tipo==='erro'?' erro':''));
+  clearTimeout(_avisoT); _avisoT=setTimeout(()=>{ t.className='aviso-toast'; }, 3400);
+}
+// modalConfirm (substitui confirm) — Promise<bool>
+function modalConfirm(msg, titulo){
+  return new Promise(res=>{
+    let done=false; const fin=v=>{ if(done)return; done=true; modalFechar(); res(v); };
+    modalAbrir(titulo||'Confirmar',
+      '<p style="margin-bottom:18px;color:var(--ink);line-height:1.6">'+escHtml(msg)+'</p>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="mcNao">Cancelar</button><button class="btn" id="mcSim">Confirmar</button></div>',
+      { onClose:()=>{ if(!done){ done=true; res(false); } } });
+    $('mcSim').onclick=()=>fin(true); $('mcNao').onclick=()=>fin(false);
+  });
+}
+// modalPrompt (substitui prompt) — Promise<string|null>
+function modalPrompt(msg, valorInicial, titulo){
+  return new Promise(res=>{
+    let done=false; const fin=v=>{ if(done)return; done=true; modalFechar(); res(v); };
+    modalAbrir(titulo||'',
+      '<label style="display:block;font-size:13px;color:var(--dim);margin-bottom:8px">'+escHtml(msg)+'</label>'+
+      '<input id="mpInput" style="width:100%;padding:11px 13px;font-size:14px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:inherit" value="'+escHtml(valorInicial||'')+'"/>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px"><button class="btn ghost" id="mpNao">Cancelar</button><button class="btn" id="mpSim">OK</button></div>',
+      { onClose:()=>{ if(!done){ done=true; res(null); } } });
+    const inp=$('mpInput'); inp.focus(); inp.select();
+    inp.onkeydown=e=>{ if(e.key==='Enter') fin(inp.value); };
+    $('mpSim').onclick=()=>fin(inp.value); $('mpNao').onclick=()=>fin(null);
+  });
+}
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('modalBg').classList.contains('hide')) modalFechar(); });
 document.addEventListener('DOMContentLoaded', ()=>{ $('modalBg').addEventListener('click', e=>{ if(e.target===$('modalBg')) modalFechar(); }); });
 let KEY = sessionStorage.getItem('lumen_admin_key') || '';
@@ -1070,13 +1112,13 @@ async function criarCliente(){
 }
 async function toggleCliente(orgId, status){
   try{ await postAdmin('/api/admin/orgs/status', {orgId, status}); carregarLicencas(); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function editarLimite(orgId, atual){
-  const v=prompt('Novo limite de pacientes deste paciente:', atual);
+  const v=await modalPrompt('Novo limite de pacientes deste paciente:', atual);
   if(!v) return;
   try{ await postAdmin('/api/admin/orgs/limite', {orgId, limite:Number(v)}); carregarLicencas(); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 
 /* ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== */
@@ -1116,19 +1158,19 @@ async function carregarFinanceiro(){
 }
 async function addReceber(){
   const descricao=$('frDesc').value.trim(), valor=$('frValor').value, vencimento=$('frVenc').value;
-  if(!valor||!vencimento){ alert('Informe valor e vencimento.'); return; }
+  if(!valor||!vencimento){ aviso('Informe valor e vencimento.'); return; }
   try{ await postAdmin('/api/admin/finance/receivable', {descricao, valor, vencimento}); $('frDesc').value='';$('frValor').value='';$('frVenc').value=''; carregarFinanceiro(); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function addPagar(){
   const descricao=$('fpDesc').value.trim(), valor=$('fpValor').value, vencimento=$('fpVenc').value;
-  if(!descricao||!valor){ alert('Informe descrição e valor.'); return; }
+  if(!descricao||!valor){ aviso('Informe descrição e valor.'); return; }
   try{ await postAdmin('/api/admin/finance/payable', {descricao, valor, vencimento}); $('fpDesc').value='';$('fpValor').value='';$('fpVenc').value=''; carregarFinanceiro(); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
-async function toggleReceber(id, pago){ try{ await postAdmin('/api/admin/finance/receivable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
-async function togglePagar(id, pago){ try{ await postAdmin('/api/admin/finance/payable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
-async function delPagar(id){ if(!confirm('Excluir esta despesa?')) return; try{ await postAdmin('/api/admin/finance/payable/delete?id='+id, {}); carregarFinanceiro(); }catch(e){ alert('Erro: '+e.message);} }
+async function toggleReceber(id, pago){ try{ await postAdmin('/api/admin/finance/receivable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
+async function togglePagar(id, pago){ try{ await postAdmin('/api/admin/finance/payable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
+async function delPagar(id){ if(!await modalConfirm('Excluir esta despesa?')) return; try{ await postAdmin('/api/admin/finance/payable/delete?id='+id, {}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
 
 /* mensalidade do paciente (na ficha) */
 function renderFinanceiroPaciente(f){
@@ -1199,17 +1241,17 @@ async function addConsulta(){
 async function statusConsulta(id, status){
   try{ await postAdmin('/api/admin/agenda/status?id='+id, {status});
     if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
-  }catch(e){ alert('Erro: '+e.message); }
+  }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 // realizar = marca feita E cria o prontuário da sessão (fluxo agendar→atender→prontuário)
 async function feitaConsulta(id){
-  if(!confirm('Marcar como realizada? Isso já cria o prontuário desta sessão.')) return;
+  if(!await modalConfirm('Marcar como realizada? Isso já cria o prontuário desta sessão.')) return;
   try{
     const d = await postAdmin('/api/admin/agenda/realizar?id='+id, {});
     if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
-    if(d.session_id && confirm('Consulta realizada ✓\nAbrir o prontuário desta sessão agora?'))
+    if(d.session_id && await modalConfirm('Consulta realizada ✓\nAbrir o prontuário desta sessão agora?'))
       abrirProntuarioSessao(d.client_user_id, d.session_id);
-  }catch(e){ alert('Erro: '+e.message); }
+  }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function abrirProntuarioSessao(clientId, sessionId){
   await abrirCliente(clientId);       // abre a ficha do paciente
@@ -1217,10 +1259,10 @@ async function abrirProntuarioSessao(clientId, sessionId){
   abrirSessaoCli(sessionId);          // abre direto o prontuário da sessão
 }
 async function delConsulta(id){
-  if(!confirm('Excluir esta consulta?')) return;
+  if(!await modalConfirm('Excluir esta consulta?')) return;
   try{ await postAdmin('/api/admin/agenda/delete?id='+id, {});
     if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
-  }catch(e){ alert('Erro: '+e.message); }
+  }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 function renderConsultasPaciente(consultas){ renderAgLista($('pcHist'), consultas, false); }
 function agendarPaciente(){
@@ -1288,7 +1330,7 @@ async function salvarCadRapido(){
 }
 const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirCliente(id){
-  try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ alert('Erro: '+e.message); return; }
+  try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ aviso('Erro: '+e.message,'erro'); return; }
   clienteAtual.id=id; nav('cliente');
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
   $('cliNome').textContent = b.name + (det.nome_social?' ("'+det.nome_social+'")':'');
@@ -1540,8 +1582,8 @@ async function addMed(){
   try{ await postAdmin('/api/admin/clients/meds?id='+clienteAtual.id,b); cliTab('medicamentos'); }catch(e){ $('mdStatus').textContent='erro: '+e.message; }
 }
 async function suspenderMed(medId){
-  const motivo=prompt('Motivo da suspensão:'); if(motivo===null) return;
-  try{ await postAdmin('/api/admin/clients/meds/suspend?id='+clienteAtual.id+'&medId='+medId,{motivo}); cliTab('medicamentos'); }catch(e){ alert('Erro: '+e.message); }
+  const motivo=await modalPrompt('Motivo da suspensão:'); if(motivo===null) return;
+  try{ await postAdmin('/api/admin/clients/meds/suspend?id='+clienteAtual.id+'&medId='+medId,{motivo}); cliTab('medicamentos'); }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 
 async function renderCliObj(body){
@@ -1562,10 +1604,10 @@ async function addObj(){
   try{ await postAdmin('/api/admin/clients/goals?id='+clienteAtual.id,b); cliTab('objetivos'); }catch(e){ $('goStatus').textContent='erro: '+e.message; }
 }
 async function progObj(id,atual){
-  const v=prompt('Progresso (0 a 100%):',atual); if(v===null) return;
-  try{ await postAdmin('/api/admin/clients/goals/update?goalId='+id,{progresso:Number(v),status:Number(v)>=100?'concluido':'em_andamento'}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); }
+  const v=await modalPrompt('Progresso (0 a 100%):',atual); if(v===null) return;
+  try{ await postAdmin('/api/admin/clients/goals/update?goalId='+id,{progresso:Number(v),status:Number(v)>=100?'concluido':'em_andamento'}); cliTab('objetivos'); }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
-async function delObj(id){ if(!confirm('Excluir objetivo?')) return; try{ await postAdmin('/api/admin/clients/goals/delete?goalId='+id,{}); cliTab('objetivos'); }catch(e){ alert('Erro: '+e.message); } }
+async function delObj(id){ if(!await modalConfirm('Excluir objetivo?')) return; try{ await postAdmin('/api/admin/clients/goals/delete?goalId='+id,{}); cliTab('objetivos'); }catch(e){ aviso('Erro: '+e.message,'erro'); } }
 
 /* ===== ETAPA 5: sessões + prontuário (privado) + resumo (compartilhável) + tarefas ===== */
 const REC_DEFS=[['demanda','Demanda / queixa da sessão'],['estado_emocional_inicial','Estado emocional inicial'],['temas','Temas trabalhados'],['intervencoes','Intervenções / técnicas'],['percepcoes','Percepções do profissional'],['evolucao','Evolução'],['condutas','Condutas / combinados'],['encaminhamentos','Encaminhamentos'],['riscos','Riscos observados'],['proximos_passos','Próximos passos'],['obs_privadas','Observações privadas']];
@@ -1597,7 +1639,7 @@ async function criarSessao(){
   try{ const d=await postAdmin('/api/admin/clients/sessions?id='+clienteAtual.id,b); abrirSessaoCli(d.id); }
   catch(e){ $('ssStatusMsg').textContent='erro: '+e.message; }
 }
-async function delSessao(sid){ if(!confirm('Excluir sessão? (o prontuário será arquivado)')) return; try{ await postAdmin('/api/admin/clients/session/delete?sessionId='+sid,{}); cliTab('sessoes'); }catch(e){ alert('Erro: '+e.message); } }
+async function delSessao(sid){ if(!await modalConfirm('Excluir sessão? (o prontuário será arquivado)')) return; try{ await postAdmin('/api/admin/clients/session/delete?sessionId='+sid,{}); cliTab('sessoes'); }catch(e){ aviso('Erro: '+e.message,'erro'); } }
 async function abrirSessaoCli(sid){
   const mySeq=++cliBodySeq;
   const body=$('cliTabBody'); body.innerHTML='<p class="muted">carregando…</p>';
@@ -1653,7 +1695,7 @@ async function addTarefa(sid){
   try{ await postAdmin('/api/admin/clients/tasks?id='+clienteAtual.id+'&sessionId='+sid,b); abrirSessaoCli(sid); }catch(e){ $('tkStatus').textContent='erro: '+e.message; }
 }
 async function toggleTarefa(sid,taskId,status){
-  try{ await postAdmin('/api/admin/clients/tasks/update?id='+clienteAtual.id+'&taskId='+taskId,{status}); abrirSessaoCli(sid); }catch(e){ alert('Erro: '+e.message); }
+  try{ await postAdmin('/api/admin/clients/tasks/update?id='+clienteAtual.id+'&taskId='+taskId,{status}); abrirSessaoCli(sid); }catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 
 /* ===== ETAPA 6: acesso do paciente ao app (convite de uso único) ===== */
@@ -1710,9 +1752,9 @@ async function gerarAcesso(enviar){
   }catch(e){ $('acStatus').textContent='erro: '+e.message; }
 }
 async function revogarAcesso(){
-  if(!confirm('Revogar o acesso do paciente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
+  if(!await modalConfirm('Revogar o acesso do paciente ao app? A senha dele deixa de valer (os dados são mantidos).')) return;
   try{ await postAdmin('/api/admin/clients/access/revoke?id='+clienteAtual.id,{}); cliTab('acesso'); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 
 /* ===== ETAPA 7: relatórios em PDF (gerar, baixar, imprimir) ===== */
@@ -1757,8 +1799,8 @@ async function gerarRelatorio(){
 async function enviarRelatorio(id, tipo, confirmaClinico){
   const emailCli=(clienteAtual.basico&&clienteAtual.basico.email&&!clienteAtual.basico.email.includes('@sem-email.'))?clienteAtual.basico.email:'';
   const sugestao = tipo==='clinico' ? '' : emailCli;
-  const aviso = tipo==='clinico' ? 'RELATÓRIO CLÍNICO (uso interno). Digite o e-mail de destino — NÃO envie ao paciente.\n\n' : '';
-  const to=prompt(aviso+'Enviar para qual e-mail?', sugestao);
+  const avisoTxt = tipo==='clinico' ? 'RELATÓRIO CLÍNICO (uso interno). Digite o e-mail de destino — NÃO envie ao paciente.\n\n' : '';
+  const to=await modalPrompt(avisoTxt+'Enviar para qual e-mail?', sugestao);
   if(to===null) return;
   if(!to.trim()){ $('relStatus').textContent='informe um e-mail.'; return; }
   $('relStatus').textContent='enviando…';
@@ -1768,7 +1810,7 @@ async function enviarRelatorio(id, tipo, confirmaClinico){
     $('relStatus').textContent='enviado para '+to.trim()+' ✓';
   }catch(e){
     // trava do clínico ao e-mail do próprio paciente: pede confirmação e repete
-    if(/uso interno/i.test(e.message) && confirm('Este é um relatório CLÍNICO indo para o e-mail do próprio paciente. Tem certeza que quer enviar?')){
+    if(/uso interno/i.test(e.message) && await modalConfirm('Este é um relatório CLÍNICO indo para o e-mail do próprio paciente. Tem certeza que quer enviar?')){
       return enviarRelatorio(id, tipo, true);
     }
     $('relStatus').textContent='erro: '+e.message;
@@ -1823,9 +1865,9 @@ async function registrarConsent(){
   catch(e){ $('csStatus').textContent='erro: '+e.message; }
 }
 async function revogarConsent(id){
-  const motivo=prompt('Motivo da revogação (opcional):'); if(motivo===null) return;
+  const motivo=await modalPrompt('Motivo da revogação (opcional):'); if(motivo===null) return;
   try{ await postAdmin('/api/admin/clients/consents/revoke?id='+clienteAtual.id+'&consentId='+id,{motivo}); cliTab('consentimentos'); }
-  catch(e){ alert('Erro: '+e.message); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 
 /* ===== DOCUMENTOS (exames, laudos, contratos) ===== */
@@ -1861,7 +1903,7 @@ async function enviarDoc(){
 function docUrl(id,dl){ return '/api/admin/clients/documents/file?id='+clienteAtual.id+'&docId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
 function abrirDoc(id){ modalArquivo('Documento', docUrl(id,false)); }
 function baixarDoc(id){ baixarArquivo(docUrl(id,true)); }
-async function delDoc(id){ if(!confirm('Excluir este documento?')) return; try{ await postAdmin('/api/admin/clients/documents/delete?id='+clienteAtual.id+'&docId='+id,{}); cliTab('documentos'); }catch(e){ alert('Erro: '+e.message); } }
+async function delDoc(id){ if(!await modalConfirm('Excluir este documento?')) return; try{ await postAdmin('/api/admin/clients/documents/delete?id='+clienteAtual.id+'&docId='+id,{}); cliTab('documentos'); }catch(e){ aviso('Erro: '+e.message,'erro'); } }
 
 /* ===== VISÃO GERAL ===== */
 function renderGeral(d){
