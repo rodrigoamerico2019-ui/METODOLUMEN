@@ -303,6 +303,10 @@
   .torre-kpi .v{font-family:'Cinzel';font-size:26px;color:var(--gold-2);line-height:1}
   .torre-kpi.alerta .v{color:var(--vermelho)}
   .torre-kpi .k{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);margin-top:6px}
+  .torre-kpi .sub{font-size:10.5px;color:var(--faint);margin-top:5px}
+  .torre-kpi.verde{border-color:var(--ok-bd);background:var(--ok-bg)} .torre-kpi.verde .v{color:#41603a}
+  .torre-kpi.vermelho{border-color:var(--danger-bd);background:var(--danger-bg)} .torre-kpi.vermelho .v{color:var(--vermelho)}
+  .torre-kpi.azul{border-color:rgba(58,124,165,.32);background:rgba(58,124,165,.08)} .torre-kpi.azul .v{color:#3a7ca5}
   .torre-bloco{margin-bottom:24px}
   .torre-bloco.hide{display:none}
   .torre-h{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
@@ -677,7 +681,15 @@
     <!-- ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== -->
     <section id="view-financeiro" class="hide">
       <div class="topline"><h2>Financeiro do Consultório</h2><span class="sub">mensalidades, contas a receber e a pagar — com lembretes carinhosos aos pacientes</span></div>
-      <div class="lic-stats" id="finStats"></div>
+      <div class="ag-bar">
+        <div class="ag-nav">
+          <button class="tbtn" onclick="finMesNav(-1)">‹</button>
+          <button class="tbtn" onclick="finMesNav(0)">Este mês</button>
+          <button class="tbtn" onclick="finMesNav(1)">›</button>
+          <span class="ag-range" id="finMesLabel"></span>
+        </div>
+      </div>
+      <div class="torre-resumo" id="finStats"></div>
       <div class="grid">
         <div class="card">
           <div class="h2c">💰 Contas a Receber</div>
@@ -1139,15 +1151,28 @@ async function editarLimite(orgId, atual){
 /* ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== */
 const moeda = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
 const dataBR = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+let finMes = null;   // Date do 1º dia do mês de referência
+const MESES_PT=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function finMesNav(dir){
+  if(!finMes) finMes=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  if(dir===0) finMes=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  else finMes=new Date(finMes.getFullYear(), finMes.getMonth()+dir, 1);
+  carregarFinanceiro();
+}
 async function carregarFinanceiro(){
+  if(!finMes) finMes=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const mesStr = finMes.getFullYear()+'-'+String(finMes.getMonth()+1).padStart(2,'0');
+  $('finMesLabel').textContent = MESES_PT[finMes.getMonth()].replace(/^./,c=>c.toUpperCase())+' '+finMes.getFullYear();
   try{
-    const d = await api('/api/admin/finance');
+    const d = await api('/api/admin/finance?mes='+mesStr);
     const s = d.resumo||{};
-    $('finStats').innerHTML = `
-      <div class="lic-card"><div class="k">A receber</div><div class="v"><small>${moeda(s.a_receber)}</small></div></div>
-      <div class="lic-card"><div class="k">Recebido no mês</div><div class="v"><small>${moeda(s.recebido_mes)}</small></div></div>
-      <div class="lic-card"><div class="k">Em atraso</div><div class="v" style="color:${Number(s.vencido)>0?'var(--vermelho)':'var(--ink)'}"><small>${moeda(s.vencido)}</small></div></div>
-      <div class="lic-card"><div class="k">A pagar</div><div class="v"><small>${moeda(s.a_pagar)}</small></div></div>`;
+    const bal = Number(s.balanco||0);
+    const kpi=(cls,val,tit,sub)=>`<div class="torre-kpi ${cls}"><div class="v">${moeda(val)}</div><div class="k">${tit}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`;
+    $('finStats').innerHTML =
+      kpi('verde', s.recebido_mes, 'Receitas do mês', moeda(s.a_receber)+' a receber')+
+      kpi('vermelho', s.pago_mes, 'Despesas do mês', moeda(s.a_pagar)+' a pagar')+
+      kpi('azul', bal, 'Balanço do mês', bal>=0?'positivo':'negativo')+
+      kpi(Number(s.vencido)>0?'vermelho':'', s.vencido, 'Em atraso', Number(s.vencido)>0?'requer atenção':'em dia');
     const rec = (d.receber||[]).map(r=>{
       const st = r.status==='pago' ? '<span class="lic-st ativa">pago</span>'
         : (r.vencida ? '<span class="lic-st inativa">vencida</span>' : '<span class="lic-st pend">a vencer</span>');

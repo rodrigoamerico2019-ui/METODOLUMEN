@@ -431,7 +431,7 @@ app.post('/api/admin/plan/deliver', requireAdmin, soMentor, async (req, res) => 
 app.get('/api/admin/finance', requireAdmin, soMentor, async (req, res) => {
   try {
     const [resumo, receber, pagar] = await Promise.all([
-      financeSummary(req.orgId), listReceivables(req.orgId), listPayables(req.orgId)
+      financeSummary(req.orgId, req.query.mes), listReceivables(req.orgId), listPayables(req.orgId)
     ]);
     res.json({ resumo, receber, pagar });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }

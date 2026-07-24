@@ -1342,19 +1342,25 @@ export async function deletePayable(id, orgId) {
   await pool.query('DELETE FROM payables WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)', [id, orgId]);
   return { ok: true };
 }
-export async function financeSummary(orgId) {
+export async function financeSummary(orgId, mes) {
   if (!pool) return null;
+  const m = /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes + '-01' : null;   // 1º dia do mês de referência
   const r = await pool.query(`
-    WITH hoje AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d)
+    WITH hoje AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS d),
+         mref AS (SELECT COALESCE($2::date, date_trunc('month',(SELECT d FROM hoje))::date) AS m)
     SELECT
       COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_receber,
       COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'
         AND vencimento < (SELECT d FROM hoje)),0) AS vencido,
       COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
-        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = date_trunc('month',(SELECT d FROM hoje))),0) AS recebido_mes,
-      COALESCE((SELECT sum(valor) FROM payables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_pagar
-  `, [orgId]);
-  return r.rows[0] || null;
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = date_trunc('month',(SELECT m FROM mref))),0) AS recebido_mes,
+      COALESCE((SELECT sum(valor) FROM payables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_pagar,
+      COALESCE((SELECT sum(valor) FROM payables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = date_trunc('month',(SELECT m FROM mref))),0) AS pago_mes
+  `, [orgId, m]);
+  const s = r.rows[0] || {};
+  s.balanco = Number(s.recebido_mes || 0) - Number(s.pago_mes || 0);
+  return s;
 }
 // job: gera a mensalidade do mês para cada plano ativo (idempotente por competência)
 export async function generateMonthlyReceivables() {
