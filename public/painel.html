@@ -223,6 +223,28 @@
   .ag-info small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;word-break:break-word}
   .ag-mod{font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
   .ag-mod.online{color:#3a7ca5;border-color:rgba(58,124,165,.35)} .ag-mod.presencial{color:#7fb069;border-color:var(--ok-bd)}
+  /* Agenda — grade semanal (bate o olho e vê a semana) */
+  .ag-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .ag-nav{display:flex;align-items:center;gap:8px}
+  .ag-range{font-family:'Cinzel';font-size:15px;letter-spacing:1px;color:var(--ink);margin-left:8px}
+  .ag-week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+  @media(max-width:820px){ .ag-week{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:520px){ .ag-week{grid-template-columns:1fr} }
+  .ag-day{background:var(--panel);border:1px solid var(--line);border-radius:14px;min-height:150px;display:flex;flex-direction:column;overflow:hidden}
+  .ag-day.hoje{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,162,39,.18)}
+  .ag-dhead{padding:9px 10px;border-bottom:1px solid var(--line);text-align:center;background:var(--panel2)}
+  .ag-dhead .dnome{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
+  .ag-dhead .dnum{font-family:'Cinzel';font-size:17px;color:var(--ink)}
+  .ag-day.hoje .ag-dhead .dnum{color:var(--gold2)}
+  .ag-dbody{padding:8px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .ag-vazio{color:var(--faint);font-size:11.5px;font-style:italic;text-align:center;margin:auto 0}
+  .ag-block{background:var(--panel2);border-left:3px solid var(--gold);border-radius:8px;padding:7px 9px;cursor:pointer;transition:.12s}
+  .ag-block:hover{background:rgba(201,162,39,.10)}
+  .ag-block.realizada{border-left-color:#5a9068;opacity:.72}
+  .ag-block.cancelada{border-left-color:var(--vermelho);opacity:.55;text-decoration:line-through}
+  .ag-block .bh{font-family:'Cinzel';font-size:13px;color:var(--gold2)}
+  .ag-block .bp{font-size:12px;color:var(--ink);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ag-block .bm{font-size:9.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin-top:2px}
   /* Módulo de clientes */
   .cli-filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   .cli-filtros input,.cli-filtros select,.cad-form input,.cad-form select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:11px 13px;font-size:14px;font-family:inherit}
@@ -684,24 +706,17 @@
 
     <!-- ===== AGENDA DE CONSULTAS (mentor) ===== -->
     <section id="view-agenda" class="hide">
-      <div class="topline"><h2>Agenda de Consultas</h2><span class="sub">o paciente recebe lembrete carinhoso no WhatsApp e e-mail — 1 dia antes e 1h antes</span></div>
-      <div class="card">
-        <div class="h2c">＋ Nova consulta</div>
-        <p class="subc">escolha o paciente, data/hora e se é online ou presencial</p>
-        <div class="ag-form">
-          <select id="agPac"><option value="">Paciente…</option></select>
-          <input id="agData" type="datetime-local"/>
-          <select id="agMod" onchange="agLocalHint()"><option value="online">Online</option><option value="presencial">Presencial</option></select>
-          <input id="agLocal" placeholder="Link da sessão online"/>
-          <input id="agDur" type="number" value="50" title="Duração (min)" style="width:80px"/>
-          <button class="btn" style="padding:9px 18px" onclick="addConsulta()">Agendar</button>
+      <div class="topline"><h2>Agenda</h2><span class="sub">a semana num relance — o paciente recebe lembrete 1 dia e 1h antes</span></div>
+      <div class="ag-bar">
+        <div class="ag-nav">
+          <button class="tbtn" onclick="agSemana(-1)">‹</button>
+          <button class="tbtn" onclick="agSemana(0)">Hoje</button>
+          <button class="tbtn" onclick="agSemana(1)">›</button>
+          <span class="ag-range" id="agRange"></span>
         </div>
-        <span class="muted" id="agStatus"></span>
+        <button class="btn" style="padding:9px 20px" onclick="abrirAgendamentoModal()">＋ Agendamento</button>
       </div>
-      <div class="card">
-        <div class="h2c">Próximas consultas</div>
-        <div id="agLista"></div>
-      </div>
+      <div class="ag-week" id="agWeek"></div>
     </section>
 
     <!-- ===== MÓDULO DE CLIENTES — lista + cadastro rápido ===== -->
@@ -1204,10 +1219,65 @@ function agLocalHint(){ $('agLocal').placeholder = $('agMod').value==='presencia
 function preencheAgPac(){
   $('agPac').innerHTML = '<option value="">Paciente…</option>' + (pacientes||[]).map(p=>`<option value="${p.id}">${escHtml(p.name||'—')}</option>`).join('');
 }
-async function carregarAgenda(){
+/* ===== Agenda em GRADE SEMANAL ===== */
+let agBase = null;   // domingo da semana visível
+const _isoDia = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const _domSemana = d => { const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; };
+const AG_NOMES=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+async function carregarAgenda(){ if(!agBase) agBase=_domSemana(new Date()); return renderAgendaSemana(); }
+function agSemana(dir){
+  if(!agBase) agBase=_domSemana(new Date());
+  if(dir===0) agBase=_domSemana(new Date()); else agBase.setDate(agBase.getDate()+dir*7);
+  renderAgendaSemana();
+}
+async function renderAgendaSemana(){
+  const dias=[]; for(let i=0;i<7;i++){ const d=new Date(agBase); d.setDate(agBase.getDate()+i); dias.push(d); }
+  const from=_isoDia(dias[0]), to=_isoDia(dias[6]);
+  $('agRange').textContent = dias[0].getDate().toString().padStart(2,'0')+'/'+String(dias[0].getMonth()+1).padStart(2,'0')+' – '+dias[6].getDate().toString().padStart(2,'0')+'/'+String(dias[6].getMonth()+1).padStart(2,'0');
+  let consultas=[]; try{ consultas=(await api('/api/admin/agenda?from='+from+'&to='+to)).consultas||[]; }catch(e){ $('agWeek').innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
+  window._agConsultas = consultas;
+  const porDia={}; consultas.forEach(c=>{ const k=(c.quando_local||'').slice(0,10); (porDia[k]=porDia[k]||[]).push(c); });
+  const hojeK=_isoDia(new Date());
+  $('agWeek').innerHTML = dias.map(d=>{
+    const k=_isoDia(d);
+    const lista=(porDia[k]||[]).sort((a,b)=>String(a.quando_local).localeCompare(String(b.quando_local)));
+    const blocos = lista.length ? lista.map(c=>
+      '<div class="ag-block '+c.status+'" onclick="abrirConsultaModal('+c.id+')"><div class="bh">'+(c.quando_local||'').slice(11,16)+'</div>'+
+      '<div class="bp">'+escHtml(c.paciente||'—')+'</div><div class="bm">'+(c.modalidade||'')+'</div></div>'
+    ).join('') : '<div class="ag-vazio">livre</div>';
+    return '<div class="ag-day '+(k===hojeK?'hoje':'')+'"><div class="ag-dhead"><div class="dnome">'+AG_NOMES[d.getDay()]+'</div><div class="dnum">'+String(d.getDate()).padStart(2,'0')+'</div></div><div class="ag-dbody">'+blocos+'</div></div>';
+  }).join('');
+}
+// clique num bloco → janela com detalhes + ações
+function abrirConsultaModal(id){
+  const c=(window._agConsultas||[]).find(x=>String(x.id)===String(id)); if(!c) return;
+  const w=fmtWhen(c.quando_local);
+  const stTxt = c.status==='realizada'?'Realizada':(c.status==='cancelada'?'Cancelada':'Agendada');
+  let acoes='';
+  if(c.status==='agendada') acoes='<button class="btn" onclick="modalFechar();feitaConsulta('+c.id+')">✓ Realizar</button> <button class="btn ghost" onclick="modalFechar();statusConsulta('+c.id+",'cancelada')\">Cancelar</button>";
+  else if(c.status==='realizada' && c.session_id && c.user_id) acoes='<button class="btn" onclick="modalFechar();abrirProntuarioSessao('+c.user_id+','+c.session_id+')">📋 Ver prontuário</button>';
+  modalAbrir('Consulta',
+    '<p style="font-size:16px;color:var(--ink)"><b>'+escHtml(c.paciente||'—')+'</b></p>'+
+    '<p class="cli-line">'+w.d+' às '+w.h+' · '+(c.modalidade||'')+' · '+(c.duracao_min||50)+' min · '+stTxt+'</p>'+
+    (c.local?'<p class="cli-line">'+escHtml(c.local)+'</p>':'')+
+    '<div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">'+acoes+' <button class="btn ghost" onclick="modalFechar();delConsulta('+c.id+')">Excluir</button></div>');
+}
+// formulário de agendamento na JANELA
+function formAgendamentoHTML(){
+  return '<div class="ag-form" style="flex-direction:column;align-items:stretch;gap:11px">'+
+    '<select id="agPac"><option value="">Paciente…</option></select>'+
+    '<input id="agData" type="datetime-local"/>'+
+    '<select id="agMod" onchange="agLocalHint()"><option value="online">Online</option><option value="presencial">Presencial</option></select>'+
+    '<input id="agLocal" placeholder="Link da sessão online"/>'+
+    '<input id="agDur" type="number" value="50" title="Duração (min)"/>'+
+    '<button class="btn" style="padding:11px 24px" onclick="addConsulta()">Agendar consulta</button>'+
+    '<span class="muted" id="agStatus"></span></div>';
+}
+function abrirAgendamentoModal(prefillId){
+  modalAbrir('Novo agendamento', formAgendamentoHTML());
   preencheAgPac();
-  try{ const d = await api('/api/admin/agenda'); renderAgLista($('agLista'), d.consultas||[], true); }
-  catch(e){ $('agLista').innerHTML = '<p class="muted">Erro ao carregar: '+e.message+'</p>'; }
+  if(prefillId) $('agPac').value=prefillId;
+  agLocalHint();
 }
 function renderAgLista(box, consultas, comPaciente){
   if(!consultas.length){ box.innerHTML = '<p class="muted">Nenhuma consulta ainda.</p>'; return; }
@@ -1233,9 +1303,9 @@ async function addConsulta(){
   $('agStatus').textContent='agendando…';
   try{
     await postAdmin('/api/admin/agenda', { userId, quando, modalidade:$('agMod').value, local:$('agLocal').value.trim(), duracao_min:$('agDur').value });
-    $('agData').value=''; $('agLocal').value='';
-    $('agStatus').textContent='consulta agendada ✓ — o paciente será lembrado 1 dia e 1h antes';
-    carregarAgenda();
+    modalFechar();
+    aviso('Consulta agendada ✓ — o paciente será lembrado 1 dia e 1h antes','ok');
+    if(!$('view-agenda').classList.contains('hide')) carregarAgenda();
   }catch(e){ $('agStatus').textContent='erro: '+e.message; }
 }
 async function statusConsulta(id, status){
@@ -1266,9 +1336,8 @@ async function delConsulta(id){
 }
 function renderConsultasPaciente(consultas){ renderAgLista($('pcHist'), consultas, false); }
 function agendarPaciente(){
-  const pid = pacienteAtual && pacienteAtual.id;
-  nav('agenda');
-  if(pid) setTimeout(()=>{ preencheAgPac(); $('agPac').value=pid; $('agData').focus(); }, 60);
+  // abre o agendamento na janela, com o paciente já selecionado
+  abrirAgendamentoModal((pacienteAtual && pacienteAtual.id) || (clienteAtual && clienteAtual.id));
 }
 
 /* ===== MÓDULO DE CLIENTES (Etapa 3) ===== */

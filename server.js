@@ -471,7 +471,7 @@ app.post('/api/admin/finance/plan', requireAdmin, soMentor, async (req, res) => 
 
 // ===== AGENDA DE CONSULTAS (mentor) =====
 app.get('/api/admin/agenda', requireAdmin, soMentor, async (req, res) => {
-  try { res.json({ consultas: await listAppointments(req.orgId) }); }
+  try { res.json({ consultas: await listAppointments(req.orgId, { from: req.query.from, to: req.query.to }) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/agenda', requireAdmin, soMentor, async (req, res) => {

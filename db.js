@@ -1395,16 +1395,24 @@ export async function markReceivableReminded(id) {
 //  AGENDA DE CONSULTAS (mentor, escopo por org)
 // =========================================================
 const FMT_LOCAL = `to_char(quando AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD"T"HH24:MI')`;
-export async function listAppointments(orgId, days = 45) {
+export async function listAppointments(orgId, opts = {}) {
   if (!pool) return [];
+  const { from, to, days = 45 } = opts;
+  const usaRange = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(to || ''));
+  const where = usaRange
+    ? `($1::bigint IS NULL OR a.org_id=$1)
+       AND (a.quando AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date
+       AND (a.quando AT TIME ZONE 'America/Sao_Paulo')::date <= $3::date`
+    : `($1::bigint IS NULL OR a.org_id=$1)
+       AND a.quando > now() - interval '7 days' AND a.quando < now() + ($2 || ' days')::interval`;
+  const params = usaRange ? [orgId, from, to] : [orgId, days];
   const r = await pool.query(`
     SELECT a.id, a.user_id, u.name AS paciente, a.quando, ${FMT_LOCAL} AS quando_local,
            a.duracao_min, a.modalidade, a.local, a.obs, a.status, a.session_id,
            (a.quando < now()) AS passou
     FROM appointments a LEFT JOIN users u ON u.id=a.user_id
-    WHERE ($1::bigint IS NULL OR a.org_id=$1)
-      AND a.quando > now() - interval '7 days' AND a.quando < now() + ($2 || ' days')::interval
-    ORDER BY a.quando`, [orgId, days]);
+    WHERE ${where}
+    ORDER BY a.quando`, params);
   return r.rows;
 }
 export async function patientAppointments(userId, limit = 20) {
