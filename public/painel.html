@@ -354,6 +354,20 @@
   .audio-pend{font-size:12px;color:var(--faint);font-style:italic}
   .h2c{font-family:'Cinzel';font-weight:500;font-size:16px;letter-spacing:1px;margin-bottom:4px}
   .subc{font-family:'Cormorant Garamond';font-style:italic;color:var(--dim);font-size:14px;margin-bottom:14px}
+  /* ===== JANELA (modal dentro do sistema, não popup do navegador) ===== */
+  .modal-bg{position:fixed;inset:0;z-index:200;background:rgba(30,25,18,.42);display:flex;align-items:center;justify-content:center;padding:22px;animation:mfade .18s ease}
+  .modal-bg.hide{display:none}
+  .modal-win{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 34px 90px -22px rgba(60,45,15,.45);
+    width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;animation:mpop .24s cubic-bezier(.2,.8,.3,1.08)}
+  .modal-win.wide{max-width:920px}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .modal-head .mt{font-family:'Cinzel';font-weight:500;font-size:15px;letter-spacing:1px;color:var(--ink)}
+  .modal-x{background:none;border:none;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:6px 9px;border-radius:8px}
+  .modal-x:hover{background:var(--panel2);color:var(--ink)}
+  .modal-body{padding:18px 20px;overflow-y:auto}
+  .modal-body iframe{width:100%;height:72vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+  @keyframes mpop{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+  @keyframes mfade{from{opacity:0}to{opacity:1}}
 </style>
 </head>
 <body>
@@ -720,8 +734,29 @@
   </main>
 </div>
 
+<!-- JANELA (modal dentro do sistema) -->
+<div class="modal-bg hide" id="modalBg">
+  <div class="modal-win" id="modalWin">
+    <div class="modal-head"><span class="mt" id="modalTit"></span><button class="modal-x" onclick="modalFechar()" title="Fechar (Esc)">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
+/* ===== JANELA (modal dentro do sistema) ===== */
+function modalAbrir(titulo, corpoHTML, opts){
+  opts = opts || {};
+  $('modalTit').textContent = titulo || '';
+  $('modalBody').innerHTML = corpoHTML || '';
+  $('modalWin').classList.toggle('wide', !!opts.wide);
+  $('modalBg').classList.remove('hide');
+}
+function modalFechar(){ $('modalBg').classList.add('hide'); $('modalBody').innerHTML=''; }
+function modalArquivo(titulo, url){ modalAbrir(titulo, '<iframe src="'+url+'" title="'+titulo+'"></iframe>', {wide:true}); }
+function baixarArquivo(url){ const a=document.createElement('a'); a.href=url; a.download=''; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('modalBg').classList.contains('hide')) modalFechar(); });
+document.addEventListener('DOMContentLoaded', ()=>{ $('modalBg').addEventListener('click', e=>{ if(e.target===$('modalBg')) modalFechar(); }); });
 let KEY = sessionStorage.getItem('lumen_admin_key') || '';
 let MTOKEN = localStorage.getItem('trilumen_mentor_token') || '';   // token do mentor
 let IS_SUPER = false;                                               // super-admin (chave mestra)
@@ -1212,14 +1247,16 @@ async function carregarClientes(){
       '<tbody>'+(linhas||'<tr><td colspan="5" class="muted">Nenhum paciente ainda. Clique em “Novo paciente”.</td></tr>')+'</tbody>';
   }catch(e){ $('cliTabela').innerHTML='<tbody><tr><td class="muted">Erro: '+e.message+'</td></tr></tbody>'; }
 }
-async function toggleCadRapido(){
-  const box=$('cadRapidoBox');
-  if(box.style.display!=='none'){ box.style.display='none'; box.innerHTML=''; return; }
-  box.style.display='block';
+// abre o cadastro numa JANELA dentro do sistema (não caixa inline nem popup)
+async function abrirCadastroModal(){
   if(!membrosOrg.length){ try{ membrosOrg=(await api('/api/admin/clients/members')).membros||[]; }catch(_){ } }
+  modalAbrir('Novo paciente', formCadastroHTML());
+}
+async function toggleCadRapido(){ return abrirCadastroModal(); }   // compatibilidade
+function formCadastroHTML(){
   const tipos = TIPOS_ACOMP.map(t=>'<option>'+t+'</option>').join('');
-  const profs = '<option value="">Profissional responsável…</option>'+membrosOrg.map(m=>'<option value="'+m.id+'">'+m.name+'</option>').join('');
-  box.innerHTML = '<div class="cad-form">'+
+  const profs = '<option value="">Profissional responsável…</option>'+membrosOrg.map(m=>'<option value="'+m.id+'">'+escHtml(m.name)+'</option>').join('');
+  return '<div class="cad-form">'+
     '<input id="crNome" class="cad-full" placeholder="Nome completo *"/>'+
     '<input id="crSocial" placeholder="Nome social"/>'+
     '<input id="crNasc" type="date" title="Nascimento"/>'+
@@ -1245,7 +1282,7 @@ async function salvarCadRapido(){
   try{
     const d=await postAdmin('/api/admin/clients', body);
     $('crResult').innerHTML='<div class="cad-ok">✅ Paciente criado — código <b>'+d.cliente.codigo+'</b>. '+
-      '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="abrirCliente('+d.cliente.id+')">Abrir ficha</button></div>';
+      '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="modalFechar();abrirCliente('+d.cliente.id+')">Abrir ficha</button></div>';
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
@@ -1705,8 +1742,8 @@ async function renderCliRelatorios(body){
     lista;
 }
 function relUrl(id, dl){ return '/api/admin/clients/reports/pdf?id='+clienteAtual.id+'&reportId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
-function verRelatorio(id){ window.open(relUrl(id,false), '_blank'); }
-function baixarRelatorio(id){ window.open(relUrl(id,true), '_blank'); }
+function verRelatorio(id){ modalArquivo('Relatório', relUrl(id,false)); }
+function baixarRelatorio(id){ baixarArquivo(relUrl(id,true)); }
 async function gerarRelatorio(){
   const b={ tipo:$('relTipo').value, inicio:$('relIni').value, fim:$('relFim').value };
   $('relStatus').textContent='gerando o PDF…';
@@ -1822,8 +1859,8 @@ async function enviarDoc(){
   }catch(e){ $('docStatus').textContent='erro: '+e.message; }
 }
 function docUrl(id,dl){ return '/api/admin/clients/documents/file?id='+clienteAtual.id+'&docId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }
-function abrirDoc(id){ window.open(docUrl(id,false),'_blank'); }
-function baixarDoc(id){ window.open(docUrl(id,true),'_blank'); }
+function abrirDoc(id){ modalArquivo('Documento', docUrl(id,false)); }
+function baixarDoc(id){ baixarArquivo(docUrl(id,true)); }
 async function delDoc(id){ if(!confirm('Excluir este documento?')) return; try{ await postAdmin('/api/admin/clients/documents/delete?id='+clienteAtual.id+'&docId='+id,{}); cliTab('documentos'); }catch(e){ alert('Erro: '+e.message); } }
 
 /* ===== VISÃO GERAL ===== */
