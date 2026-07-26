@@ -383,10 +383,10 @@
   /* ===== JANELA (modal dentro do sistema, não popup do navegador) ===== */
   .modal-bg{position:fixed;inset:0;z-index:200;background:rgba(30,25,18,.42);display:flex;align-items:center;justify-content:center;padding:22px;animation:mfade .18s ease}
   .modal-bg.hide{display:none}
-  .modal-win{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 34px 90px -22px rgba(60,45,15,.45);
+  .modal-win{background:linear-gradient(180deg,#F2EAD8,#EBE1CC);border:1px solid #DCCFAF;border-radius:18px;box-shadow:0 34px 90px -20px rgba(60,45,15,.5);
     width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;animation:mpop .24s cubic-bezier(.2,.8,.3,1.08)}
   .modal-win.wide{max-width:920px}
-  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;border-bottom:1px solid rgba(184,145,47,.30);background:linear-gradient(180deg,rgba(184,145,47,.14),rgba(184,145,47,.03));border-radius:18px 18px 0 0;flex:0 0 auto}
   .modal-head .mt{font-family:'Cinzel';font-weight:500;font-size:15px;letter-spacing:1px;color:var(--ink)}
   .modal-x{background:none;border:none;font-size:16px;line-height:1;color:var(--faint);cursor:pointer;padding:6px 9px;border-radius:8px}
   .modal-x:hover{background:var(--panel2);color:var(--ink)}
