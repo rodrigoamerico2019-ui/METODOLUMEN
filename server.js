@@ -36,6 +36,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
          getMemberRole, listOrgMembers, registrarAuditoria, listAudit,
+         getBranding, setBranding, setLogo, getLogo, clearLogo,
          criarClienteRapido, listClients, getClientFull, updateClientDetails,
          getHealthProfile, saveHealthProfile, getSpiritualProfile, saveSpiritualProfile,
          addEmotionalAssessment, listEmotionalAssessments,
@@ -988,6 +989,43 @@ app.post('/api/mentor/change', requireAdmin, async (req, res) => {
     if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
     res.json(await changeMentorLogin(req.mentorUid, req.body || {}));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== MARCA PRÓPRIA (white-label da clínica/profissional) =====
+const brandGerencia = [requireAdmin, soMentor, carregaPapel, permite('owner', 'admin')];
+app.get('/api/admin/branding', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await getBranding(req.orgId)); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/branding', ...brandGerencia, async (req, res) => {
+  try { res.json(await setBranding(req.orgId, req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+const LOGO_MIME = ['image/png', 'image/jpeg', 'image/webp'];
+app.post('/api/admin/branding/logo', ...brandGerencia,
+  express.raw({ type: [...LOGO_MIME, 'application/octet-stream'], limit: '2mb' }),
+  async (req, res) => {
+    try {
+      const mime = String(req.headers['content-type'] || '').split(';')[0].trim();
+      if (!LOGO_MIME.includes(mime)) return res.status(400).json({ error: 'Envie uma imagem PNG, JPG ou WEBP.' });
+      if (!req.body || !req.body.length) return res.status(400).json({ error: 'Arquivo vazio.' });
+      await setLogo(req.orgId, { bytes: req.body, mime });
+      res.json({ ok: true });
+    } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+  });
+app.get('/api/admin/branding/logo', requireAdmin, soMentor, async (req, res) => {
+  try {
+    const l = await getLogo(req.orgId);
+    if (!l) return res.status(404).end();
+    res.setHeader('Content-Type', LOGO_MIME.includes(l.mime) ? l.mime : 'image/png');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(l.bytes);
+  } catch (e) { res.status(500).end(); }
+});
+app.post('/api/admin/branding/logo/delete', ...brandGerencia, async (req, res) => {
+  try { await clearLogo(req.orgId); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // CENTRAL DE LICENÇAS — todas as organizações/planos (apenas super-admin)

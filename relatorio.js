@@ -55,6 +55,7 @@ export function buildReportPdf(d, docUid) {
 
     // ---------- capa / cabeçalho ----------
     doc.fillColor(OURO).font('Helvetica-Bold').fontSize(19).text(d.clinica || 'TriLumen', { width: L });
+    if (txt(d.marca_subtitulo)) doc.fillColor(TINTA).font('Helvetica').fontSize(9.5).text(txt(d.marca_subtitulo), { width: L });
     doc.fillColor(FRACO).font('Helvetica').fontSize(8.5)
       .text(clinico ? 'RELATÓRIO CLÍNICO · DOCUMENTO INTERNO' : 'RELATÓRIO DE ACOMPANHAMENTO', { characterSpacing: 1.2 });
     doc.moveTo(M, doc.y + 8).lineTo(M + L, doc.y + 8).strokeColor(OURO).lineWidth(2).stroke();
@@ -218,7 +219,7 @@ export function buildReportPdf(d, docUid) {
       const yR = doc.page.height - M - 6;
       doc.moveTo(M, yR - 12).lineTo(M + L, yR - 12).strokeColor(LINHA).lineWidth(0.8).stroke();
       doc.font('Helvetica').fontSize(7.5).fillColor(FRACO);
-      doc.text(`${d.clinica || 'TriLumen'} · ${docUid || ''} · emitido em ${dtHora(d.gerado_em)}`, M, yR - 6, { width: L - 60, lineBreak: false });
+      doc.text(`${d.clinica || 'TriLumen'}${txt(d.marca_subtitulo) ? ' · ' + txt(d.marca_subtitulo) : ''} · ${docUid || ''} · emitido em ${dtHora(d.gerado_em)}`, M, yR - 6, { width: L - 60, lineBreak: false });
       doc.text(`${i + 1}/${range.count}`, M + L - 60, yR - 6, { width: 60, align: 'right', lineBreak: false });
       if (clinico) {
         doc.fillColor('#C86B6B').font('Helvetica-Bold').fontSize(7)

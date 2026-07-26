@@ -50,6 +50,14 @@ export async function initDb() {
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS proximo_vencimento DATE;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS ultimo_pagamento TIMESTAMPTZ;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'asaas';
+    -- marca própria da clínica/profissional (white-label): nome de exibição + subtítulo
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS marca_nome TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS marca_subtitulo TEXT;
+    -- logo da clínica (blob em tabela separada p/ não pesar no orgById)
+    CREATE TABLE IF NOT EXISTS org_branding (
+      org_id BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+      logo BYTEA, logo_mime TEXT, updated_at TIMESTAMPTZ DEFAULT now()
+    );
     -- organização padrão (Método Lúmen) para todos os dados atuais
     INSERT INTO organizations (id, nome, plano, limite_pessoas)
       VALUES (1, 'Método Lúmen', 'prime', 250) ON CONFLICT (id) DO NOTHING;
@@ -665,9 +673,38 @@ export async function changeMentorLogin(uid, { username, password }) {
 export async function orgById(orgId) {
   if (!pool || !orgId) return null;
   const r = await pool.query(`SELECT o.*,
-      (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas
+      (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas,
+      EXISTS(SELECT 1 FROM org_branding b WHERE b.org_id=o.id AND b.logo IS NOT NULL) AS tem_logo
     FROM organizations o WHERE id=$1`, [orgId]);
   return r.rows[0] || null;
+}
+/* ===== MARCA PRÓPRIA (white-label da clínica/profissional) ===== */
+export async function getBranding(orgId) {
+  const o = await orgById(orgId);
+  if (!o) return null;
+  return { nome: o.nome, marca_nome: o.marca_nome || '', marca_subtitulo: o.marca_subtitulo || '', tem_logo: !!o.tem_logo };
+}
+export async function setBranding(orgId, { marca_nome, marca_subtitulo } = {}, uid) {
+  if (!pool || !orgId) throw new Error('organização inválida');
+  await pool.query('UPDATE organizations SET marca_nome=$2, marca_subtitulo=$3 WHERE id=$1',
+    [orgId, (marca_nome || '').trim() || null, (marca_subtitulo || '').trim() || null]);
+  await registrarAuditoria({ orgId, userId: uid, acao: 'marca_atualizada', entidade: 'organization', entidadeId: orgId, dados: { marca_nome: (marca_nome || '').trim() } });
+  return getBranding(orgId);
+}
+export async function setLogo(orgId, { bytes, mime }) {
+  if (!pool || !orgId) throw new Error('organização inválida');
+  await pool.query(`INSERT INTO org_branding (org_id, logo, logo_mime, updated_at) VALUES ($1,$2,$3,now())
+    ON CONFLICT (org_id) DO UPDATE SET logo=EXCLUDED.logo, logo_mime=EXCLUDED.logo_mime, updated_at=now()`,
+    [orgId, bytes, mime]);
+}
+export async function getLogo(orgId) {
+  if (!pool || !orgId) return null;
+  const r = await pool.query('SELECT logo, logo_mime FROM org_branding WHERE org_id=$1', [orgId]);
+  return (r.rows[0] && r.rows[0].logo) ? { bytes: r.rows[0].logo, mime: r.rows[0].logo_mime } : null;
+}
+export async function clearLogo(orgId) {
+  if (!pool || !orgId) return;
+  await pool.query('UPDATE org_branding SET logo=NULL, logo_mime=NULL, updated_at=now() WHERE org_id=$1', [orgId]);
 }
 export async function patientOrg(userId) {
   if (!pool || !userId) return null;
@@ -1403,7 +1440,7 @@ export async function receivablesForReminder() {
   if (!pool) return [];
   const r = await pool.query(`
     SELECT r.id, r.valor, r.vencimento::text AS vencimento, u.name AS paciente, u.email, u.phone,
-           u.whats_optout, o.nome AS clinica,
+           u.whats_optout, COALESCE(o.marca_nome, o.nome) AS clinica,
            (SELECT m.name FROM users m WHERE m.org_id=u.org_id AND m.role IN ('mentor','owner') ORDER BY m.id LIMIT 1) AS profissional
     FROM receivables r
     JOIN users u ON u.id=r.user_id
@@ -1481,7 +1518,7 @@ export async function appointmentsForReminder(kind) {
     : "a.quando BETWEEN now() + interval '90 minutes' AND now() + interval '24 hours'";
   const r = await pool.query(`
     SELECT a.id, a.modalidade, a.local, ${FMT_LOCAL} AS quando_local,
-           u.name AS paciente, u.email, u.phone, u.whats_optout, o.nome AS clinica,
+           u.name AS paciente, u.email, u.phone, u.whats_optout, COALESCE(o.marca_nome, o.nome) AS clinica,
            (SELECT m.name FROM users m WHERE m.org_id=u.org_id AND m.role IN ('mentor','owner') ORDER BY m.id LIMIT 1) AS profissional
     FROM appointments a JOIN users u ON u.id=a.user_id
     LEFT JOIN organizations o ON o.id=u.org_id
@@ -2025,7 +2062,8 @@ export async function reportData(clientId, orgId, { tipo = 'cliente', inicio, fi
     latestScales(clientId)
   ]);
   const base = {
-    tipo, clinica: (org && org.nome) || 'TriLumen',
+    tipo, clinica: (org && (org.marca_nome || org.nome)) || 'TriLumen',
+    marca_subtitulo: (org && org.marca_subtitulo) || '',
     periodo: { inicio: ini, fim: f },
     cliente: cli, sessoes: sess.rows, objetivos: goals, tarefas: tasks.rows,
     emocional: emo, escalas: scales, gerado_em: new Date()
@@ -2075,7 +2113,7 @@ export async function getReportPdf(reportId, orgId) {
 export async function reportParaEnvio(reportId, orgId) {
   if (!pool || !reportId) return null;
   const r = await pool.query(`SELECT r.id, r.tipo, r.client_user_id, v.pdf, v.doc_uid,
-      u.name AS cliente_nome, u.email AS cliente_email, o.nome AS clinica
+      u.name AS cliente_nome, u.email AS cliente_email, COALESCE(o.marca_nome, o.nome) AS clinica
     FROM reports r
     JOIN report_versions v ON v.report_id=r.id AND v.versao=1
     JOIN users u ON u.id=r.client_user_id

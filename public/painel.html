@@ -381,6 +381,14 @@
   .h2c{font-family:'Cinzel';font-weight:500;font-size:16px;letter-spacing:1px;margin-bottom:4px}
   .subc{font-family:'Cormorant Garamond';font-style:italic;color:var(--dim);font-size:14px;margin-bottom:14px}
   /* ===== JANELA (modal dentro do sistema, não popup do navegador) ===== */
+  /* cabeçalho da clínica (marca própria) */
+  .topbar{display:flex;align-items:center;gap:13px;justify-content:flex-end;padding:0 2px 13px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+  .topbar .tb-logo{max-height:46px;max-width:190px;object-fit:contain;border-radius:8px}
+  .topbar .tb-id{display:flex;flex-direction:column;line-height:1.25;text-align:right}
+  .topbar .tb-id b{font-size:14.5px;color:var(--ink);font-weight:600}
+  .topbar .tb-id small{font-size:11.5px;color:var(--dim)}
+  .logo-prev{display:flex;align-items:center;justify-content:center;min-height:64px;background:var(--panel2);border:1px dashed var(--line);border-radius:12px;padding:10px;margin:4px 0 8px}
+  .logo-prev img{max-height:80px;max-width:100%;object-fit:contain}
   .modal-bg{position:fixed;inset:0;z-index:200;background:rgba(30,25,18,.42);display:flex;align-items:center;justify-content:center;padding:22px;animation:mfade .18s ease}
   .modal-bg.hide{display:none}
   .modal-win{background:linear-gradient(180deg,#F2EAD8,#EBE1CC);border:1px solid #DCCFAF;border-radius:18px;box-shadow:0 34px 90px -20px rgba(60,45,15,.5);
@@ -449,11 +457,18 @@
     <div class="nav-item" data-v="agenda" onclick="nav('agenda')"><span class="ic">◷</span> Agenda</div>
     <div class="nav-item" data-v="financeiro" onclick="nav('financeiro')"><span class="ic">₪</span> Financeiro</div>
     <div class="nav-item hide" id="navLicencas" data-v="licencas" onclick="nav('licencas')"><span class="ic">◆</span> Pacientes</div>
+    <div class="nav-item" id="navMarca" onclick="abrirMinhaClinica()"><span class="ic">◐</span> Minha clínica</div>
     <div class="nav-item" onclick="sair()" style="margin-top:8px;color:var(--faint)"><span class="ic">⎋</span> Sair</div>
     <div class="foot"><span id="footWho"></span>TRILUMEN™<br>powered by Método Lúmen<br>a luz só atravessa o que está alinhado</div>
   </aside>
 
   <main class="main">
+
+    <!-- cabeçalho da clínica/profissional (marca própria) -->
+    <div class="topbar" id="topbar" style="display:none">
+      <img id="tbLogo" class="tb-logo" alt="" onerror="this.style.display='none'"/>
+      <div class="tb-id"><b id="tbNome"></b><small id="tbSub"></small></div>
+    </div>
 
     <!-- ===== CENTRAL DE PRIORIDADES ===== -->
     <section id="view-prioridades">
@@ -830,6 +845,7 @@ document.addEventListener('DOMContentLoaded', ()=>{ $('modalBg').addEventListene
 let KEY = sessionStorage.getItem('lumen_admin_key') || '';
 let MTOKEN = localStorage.getItem('trilumen_mentor_token') || '';   // token do mentor
 let IS_SUPER = false;                                               // super-admin (chave mestra)
+let MENTOR_ORG = null;                                              // organização/marca do mentor logado
 // autenticação unificada: mentor usa Bearer; admin usa ?key=
 function authHead(){ return MTOKEN ? { 'Authorization':'Bearer '+MTOKEN } : {}; }
 function authQS(path){ return MTOKEN ? path : (path + (path.includes('?')?'&':'?') + 'key=' + encodeURIComponent(KEY)); }
@@ -1036,9 +1052,16 @@ async function bootAfterAuth(){
       if(it) it.classList.toggle('hide', IS_SUPER);
     });
     $('navLicencas').classList.toggle('hide', !IS_SUPER);
+    $('navMarca').classList.toggle('hide', IS_SUPER);
+    MENTOR_ORG = me.org || null;
+    renderTopbar();
     $('footWho').innerHTML = IS_SUPER ? 'Administrador · <b>todas as licenças</b><br>' :
-      (me.org ? (me.org.nome + '<br>') : '');
+      (me.org ? ((me.org.marca_nome || me.org.nome) + '<br>') : '');
     boot();
+    // 1º acesso: se a marca ainda não foi configurada, convida a personalizar
+    if(!IS_SUPER && me.org && !me.org.marca_nome && !me.org.tem_logo){
+      setTimeout(()=>abrirMinhaClinica(true), 700);
+    }
   }catch(e){
     sair();
     $('keyErr').textContent = 'Acesso inválido ou expirado. Entre novamente.';
@@ -1056,6 +1079,64 @@ async function boot(){
     $('keyErr').textContent = 'Erro ao carregar: ' + e.message;
     $('gate').classList.remove('hide'); $('shell').classList.remove('on');
   }
+}
+
+/* ===== MARCA PRÓPRIA (nome + logo da clínica/profissional) ===== */
+function renderTopbar(){
+  const tb=$('topbar');
+  if(IS_SUPER || !MENTOR_ORG){ tb.style.display='none'; return; }
+  const nome=MENTOR_ORG.marca_nome || MENTOR_ORG.nome || '';
+  $('tbNome').textContent=nome;
+  $('tbSub').textContent=MENTOR_ORG.marca_subtitulo || '';
+  $('tbSub').style.display=MENTOR_ORG.marca_subtitulo?'block':'none';
+  const logo=$('tbLogo');
+  if(MENTOR_ORG.tem_logo){ logo.style.display=''; logo.src='/api/admin/branding/logo?'+mediaQS()+'&v='+Date.now(); }
+  else logo.style.display='none';
+  tb.style.display=(nome || MENTOR_ORG.tem_logo)?'flex':'none';
+}
+async function abrirMinhaClinica(boasVindas){
+  let b={}; try{ b=await api('/api/admin/branding'); }catch(e){}
+  MENTOR_ORG=Object.assign(MENTOR_ORG||{}, b);
+  const logoBox=b.tem_logo
+    ? '<div class="logo-prev"><img src="/api/admin/branding/logo?'+mediaQS()+'&v='+Date.now()+'"/></div>'+
+      '<button class="tbtn" onclick="removerLogo()" style="margin-bottom:10px">🗑 Remover logo</button>'
+    : '<div class="logo-prev" id="logoPrev"><span class="muted">Sem logo ainda</span></div>';
+  const html=
+    (boasVindas?'<p class="subc" style="margin-top:0">Bem-vindo(a)! 🌟 Personalize aqui o cabeçalho do painel e dos relatórios com o nome e a logo da sua clínica ou do seu consultório. O nome <b>TRILUMEN</b> continua no canto superior esquerdo.</p>':'')+
+    '<div class="dp-grid">'+
+    '<div class="dp-full"><label>Nome da clínica ou do profissional (aparece no cabeçalho e nos relatórios)</label><input id="mkNome" placeholder="Ex.: Clínica Bem Viver — ou — Dra. Ana Souza"/></div>'+
+    '<div class="dp-full"><label>Subtítulo (opcional) — especialidade, registro, contato</label><input id="mkSub" placeholder="Ex.: Psicóloga · CRP 06/12345 · (11) 90000-0000"/></div>'+
+    '</div>'+
+    '<label style="display:block;font-size:12px;color:var(--dim);margin:12px 0 4px">Logo da clínica</label>'+
+    logoBox+
+    '<p class="subc" style="margin:2px 0 8px">💡 Para ficar bem alinhada: PNG com fundo transparente, formato <b>horizontal</b> (cerca de <b>360×90&nbsp;px</b>) ou uma logo quadrada de até <b>200&nbsp;px</b>. Máx. 2&nbsp;MB.</p>'+
+    '<input type="file" id="mkLogo" accept="image/png,image/jpeg,image/webp" style="margin-bottom:12px"/>'+
+    '<div><button class="btn" style="padding:10px 24px" onclick="salvarMarca()">Salvar</button> <span class="muted" id="mkStatus"></span></div>';
+  modalAbrir('Minha clínica', html, {wide:true});
+  $('mkNome').value=b.marca_nome||'';
+  $('mkSub').value=b.marca_subtitulo||'';
+}
+async function salvarMarca(){
+  $('mkStatus').textContent='salvando…';
+  try{
+    await postAdmin('/api/admin/branding', { marca_nome:$('mkNome').value.trim(), marca_subtitulo:$('mkSub').value.trim() });
+    const f=($('mkLogo').files||[])[0];
+    if(f){
+      if(f.size>2*1048576){ $('mkStatus').textContent='A logo passa de 2 MB.'; return; }
+      const r=await fetch(authQS('/api/admin/branding/logo'), { method:'POST', headers:{ 'Content-Type': f.type||'image/png', ...authHead() }, body:f });
+      const j=await r.json(); if(j.error) throw new Error(j.error);
+    }
+    await recarregarMarca();
+    modalFechar(); aviso('Marca da clínica atualizada.','ok');
+  }catch(e){ $('mkStatus').textContent='erro: '+e.message; }
+}
+async function removerLogo(){
+  if(!await modalConfirm('Remover a logo da clínica?')) return;
+  try{ await postAdmin('/api/admin/branding/logo/delete',{}); await recarregarMarca(); modalFechar(); aviso('Logo removida.','ok'); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
+}
+async function recarregarMarca(){
+  try{ const me=await api('/api/mentor/me'); MENTOR_ORG=me.org||null; renderTopbar(); }catch(e){}
 }
 
 /* ===== CENTRAL DE CLIENTES (super-admin) ===== */
