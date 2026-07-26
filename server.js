@@ -24,7 +24,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getCollectiveWisdom, setCollectiveWisdom, anonVictories, healingAggregate,
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
-         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, orgById, patientOrg, listOrganizations,
+         PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, changeMentorPassword, orgById, patientOrg, listOrganizations,
          provisionarManual, setOrgStatus, setOrgLimite, markOrgPagamento,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
@@ -988,6 +988,13 @@ app.post('/api/mentor/change', requireAdmin, async (req, res) => {
   try {
     if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
     res.json(await changeMentorLogin(req.mentorUid, req.body || {}));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// trocar SÓ a senha (mantém o usuário) — usado dentro de "Minha clínica"
+app.post('/api/mentor/password', requireAdmin, async (req, res) => {
+  try {
+    if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
+    res.json(await changeMentorPassword(req.mentorUid, (req.body || {}).password));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 

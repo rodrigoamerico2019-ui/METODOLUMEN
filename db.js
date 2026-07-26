@@ -670,6 +670,14 @@ export async function changeMentorLogin(uid, { username, password }) {
   return { ok: true, username: user };
 }
 
+export async function changeMentorPassword(uid, password) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  if (!password || String(password).length < 6) throw new Error('A nova senha precisa de pelo menos 6 caracteres.');
+  const hash = await bcrypt.hash(String(password), 10);
+  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, uid]);
+  return { ok: true };
+}
+
 export async function orgById(orgId) {
   if (!pool || !orgId) return null;
   const r = await pool.query(`SELECT o.*,
