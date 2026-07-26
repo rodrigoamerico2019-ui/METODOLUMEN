@@ -430,7 +430,16 @@
     <input id="mUser" placeholder="Seu usuário" autocomplete="username" onkeydown="if(event.key==='Enter')entrarMentor()" />
     <input id="mPass" type="password" placeholder="Sua senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrarMentor()" />
     <button class="btn" onclick="entrarMentor()">Entrar</button>
+    <div class="gate-link" onclick="modoGate('reset')">Esqueci minha senha</div>
     <div class="gate-link" onclick="modoGate('admin')">Sou o administrador da plataforma</div>
+  </div>
+
+  <!-- ESQUECI MINHA SENHA (mentor) -->
+  <div id="gateReset" class="hide">
+    <div class="gate-msg">Digite seu <b>usuário</b> ou o <b>e-mail cadastrado</b>. Enviaremos um link para você criar uma nova senha.</div>
+    <input id="rLogin" placeholder="Usuário ou e-mail" autocomplete="username" onkeydown="if(event.key==='Enter')pedirReset()" />
+    <button class="btn" onclick="pedirReset()">Enviar link de recuperação</button>
+    <div class="gate-link" onclick="modoGate('mentor')">← Voltar ao login</div>
   </div>
 
   <!-- login do ADMINISTRADOR (chave mestra) -->
@@ -993,6 +1002,20 @@ function modoGate(m){
   $('gateMentor').classList.toggle('hide', m!=='mentor');
   $('gateAdmin').classList.toggle('hide', m!=='admin');
   $('gateChange').classList.toggle('hide', m!=='change');
+  $('gateReset').classList.toggle('hide', m!=='reset');
+}
+async function pedirReset(){
+  const login = $('rLogin').value.trim();
+  if(!login){ $('keyErr').textContent = 'Informe seu usuário ou e-mail.'; return; }
+  $('keyErr').textContent = '';
+  try{
+    await fetch('/api/mentor/reset/request', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ login }) });
+  }catch(e){}
+  $('gateReset').innerHTML =
+    '<div class="gate-msg">Se existir uma conta com esse usuário ou e-mail, enviamos um link para criar uma nova senha. '+
+    'Confira sua caixa de entrada (e o spam). O link vale por 1 hora.</div>'+
+    '<div class="gate-link" onclick="modoGate(\'mentor\')">← Voltar ao login</div>';
 }
 
 /* entrada do ADMINISTRADOR (chave mestra) */

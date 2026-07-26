@@ -25,6 +25,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          userHasPhoto, setUserPhoto, saveAudio, setAudioSummary, getAudioBytes, listAudios, myAudios,
          palavraToday, setPalavra, usersForPalavra,
          PLANOS, provisionarAssinatura, mentorLogin, changeMentorLogin, changeMentorPassword, orgById, patientOrg, listOrganizations,
+         criarResetSenhaMentor, checarResetTokenMentor, redefinirSenhaMentor,
          provisionarManual, setOrgStatus, setOrgLimite, markOrgPagamento,
          saveCheckout, getCheckoutBySub, markCheckoutProvisioned,
          saveScaleResponse, latestScales, scaleHistory, scalesForPatient,
@@ -996,6 +997,49 @@ app.post('/api/mentor/password', requireAdmin, async (req, res) => {
     if (!req.mentorUid) return res.status(400).json({ error: 'apenas para contas de mentor' });
     res.json(await changeMentorPassword(req.mentorUid, (req.body || {}).password));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ===== ESQUECI MINHA SENHA (mentor) — fluxo público por e-mail =====
+const mascaraEmail = e => {
+  const [u, d] = String(e || '').split('@');
+  if (!d) return e;
+  const vis = u.length <= 2 ? u[0] || '' : u.slice(0, 2);
+  return vis + '***@' + d;
+};
+app.post('/api/mentor/reset/request', authLimiter, async (req, res) => {
+  try {
+    const info = await criarResetSenhaMentor((req.body || {}).login);
+    if (info) {
+      const link = baseUrl(req) + '/recuperar.html?t=' + info.token;
+      const primeiro = String(info.name || '').trim().split(/\s+/)[0] || 'você';
+      const corpo =
+`Olá, ${primeiro}.
+
+Recebemos um pedido para redefinir a senha do seu acesso ao TriLumen.
+Crie uma nova senha por aqui (o link vale por 1 hora e só pode ser usado uma vez):
+
+${link}
+
+Se não foi você quem pediu, é só ignorar este e-mail — sua senha atual continua valendo.
+
+— TriLumen`;
+      const t = mailer();
+      if (t) { try { await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: info.email, subject: 'Redefinir sua senha · TriLumen 🔑', text: corpo }); } catch (e) { console.error('e-mail reset:', e.message); } }
+      else console.log(`  [RESET TRILUMEN] ${info.email} → ${link} (SMTP off — envie manualmente)`);
+    }
+    res.json({ ok: true });   // resposta genérica: nunca revela se a conta existe
+  } catch (e) { res.json({ ok: true }); }
+});
+app.get('/api/mentor/reset/check', async (req, res) => {
+  try {
+    const info = await checarResetTokenMentor(req.query.t);
+    if (!info) return res.status(400).json({ error: 'Este link é inválido ou expirou. Peça um novo.' });
+    res.json({ ok: true, email: mascaraEmail(info.email), name: info.name });
+  } catch (e) { res.status(400).json({ error: 'Link inválido.' }); }
+});
+app.post('/api/mentor/reset', authLimiter, async (req, res) => {
+  try { res.json(await redefinirSenhaMentor((req.body || {}).t, (req.body || {}).password)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // ===== MARCA PRÓPRIA (white-label da clínica/profissional) =====

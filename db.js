@@ -58,6 +58,15 @@ export async function initDb() {
       org_id BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
       logo BYTEA, logo_mime TEXT, updated_at TIMESTAMPTZ DEFAULT now()
     );
+    -- recuperação de senha do mentor (esqueci minha senha): token de uso único, 1h
+    CREATE TABLE IF NOT EXISTS mentor_reset_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      criado_em TIMESTAMPTZ DEFAULT now(),
+      expira_em TIMESTAMPTZ NOT NULL,
+      usado_em TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_mrt_user ON mentor_reset_tokens (user_id, usado_em);
     -- organização padrão (Método Lúmen) para todos os dados atuais
     INSERT INTO organizations (id, nome, plano, limite_pessoas)
       VALUES (1, 'Método Lúmen', 'prime', 250) ON CONFLICT (id) DO NOTHING;
@@ -668,6 +677,41 @@ export async function changeMentorLogin(uid, { username, password }) {
   const hash = await bcrypt.hash(password, 10);
   await pool.query('UPDATE users SET username=$1, password_hash=$2, must_change_login=false WHERE id=$3', [user, hash, uid]);
   return { ok: true, username: user };
+}
+
+/* ===== RECUPERAÇÃO DE SENHA DO MENTOR (esqueci minha senha) ===== */
+export async function criarResetSenhaMentor(login) {
+  if (!pool) throw new Error('banco não configurado');
+  const l = norm(login);
+  if (!l) return null;
+  const u = await pool.query(
+    `SELECT id, name, email FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(username)=$1)`, [l]);
+  const user = u.rows[0];
+  if (!user || !user.email) return null;               // sem conta ou sem e-mail → nada a enviar
+  await pool.query('UPDATE mentor_reset_tokens SET expira_em=now() WHERE user_id=$1 AND usado_em IS NULL', [user.id]);
+  const token = crypto.randomBytes(24).toString('hex');
+  await pool.query(`INSERT INTO mentor_reset_tokens (token, user_id, expira_em) VALUES ($1,$2, now() + interval '1 hour')`, [token, user.id]);
+  return { token, email: user.email, name: user.name };
+}
+export async function checarResetTokenMentor(token) {
+  if (!pool) return null;
+  const r = await pool.query(`SELECT t.user_id, u.email, u.name FROM mentor_reset_tokens t JOIN users u ON u.id=t.user_id
+    WHERE t.token=$1 AND t.usado_em IS NULL AND t.expira_em > now()`, [String(token || '')]);
+  return r.rows[0] || null;
+}
+export async function redefinirSenhaMentor(token, password) {
+  if (!pool) throw new Error('banco não configurado');
+  const senha = String(password || '');
+  if (senha.length < 6) throw new Error('A nova senha precisa de pelo menos 6 caracteres.');
+  const r = await pool.query(`SELECT t.user_id, u.org_id FROM mentor_reset_tokens t JOIN users u ON u.id=t.user_id
+    WHERE t.token=$1 AND t.usado_em IS NULL AND t.expira_em > now()`, [String(token || '')]);
+  if (!r.rows[0]) throw new Error('Este link é inválido ou expirou. Peça um novo.');
+  const uid = r.rows[0].user_id;
+  const hash = await bcrypt.hash(senha, 10);
+  await pool.query('UPDATE users SET password_hash=$2, must_change_login=false WHERE id=$1', [uid, hash]);
+  await pool.query('UPDATE mentor_reset_tokens SET usado_em=now() WHERE token=$1', [String(token)]);
+  await registrarAuditoria({ orgId: r.rows[0].org_id, userId: uid, acao: 'senha_redefinida', entidade: 'user', entidadeId: uid });
+  return { ok: true };
 }
 
 export async function changeMentorPassword(uid, password) {

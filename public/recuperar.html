@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Criar nova senha · TriLumen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root{ --bg:#F4EEE2; --panel:#FFFFFF; --panel2:#F7F2E8; --ink:#1E1B16; --faint:#A79E8D; --dim:#6B6355; --line:#E7DECB; --ouro:#B8912F; --verde:#5a9068; --vermelho:#c0442f; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',system-ui,sans-serif;
+    min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card{ width:100%; max-width:420px; background:var(--panel); border:1px solid var(--line);
+    border-radius:18px; padding:32px 26px; box-shadow:0 24px 70px -24px rgba(60,45,15,.4); }
+  .marca{ font-family:'Cinzel',serif; font-size:22px; letter-spacing:3px; text-align:center; margin:0 0 4px; color:var(--ink); }
+  .sub{ text-align:center; color:var(--faint); font-size:13px; margin:0 0 24px; }
+  h1{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:24px; margin:0 0 6px; }
+  .oi{ color:var(--dim); font-size:14px; margin:0 0 20px; line-height:1.5; }
+  label{ display:block; font-size:12px; color:var(--dim); margin:14px 0 6px; }
+  input{ width:100%; padding:13px 14px; font-size:15px; font-family:inherit; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px; outline:none; }
+  input:focus{ border-color:var(--ouro); }
+  .btn{ width:100%; margin-top:22px; padding:14px; font-size:15px; font-weight:600; font-family:inherit;
+    color:#fff; background:var(--ouro); border:0; border-radius:10px; cursor:pointer; }
+  .btn:disabled{ opacity:.5; cursor:default; }
+  .msg{ margin-top:16px; font-size:13.5px; line-height:1.5; text-align:center; }
+  .msg.erro{ color:var(--vermelho); }
+  .msg.ok{ color:var(--verde); }
+  .dica{ color:var(--faint); font-size:12px; margin-top:12px; text-align:center; line-height:1.5; }
+  .dica a{ color:var(--ouro); text-decoration:none; }
+  .hide{ display:none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="marca">TRILUMEN</div>
+    <p class="sub">Painel do mentor</p>
+
+    <div id="carregando">
+      <p class="oi">Conferindo o seu link…</p>
+    </div>
+
+    <div id="form" class="hide">
+      <h1>Criar nova senha</h1>
+      <p class="oi" id="oi"></p>
+      <label for="s1">Nova senha</label>
+      <input id="s1" type="password" autocomplete="new-password" placeholder="mínimo 6 caracteres"/>
+      <label for="s2">Repita a nova senha</label>
+      <input id="s2" type="password" autocomplete="new-password" placeholder="digite de novo"/>
+      <button class="btn" id="btn" onclick="salvar()">Salvar nova senha</button>
+      <div class="msg" id="msg"></div>
+      <p class="dica">Depois de salvar, você entra no painel com o seu usuário e esta nova senha.</p>
+    </div>
+
+    <div id="falhou" class="hide">
+      <h1>Link indisponível</h1>
+      <p class="oi" id="motivo"></p>
+      <p class="dica">Cada link vale por 1 hora e só pode ser usado uma vez.<br><a href="/painel.html">← Voltar ao login</a></p>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t') || '';
+
+async function checar(){
+  if(!token){ return falhar('Este link está incompleto.'); }
+  try{
+    const r = await fetch('/api/mentor/reset/check?t='+encodeURIComponent(token));
+    const d = await r.json();
+    if(!r.ok || d.error) return falhar(d.error || 'Link inválido ou expirado.');
+    $('carregando').classList.add('hide');
+    $('form').classList.remove('hide');
+    const primeiro = String(d.name||'').trim().split(/\s+/)[0];
+    $('oi').textContent = (primeiro ? 'Olá, ' + primeiro + '. ' : '') + 'Crie uma nova senha para a conta ' + (d.email || '') + '.';
+    $('s1').focus();
+  }catch(e){ falhar('Não consegui conferir o link agora. Tente de novo em instantes.'); }
+}
+function falhar(m){
+  $('carregando').classList.add('hide'); $('form').classList.add('hide');
+  $('falhou').classList.remove('hide'); $('motivo').textContent = m;
+}
+async function salvar(){
+  const s1 = $('s1').value, s2 = $('s2').value, msg = $('msg');
+  msg.className='msg';
+  if(s1.length < 6){ msg.classList.add('erro'); msg.textContent='A senha precisa de pelo menos 6 caracteres.'; return; }
+  if(s1 !== s2){ msg.classList.add('erro'); msg.textContent='As duas senhas não são iguais.'; return; }
+  $('btn').disabled = true; msg.textContent = 'salvando…';
+  try{
+    const r = await fetch('/api/mentor/reset', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ t: token, password: s1 }) });
+    const d = await r.json();
+    if(!r.ok || d.error) throw new Error(d.error || 'Não foi possível salvar a nova senha.');
+    msg.classList.add('ok'); msg.textContent = 'Senha alterada! Redirecionando para o login…';
+    setTimeout(()=>{ location.href = '/painel.html'; }, 1200);
+  }catch(e){
+    $('btn').disabled = false; msg.className='msg erro'; msg.textContent = e.message;
+  }
+}
+$('s2') && $('s2').addEventListener('keydown', e => { if(e.key==='Enter') salvar(); });
+checar();
+</script>
+</body>
+</html>
