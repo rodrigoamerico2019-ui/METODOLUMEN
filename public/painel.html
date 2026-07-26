@@ -690,6 +690,7 @@
         </div>
       </div>
       <div class="torre-resumo" id="finStats"></div>
+      <div class="card" style="margin-bottom:18px"><div class="h2c">📈 Recebimentos do mês</div><div id="finChart"></div></div>
       <div class="grid">
         <div class="card">
           <div class="h2c">💰 Contas a Receber</div>
@@ -1151,6 +1152,22 @@ async function editarLimite(orgId, atual){
 /* ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) ===== */
 const moeda = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
 const dataBR = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+// gráfico de recebimentos do mês (barras verdes) + linha de despesas
+function chartFinanceiro(rows){
+  if(!rows.length || !rows.some(r=>Number(r.receitas)>0||Number(r.despesas)>0)) return '<p class="muted">Nenhum recebimento registrado neste mês ainda.</p>';
+  const n=rows.length, W=700, H=170, PX=32;
+  const maxV=Math.max(1,...rows.map(r=>Math.max(Number(r.receitas||0),Number(r.despesas||0))));
+  const x=i=>PX+(i/(n-1||1))*(W-2*PX), y=v=>H-24-(v/maxV)*(H-24-14);
+  const bw=Math.max(3,Math.min(16,(W-2*PX)/n*0.62));
+  const bars=rows.map((r,i)=>{ const v=Number(r.receitas||0); if(v<=0) return ''; const yy=y(v);
+    return `<rect x="${x(i)-bw/2}" y="${yy}" width="${bw}" height="${H-24-yy}" rx="2" fill="#5a9068" opacity=".9"><title>${dia(r.dia)}: R$ ${v.toFixed(2)} recebido</title></rect>`; }).join('');
+  const temDesp=rows.some(r=>Number(r.despesas)>0);
+  const despLine=temDesp?`<polyline points="${rows.map((r,i)=>x(i)+','+y(Number(r.despesas||0))).join(' ')}" fill="none" stroke="var(--vermelho)" stroke-width="1.6" opacity=".7" stroke-dasharray="2 3"/>`:'';
+  const grade=[0,.5,1].map(f=>{ const yy=y(maxV*f); return `<line x1="${PX}" y1="${yy}" x2="${W-PX}" y2="${yy}" stroke="#E7DECB" stroke-dasharray="3 4"/><text x="4" y="${yy+3}" font-size="8" fill="#8a857c">${Math.round(maxV*f)}</text>`; }).join('');
+  const labels=rows.map((r,i)=> (i%Math.ceil(n/12)===0)?`<text x="${x(i)}" y="${H-6}" font-size="8" fill="#8a857c" text-anchor="middle">${r.dia.slice(8,10)}</text>`:'').join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%">${grade}${bars}${despLine}${labels}</svg>`+
+    '<div style="display:flex;gap:18px;margin-top:6px;font-size:11px;color:var(--dim)"><span><span style="display:inline-block;width:10px;height:10px;background:#5a9068;border-radius:2px;vertical-align:middle"></span> recebimentos</span>'+(temDesp?'<span><span style="display:inline-block;width:14px;height:2px;background:var(--vermelho);vertical-align:middle"></span> despesas</span>':'')+'</div>';
+}
 let finMes = null;   // Date do 1º dia do mês de referência
 const MESES_PT=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 function finMesNav(dir){
@@ -1173,6 +1190,7 @@ async function carregarFinanceiro(){
       kpi('vermelho', s.pago_mes, 'Despesas do mês', moeda(s.a_pagar)+' a pagar')+
       kpi('azul', bal, 'Balanço do mês', bal>=0?'positivo':'negativo')+
       kpi(Number(s.vencido)>0?'vermelho':'', s.vencido, 'Em atraso', Number(s.vencido)>0?'requer atenção':'em dia');
+    $('finChart').innerHTML = chartFinanceiro(d.diario||[]);
     const rec = (d.receber||[]).map(r=>{
       const st = r.status==='pago' ? '<span class="lic-st ativa">pago</span>'
         : (r.vencida ? '<span class="lic-st inativa">vencida</span>' : '<span class="lic-st pend">a vencer</span>');
@@ -1643,17 +1661,21 @@ const EMO_ESCALAS=['ansiedade','tristeza','estresse','irritabilidade','medo','cu
 const EMO_CAMPOS=[['motivo_procura','Motivo da procura'],['emocao_predominante','Emoção predominante'],['preocupacao','Principal preocupação'],['gatilhos','Gatilhos conhecidos'],['enfrentamento','Estratégias de enfrentamento'],['rede_apoio','Rede de apoio'],['o_que_piora','O que costuma piorar'],['o_que_ajuda','O que costuma ajudar'],['historico','Histórico de acompanhamento'],['diagnosticos','Diagnósticos informados'],['obs','Observações']];
 async function renderCliEmo(body){
   let avs=[]; try{ avs=(await api('/api/admin/clients/emotional?id='+clienteAtual.id)).avaliacoes||[]; }catch(e){}
+  const hist=avs.length?'<p class="subc" style="margin-top:16px">'+avs.length+' avaliação(ões) registrada(s) — a 1ª é a linha de base. Última: '+new Date(avs[0].created_at).toLocaleDateString('pt-BR')+'</p>':'<p class="muted" style="margin-top:12px">Nenhuma avaliação — registre a linha de base.</p>';
+  body.innerHTML='<button class="btn" style="padding:9px 22px" onclick="abrirFormEmo()">＋ Nova avaliação emocional</button>'+hist;
+}
+function abrirFormEmo(){ modalAbrir('Nova avaliação emocional', formEmoHTML(), {wide:true}); }
+function formEmoHTML(){
   const esc=EMO_ESCALAS.map(k=>'<div class="dp-quarter"><label>'+k.replace(/_/g,' ')+' 0-10</label><input id="em_'+k+'" type="number" min="0" max="10"/></div>').join('');
   const cps=EMO_CAMPOS.map(([k,l])=>'<div class="dp-full"><label>'+l+'</label><input id="emc_'+k+'"/></div>').join('');
-  const hist=avs.length?'<p class="subc" style="margin-top:16px">'+avs.length+' avaliação(ões) registrada(s) — a 1ª é a linha de base. Última: '+new Date(avs[0].created_at).toLocaleDateString('pt-BR')+'</p>':'<p class="muted" style="margin-top:12px">Nenhuma avaliação — registre a linha de base.</p>';
-  body.innerHTML='<p class="subc">Nova avaliação emocional (escalas de 0 a 10)</p><div class="dp-grid">'+esc+cps+'</div>'+
-    '<button class="btn" style="padding:9px 22px" onclick="salvarEmo()">Registrar avaliação</button> <span class="muted" id="emStatus"></span>'+hist;
+  return '<p class="subc">Escalas de 0 a 10</p><div class="dp-grid">'+esc+cps+'</div>'+
+    '<button class="btn" style="padding:9px 22px" onclick="salvarEmo()">Registrar avaliação</button> <span class="muted" id="emStatus"></span>';
 }
 async function salvarEmo(){
   const escalas={}; EMO_ESCALAS.forEach(k=>{ const v=$('em_'+k).value; if(v!=='') escalas[k]=Number(v); });
   const campos={}; EMO_CAMPOS.forEach(([k])=>{ const v=$('emc_'+k).value.trim(); if(v) campos[k]=v; });
   $('emStatus').textContent='salvando…';
-  try{ await postAdmin('/api/admin/clients/emotional?id='+clienteAtual.id,{escalas,campos}); cliTab('emocional'); }catch(e){ $('emStatus').textContent='erro: '+e.message; }
+  try{ await postAdmin('/api/admin/clients/emotional?id='+clienteAtual.id,{escalas,campos}); modalFechar(); cliTab('emocional'); }catch(e){ $('emStatus').textContent='erro: '+e.message; }
 }
 
 async function renderCliMeds(body){
@@ -1664,16 +1686,18 @@ async function renderCliMeds(body){
     return '<div class="ag-item"><div class="ag-info"><b>'+m.nome+'</b>'+(m.dosagem?' '+m.dosagem+' '+(m.unidade||''):'')+'<small>'+[m.frequencia,m.prescrito_por,m.motivo_suspensao?('suspenso: '+m.motivo_suspensao):''].filter(Boolean).join(' · ')+'</small></div>'+st+'<div class="fin-act">'+acao+'</div></div>';
   }).join(''):'<p class="muted">Nenhum medicamento cadastrado.</p>';
   body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">ℹ️ Cadastro informativo — não substitui orientação médica. O sistema não recomenda nem altera dose.</p>'+
-    '<div class="cad-form" style="margin-bottom:14px">'+
-    '<input id="mdNome" placeholder="Medicamento *"/><input id="mdDose" placeholder="Dosagem"/><input id="mdUnid" placeholder="Unid." style="max-width:90px"/>'+
-    '<input id="mdFreq" placeholder="Frequência"/><input id="mdHor" placeholder="Horários"/><input id="mdPresc" placeholder="Prescrito por"/>'+
-    '<input id="mdInicio" type="date" title="Início"/><input id="mdMotivo" placeholder="Motivo" style="flex-basis:100%"/>'+
-    '<button class="btn" style="padding:9px 18px" onclick="addMed()">Adicionar</button><div id="mdStatus" style="width:100%"></div></div>'+lista;
+    '<button class="btn" style="margin-bottom:14px;padding:9px 18px" onclick="abrirFormMed()">＋ Adicionar medicamento</button>'+lista;
 }
+function abrirFormMed(){ modalAbrir('Novo medicamento', formMedHTML()); }
+function formMedHTML(){ return '<div class="cad-form">'+
+  '<input id="mdNome" placeholder="Medicamento *"/><input id="mdDose" placeholder="Dosagem"/><input id="mdUnid" placeholder="Unid." style="max-width:90px"/>'+
+  '<input id="mdFreq" placeholder="Frequência"/><input id="mdHor" placeholder="Horários"/><input id="mdPresc" placeholder="Prescrito por"/>'+
+  '<input id="mdInicio" type="date" title="Início"/><input id="mdMotivo" placeholder="Motivo" style="flex-basis:100%"/>'+
+  '<button class="btn" style="padding:9px 18px" onclick="addMed()">Adicionar</button><div id="mdStatus" style="width:100%"></div></div>'; }
 async function addMed(){
   const b={ nome:$('mdNome').value.trim(), dosagem:$('mdDose').value.trim(), unidade:$('mdUnid').value.trim(), frequencia:$('mdFreq').value.trim(), horarios:$('mdHor').value.trim(), prescrito_por:$('mdPresc').value.trim(), data_inicio:$('mdInicio').value, motivo:$('mdMotivo').value.trim() };
   if(!b.nome){ $('mdStatus').textContent='Informe o medicamento.'; return; }
-  try{ await postAdmin('/api/admin/clients/meds?id='+clienteAtual.id,b); cliTab('medicamentos'); }catch(e){ $('mdStatus').textContent='erro: '+e.message; }
+  try{ await postAdmin('/api/admin/clients/meds?id='+clienteAtual.id,b); modalFechar(); cliTab('medicamentos'); }catch(e){ $('mdStatus').textContent='erro: '+e.message; }
 }
 async function suspenderMed(medId){
   const motivo=await modalPrompt('Motivo da suspensão:'); if(motivo===null) return;
@@ -1685,17 +1709,19 @@ async function renderCliObj(body){
   const lista=goals.length?goals.map(g=>'<div class="ag-item"><div class="ag-info"><b>'+g.titulo+'</b>'+(g.categoria?' · '+g.categoria:'')+'<small>'+(g.descricao||'')+' · progresso '+(g.progresso||0)+'%'+(g.prioridade?' · prioridade '+g.prioridade:'')+'</small></div>'+
     '<span class="lic-st '+(g.status==='concluido'?'ativa':(g.status==='cancelado'?'inativa':'pend'))+'">'+(g.status||'')+'</span>'+
     '<div class="fin-act"><button onclick="progObj('+g.id+','+(g.progresso||0)+')">progresso</button><button onclick="delObj('+g.id+')">excluir</button></div></div>').join(''):'<p class="muted">Nenhum objetivo.</p>';
-  body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
-    '<input id="goTit" placeholder="Título do objetivo *"/><input id="goCat" placeholder="Categoria"/>'+
-    '<select id="goPri"><option value="">Prioridade…</option><option>alta</option><option>média</option><option>baixa</option></select>'+
-    '<input id="goNota" type="number" min="0" max="10" placeholder="Nota 0-10" style="max-width:120px"/><input id="goMeta" type="number" min="0" max="10" placeholder="Meta 0-10" style="max-width:110px"/>'+
-    '<input id="goPrazo" type="date" title="Prazo"/><input id="goDesc" placeholder="Descrição" style="flex-basis:100%"/>'+
-    '<button class="btn" style="padding:9px 18px" onclick="addObj()">Adicionar</button><div id="goStatus" style="width:100%"></div></div>'+lista;
+  body.innerHTML='<button class="btn" style="margin-bottom:14px;padding:9px 18px" onclick="abrirFormObj()">＋ Adicionar objetivo</button>'+lista;
 }
+function abrirFormObj(){ modalAbrir('Novo objetivo', formObjHTML()); }
+function formObjHTML(){ return '<div class="cad-form">'+
+  '<input id="goTit" placeholder="Título do objetivo *"/><input id="goCat" placeholder="Categoria"/>'+
+  '<select id="goPri"><option value="">Prioridade…</option><option>alta</option><option>média</option><option>baixa</option></select>'+
+  '<input id="goNota" type="number" min="0" max="10" placeholder="Nota 0-10" style="max-width:120px"/><input id="goMeta" type="number" min="0" max="10" placeholder="Meta 0-10" style="max-width:110px"/>'+
+  '<input id="goPrazo" type="date" title="Prazo"/><input id="goDesc" placeholder="Descrição" style="flex-basis:100%"/>'+
+  '<button class="btn" style="padding:9px 18px" onclick="addObj()">Adicionar</button><div id="goStatus" style="width:100%"></div></div>'; }
 async function addObj(){
   const b={ titulo:$('goTit').value.trim(), categoria:$('goCat').value.trim(), prioridade:$('goPri').value, nota_inicial:$('goNota').value, meta:$('goMeta').value, prazo:$('goPrazo').value, descricao:$('goDesc').value.trim() };
   if(!b.titulo){ $('goStatus').textContent='Informe o título.'; return; }
-  try{ await postAdmin('/api/admin/clients/goals?id='+clienteAtual.id,b); cliTab('objetivos'); }catch(e){ $('goStatus').textContent='erro: '+e.message; }
+  try{ await postAdmin('/api/admin/clients/goals?id='+clienteAtual.id,b); modalFechar(); cliTab('objetivos'); }catch(e){ $('goStatus').textContent='erro: '+e.message; }
 }
 async function progObj(id,atual){
   const v=await modalPrompt('Progresso (0 a 100%):',atual); if(v===null) return;
@@ -1709,7 +1735,6 @@ const escHtml=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 function fmtSessao(q){ return q?new Date(q).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'; }
 async function renderCliSessoes(body){
   let sessions=[]; try{ sessions=(await api('/api/admin/clients/sessions?id='+clienteAtual.id)).sessions||[]; }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
-  const agora=new Date(); const dLocal=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,16);
   const lista=sessions.length?sessions.map(s=>{
     const badges=[s.appointment_id?'<span class="lic-st" style="background:var(--warn-bg);color:var(--gold);border:1px solid var(--warn-bd)">📅 da agenda</span>':'',
       s.tem_prontuario?'<span class="lic-st ativa">prontuário</span>':'<span class="lic-st pend">sem prontuário</span>',
@@ -1720,17 +1745,22 @@ async function renderCliSessoes(body){
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end">'+badges+'</div>'+
       '<div class="fin-act"><button onclick="abrirSessaoCli('+s.id+')">abrir</button><button onclick="delSessao('+s.id+')">excluir</button></div></div>';
   }).join(''):'<p class="muted">Nenhuma sessão registrada.</p>';
-  body.innerHTML='<div class="cad-form" style="margin-bottom:14px">'+
+  body.innerHTML='<button class="btn" style="margin-bottom:14px;padding:9px 18px" onclick="abrirFormSessao()">＋ Nova sessão</button>'+lista;
+}
+function abrirFormSessao(){ modalAbrir('Nova sessão', formSessaoHTML()); }
+function formSessaoHTML(){
+  const agora=new Date(); const dLocal=new Date(agora.getTime()-agora.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  return '<div class="cad-form">'+
     '<input id="ssQuando" type="datetime-local" value="'+dLocal+'" title="Data e hora"/>'+
     '<input id="ssDur" type="number" min="10" value="50" title="Duração (min)" style="max-width:110px"/>'+
     '<select id="ssMod"><option value="">Modalidade…</option><option>presencial</option><option>online</option></select>'+
     '<select id="ssTipo"><option value="">Tipo…</option><option>avaliação</option><option>acompanhamento</option><option>retorno</option><option>devolutiva</option><option>alta</option></select>'+
     '<select id="ssStatus"><option value="realizada">realizada</option><option value="agendada">agendada</option><option value="cancelada">cancelada</option></select>'+
-    '<button class="btn" style="padding:9px 18px" onclick="criarSessao()">Nova sessão</button><div id="ssStatusMsg" style="width:100%"></div></div>'+lista;
+    '<button class="btn" style="padding:9px 18px" onclick="criarSessao()">Criar sessão</button><div id="ssStatusMsg" style="width:100%"></div></div>';
 }
 async function criarSessao(){
   const b={ quando:$('ssQuando').value, duracao_min:$('ssDur').value, modalidade:$('ssMod').value, tipo:$('ssTipo').value, status:$('ssStatus').value };
-  try{ const d=await postAdmin('/api/admin/clients/sessions?id='+clienteAtual.id,b); abrirSessaoCli(d.id); }
+  try{ const d=await postAdmin('/api/admin/clients/sessions?id='+clienteAtual.id,b); modalFechar(); abrirSessaoCli(d.id); }
   catch(e){ $('ssStatusMsg').textContent='erro: '+e.message; }
 }
 async function delSessao(sid){ if(!await modalConfirm('Excluir sessão? (o prontuário será arquivado)')) return; try{ await postAdmin('/api/admin/clients/session/delete?sessionId='+sid,{}); cliTab('sessoes'); }catch(e){ aviso('Erro: '+e.message,'erro'); } }
@@ -1933,18 +1963,20 @@ async function renderCliConsentimentos(body){
       (ativo?'<div class="fin-act"><button onclick="revogarConsent('+c.id+')">revogar</button></div>':'')+'</div>';
   }).join(''):'<p class="muted">Nenhum consentimento registrado ainda.</p>';
   body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Registro de consentimentos (LGPD). Cada aceite guarda o termo, a data, o método e quem registrou — trilha para conformidade legal.</p>'+
-    '<div class="cad-form" style="margin-bottom:8px">'+
-    '<select id="csTipo" onchange="preencheTermo()" style="flex:1 1 100%"><option value="">Escolha um termo pronto…</option>'+CONSENT_TEMPLATES.map((t,i)=>'<option value="'+i+'">'+t.tipo+'</option>').join('')+'<option value="livre">Outro (escrever à mão)</option></select>'+
-    '</div>'+
-    '<div class="dp-grid">'+
-    '<div class="dp-full"><label>Título do consentimento</label><input id="csTitulo"/></div>'+
-    '<div class="dp-full"><label>Texto do termo (o que a pessoa está consentindo)</label><textarea id="csTexto" style="min-height:90px"></textarea></div>'+
-    '<div class="dp-half"><label>Como foi obtido</label><select id="csMetodo"><option value="">—</option>'+CONSENT_METODOS.map(m=>'<option>'+m+'</option>').join('')+'</select></div>'+
-    '<div class="dp-quarter"><label>Versão</label><input id="csVersao" value="1.0"/></div>'+
-    '</div>'+
-    '<button class="btn" style="padding:10px 22px" onclick="registrarConsent()">✍️ Registrar consentimento</button> <span class="muted" id="csStatus"></span>'+
-    '<hr style="margin:20px 0;border:none;border-top:1px solid var(--line)"/><div class="section-title" style="font-size:14px">Histórico</div>'+lista;
+    '<button class="btn" style="margin-bottom:14px;padding:10px 22px" onclick="abrirFormConsent()">✍️ Registrar consentimento</button>'+
+    '<div class="section-title" style="font-size:14px">Histórico</div>'+lista;
 }
+function abrirFormConsent(){ modalAbrir('Registrar consentimento (LGPD)', formConsentHTML(), {wide:true}); }
+function formConsentHTML(){ return '<div class="cad-form" style="margin-bottom:8px">'+
+  '<select id="csTipo" onchange="preencheTermo()" style="flex:1 1 100%"><option value="">Escolha um termo pronto…</option>'+CONSENT_TEMPLATES.map((t,i)=>'<option value="'+i+'">'+t.tipo+'</option>').join('')+'<option value="livre">Outro (escrever à mão)</option></select>'+
+  '</div>'+
+  '<div class="dp-grid">'+
+  '<div class="dp-full"><label>Título do consentimento</label><input id="csTitulo"/></div>'+
+  '<div class="dp-full"><label>Texto do termo (o que a pessoa está consentindo)</label><textarea id="csTexto" style="min-height:90px"></textarea></div>'+
+  '<div class="dp-half"><label>Como foi obtido</label><select id="csMetodo"><option value="">—</option>'+CONSENT_METODOS.map(m=>'<option>'+m+'</option>').join('')+'</select></div>'+
+  '<div class="dp-quarter"><label>Versão</label><input id="csVersao" value="1.0"/></div>'+
+  '</div>'+
+  '<button class="btn" style="padding:10px 22px" onclick="registrarConsent()">✍️ Registrar</button> <span class="muted" id="csStatus"></span>'; }
 function preencheTermo(){
   const v=$('csTipo').value;
   if(v==='livre'){ $('csTitulo').value=''; $('csTexto').value=''; return; }
@@ -1955,7 +1987,7 @@ async function registrarConsent(){
   const body={ tipo:$('csTitulo').value.trim(), texto:$('csTexto').value.trim(), metodo:$('csMetodo').value, versao:$('csVersao').value.trim()||'1.0' };
   if(!body.tipo){ $('csStatus').textContent='Escolha um termo ou dê um título.'; return; }
   $('csStatus').textContent='registrando…';
-  try{ await postAdmin('/api/admin/clients/consents?id='+clienteAtual.id,body); cliTab('consentimentos'); }
+  try{ await postAdmin('/api/admin/clients/consents?id='+clienteAtual.id,body); modalFechar(); cliTab('consentimentos'); }
   catch(e){ $('csStatus').textContent='erro: '+e.message; }
 }
 async function revogarConsent(id){
@@ -1976,12 +2008,14 @@ async function renderCliDocumentos(body){
       '<div class="fin-act"><button onclick="abrirDoc('+d.id+')">abrir</button><button onclick="baixarDoc('+d.id+')">baixar</button><button onclick="delDoc('+d.id+')">excluir</button></div></div>'
   ).join(''):'<p class="muted">Nenhum documento ainda.</p>';
   body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 Documentos sensíveis (exames, laudos, contratos) — guardados com segurança, acesso restrito à equipe clínica. Até 12 MB por arquivo.</p>'+
-    '<div class="cad-form" style="margin-bottom:14px;align-items:center">'+
-    '<select id="docTipo"><option value="">Tipo do documento…</option>'+DOC_TIPOS.map(t=>'<option>'+t+'</option>').join('')+'</select>'+
-    '<input type="file" id="docFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" style="flex:1 1 220px"/>'+
-    '<button class="btn" style="padding:9px 18px" onclick="enviarDoc()">📎 Enviar documento</button>'+
-    '<div id="docStatus" style="width:100%"></div></div>'+lista;
+    '<button class="btn" style="margin-bottom:14px;padding:9px 18px" onclick="abrirFormDoc()">📎 Enviar documento</button>'+lista;
 }
+function abrirFormDoc(){ modalAbrir('Enviar documento', formDocHTML()); }
+function formDocHTML(){ return '<div class="cad-form" style="align-items:center">'+
+  '<select id="docTipo"><option value="">Tipo do documento…</option>'+DOC_TIPOS.map(t=>'<option>'+t+'</option>').join('')+'</select>'+
+  '<input type="file" id="docFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" style="flex:1 1 220px"/>'+
+  '<button class="btn" style="padding:9px 18px" onclick="enviarDoc()">📎 Enviar</button>'+
+  '<div id="docStatus" style="width:100%"></div></div>'; }
 async function enviarDoc(){
   const f=($('docFile').files||[])[0]; const tipo=$('docTipo').value;
   if(!f){ $('docStatus').textContent='Escolha um arquivo.'; return; }
@@ -1991,7 +2025,7 @@ async function enviarDoc(){
     const url=authQS('/api/admin/clients/documents?id='+clienteAtual.id+'&nome='+encodeURIComponent(f.name)+(tipo?'&tipo='+encodeURIComponent(tipo):''));
     const r=await fetch(url,{ method:'POST', headers:{ 'Content-Type': f.type||'application/octet-stream', ...authHead() }, body:f });
     const j=await r.json(); if(j.error) throw new Error(j.error);
-    cliTab('documentos');
+    modalFechar(); cliTab('documentos');
   }catch(e){ $('docStatus').textContent='erro: '+e.message; }
 }
 function docUrl(id,dl){ return '/api/admin/clients/documents/file?id='+clienteAtual.id+'&docId='+id+(dl?'&download=1':'')+'&'+mediaQS(); }

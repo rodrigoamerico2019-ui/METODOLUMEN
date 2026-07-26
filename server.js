@@ -31,7 +31,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan, setPassoFeito,
          mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro, getSaudacao, setSaudacao,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
-         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary,
+         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary, financeDaily,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
@@ -430,10 +430,10 @@ app.post('/api/admin/plan/deliver', requireAdmin, soMentor, async (req, res) => 
 // ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) =====
 app.get('/api/admin/finance', requireAdmin, soMentor, async (req, res) => {
   try {
-    const [resumo, receber, pagar] = await Promise.all([
-      financeSummary(req.orgId, req.query.mes), listReceivables(req.orgId), listPayables(req.orgId)
+    const [resumo, receber, pagar, diario] = await Promise.all([
+      financeSummary(req.orgId, req.query.mes), listReceivables(req.orgId), listPayables(req.orgId), financeDaily(req.orgId, req.query.mes)
     ]);
-    res.json({ resumo, receber, pagar });
+    res.json({ resumo, receber, pagar, diario });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/finance/receivable', requireAdmin, soMentor, async (req, res) => {

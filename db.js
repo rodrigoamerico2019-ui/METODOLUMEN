@@ -1362,6 +1362,27 @@ export async function financeSummary(orgId, mes) {
   s.balanco = Number(s.recebido_mes || 0) - Number(s.pago_mes || 0);
   return s;
 }
+// série DIÁRIA do mês: recebimentos e despesas por dia (para o gráfico)
+export async function financeDaily(orgId, mes) {
+  if (!pool) return [];
+  const m = /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes + '-01'
+    : (new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01');
+  const r = await pool.query(`
+    SELECT to_char(d.dia,'YYYY-MM-DD') AS dia,
+           COALESCE(rec.v,0) AS receitas, COALESCE(pag.v,0) AS despesas
+    FROM generate_series($2::date, ($2::date + interval '1 month' - interval '1 day')::date, interval '1 day') AS d(dia)
+    LEFT JOIN (
+      SELECT (pago_em AT TIME ZONE 'America/Sao_Paulo')::date AS dia, sum(valor) v
+      FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = $2::date GROUP BY 1) rec ON rec.dia = d.dia::date
+    LEFT JOIN (
+      SELECT (pago_em AT TIME ZONE 'America/Sao_Paulo')::date AS dia, sum(valor) v
+      FROM payables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = $2::date GROUP BY 1) pag ON pag.dia = d.dia::date
+    ORDER BY d.dia`, [orgId, m]);
+  return r.rows;
+}
+
 // job: gera a mensalidade do mês para cada plano ativo (idempotente por competência)
 export async function generateMonthlyReceivables() {
   if (!pool) return 0;
