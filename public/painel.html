@@ -387,6 +387,12 @@
   .topbar .tb-id{display:flex;flex-direction:column;line-height:1.25;text-align:right}
   .topbar .tb-id b{font-size:14.5px;color:var(--ink);font-weight:600}
   .topbar .tb-id small{font-size:11.5px;color:var(--dim)}
+  .marca-cta{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,rgba(184,145,47,.10),var(--panel) 60%);border:1px solid rgba(184,145,47,.35);border-radius:14px;padding:14px 18px;margin-bottom:18px}
+  .marca-cta .mc-txt{flex:1;font-size:13px;color:var(--dim)}
+  .marca-cta .mc-txt b{color:var(--ink);font-size:14px}
+  .marca-edit{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);margin-bottom:16px;cursor:pointer}
+  .marca-edit:hover{color:var(--gold)}
+  .marca-edit img{max-height:26px;max-width:90px;object-fit:contain;border-radius:5px}
   .logo-prev{display:flex;align-items:center;justify-content:center;min-height:64px;background:var(--panel2);border:1px dashed var(--line);border-radius:12px;padding:10px;margin:4px 0 8px}
   .logo-prev img{max-height:80px;max-width:100%;object-fit:contain}
   .modal-bg{position:fixed;inset:0;z-index:200;background:rgba(30,25,18,.42);display:flex;align-items:center;justify-content:center;padding:22px;animation:mfade .18s ease}
@@ -473,6 +479,7 @@
     <!-- ===== CENTRAL DE PRIORIDADES ===== -->
     <section id="view-prioridades">
       <div class="topline"><h2>Sua clínica hoje</h2><span class="sub">tudo que pede sua atenção, num lugar só</span></div>
+      <div id="marcaCTA"></div>
       <div id="torreResumo" class="torre-resumo"></div>
 
       <div class="torre-bloco" id="torreHojeBloco">
@@ -913,6 +920,7 @@ function nivelPrioridade(p){
 
 const kpi = (v,k,alerta) => `<div class="torre-kpi ${alerta?'alerta':''}"><div class="v">${v}</div><div class="k">${k}</div></div>`;
 async function renderPrioridades(){
+  renderMarcaCTA();
   const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
   const nomes = {seguranca:'segurança', prioridade:'prioridade', atencao:'atenção', observar:'observar'};
 
@@ -1094,6 +1102,21 @@ function renderTopbar(){
   else logo.style.display='none';
   tb.style.display=(nome || MENTOR_ORG.tem_logo)?'flex':'none';
 }
+function renderMarcaCTA(){
+  const el=$('marcaCTA'); if(!el) return;
+  if(IS_SUPER || !MENTOR_ORG){ el.innerHTML=''; return; }
+  const temMarca=MENTOR_ORG.marca_nome || MENTOR_ORG.tem_logo;
+  if(!temMarca){
+    el.innerHTML='<div class="marca-cta"><span style="font-size:22px">🎨</span>'+
+      '<div class="mc-txt"><b>Deixe o sistema com a cara da sua clínica</b><br>Adicione o nome e a sua logo — aparecem no cabeçalho e nos relatórios.</div>'+
+      '<button class="btn" style="padding:9px 18px" onclick="abrirMinhaClinica()">Adicionar nome e logo</button></div>';
+  } else {
+    const logo=MENTOR_ORG.tem_logo?'<img src="/api/admin/branding/logo?'+mediaQS()+'&v='+Date.now()+'" onerror="this.style.display=\'none\'"/>':'';
+    el.innerHTML='<div class="marca-edit" onclick="abrirMinhaClinica()" title="Editar nome e logo">'+logo+
+      '<span>'+esc0(MENTOR_ORG.marca_nome||MENTOR_ORG.nome||'')+' · ✎ editar marca</span></div>';
+  }
+}
+function esc0(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 async function abrirMinhaClinica(boasVindas){
   let b={}; try{ b=await api('/api/admin/branding'); }catch(e){}
   MENTOR_ORG=Object.assign(MENTOR_ORG||{}, b);
@@ -1136,7 +1159,7 @@ async function removerLogo(){
   catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function recarregarMarca(){
-  try{ const me=await api('/api/mentor/me'); MENTOR_ORG=me.org||null; renderTopbar(); }catch(e){}
+  try{ const me=await api('/api/mentor/me'); MENTOR_ORG=me.org||null; renderTopbar(); renderMarcaCTA(); }catch(e){}
 }
 
 /* ===== CENTRAL DE CLIENTES (super-admin) ===== */
