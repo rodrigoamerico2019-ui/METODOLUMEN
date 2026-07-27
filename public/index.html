@@ -353,6 +353,19 @@
     border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
   .escalas.hide { display:none; }
   .esc-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:4px; }
+  .evol { max-width:440px; margin:0 auto 22px; background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
+  .evol.hide { display:none; }
+  .evol-head { font-family:'Cormorant Garamond'; font-size:19px; line-height:1.35; color:var(--ink); margin:2px 0 14px; }
+  .evol-head b { color:var(--gold-1); }
+  .evol-leg { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; }
+  .evol-leg span { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-dim); }
+  .evol-leg i { width:11px; height:11px; border-radius:50%; display:inline-block; }
+  .evol-esc { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .evol-esc.hide { display:none; }
+  .evol-esc .ee-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; font-size:12.5px; color:var(--ink-dim); }
+  .evol-esc .ee-delta { font-weight:600; }
+  .evol-vazio { font-size:13px; color:var(--ink-faint); line-height:1.5; }
   .esc-titulo { font-family:'Cormorant Garamond'; font-size:20px; color:var(--ink); margin-bottom:12px; }
   .esc-item { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line); }
   .esc-item:first-of-type { border-top:0; }
@@ -708,6 +721,15 @@
         <div class="esc-titulo" id="escTitulo">Um espelho suave da sua caminhada</div>
         <div id="escLista"></div>
         <div class="esc-quiz hide" id="escQuiz"></div>
+      </div>
+
+      <!-- MINHA EVOLUÇÃO (tendência da tríade ao longo do tempo) -->
+      <div class="evol hide" id="evolucao">
+        <div class="esc-eyebrow">📈 Minha evolução</div>
+        <div class="evol-head" id="evolHead"></div>
+        <div id="evolChart"></div>
+        <div class="evol-leg" id="evolLeg"></div>
+        <div class="evol-esc hide" id="evolEsc"></div>
       </div>
 
       <!-- PLANO DE AÇÃO DA SEMANA (entregue pelo mentor) -->
@@ -1842,6 +1864,7 @@ function continuarAposMapa(){
   // a tela inicial agora é a JORNADA (não mais o check-in obrigatório)
   renderJornada();
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
+  loadEvolucao();         // gráfico da evolução (tríade + escalas ao longo do tempo)
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
   loadPalavra();          // Palavra Viva do dia (personalizada)
   loadScales();           // escalas de acompanhamento (recorrência)
@@ -2200,6 +2223,89 @@ async function enviarAudio(){
     } else st.textContent = 'Erro: ' + (d.error||'tente de novo');
   }catch(e){ st.textContent = 'Não consegui enviar. Tente de novo.'; }
   finally{ btn.disabled = false; }
+}
+
+/* ===== MINHA EVOLUÇÃO — tendência da tríade e das escalas ao longo do tempo ===== */
+function _semanasEvol(triade){
+  const rows = (triade||[]).filter(r=>r.dia).slice().sort((a,b)=> a.dia<b.dia?-1:1);
+  if(!rows.length) return [];
+  const t0 = new Date(rows[0].dia+'T00:00:00').getTime();
+  const buckets = {};
+  rows.forEach(r=>{
+    const wk = Math.floor((new Date(r.dia+'T00:00:00').getTime()-t0)/(7*86400000));
+    const b = buckets[wk] = buckets[wk] || { corpo:[], alma:[], espirito:[] };
+    ['corpo','alma','espirito'].forEach(k=>{ if(r[k]!=null) b[k].push(Number(r[k])); });
+  });
+  const avg = a => a.length ? a.reduce((s,x)=>s+x,0)/a.length : null;
+  return Object.keys(buckets).map(Number).sort((a,b)=>a-b)
+    .map(w=>{ const b=buckets[w]; return { corpo:avg(b.corpo), alma:avg(b.alma), espirito:avg(b.espirito) }; });
+}
+const EVOL_DIMS = [['corpo','Corpo','#5a9068'],['alma','Alma','#C9A227'],['espirito','Espírito','#7E6BB0']];
+function graficoEvolucao(sem){
+  const W=320,H=150,P=26, n=sem.length;
+  const x=i=> n<=1 ? W/2 : P+(i/(n-1))*(W-2*P);
+  const y=v=> (H-P) - (v/10)*(H-2*P);
+  let g='';
+  [0,5,10].forEach(v=>{ const yy=y(v);
+    g+=`<line x1="${P}" y1="${yy}" x2="${W-P}" y2="${yy}" stroke="#E7DECB" stroke-width="1"/>`+
+       `<text x="${P-7}" y="${yy+3}" font-size="8" fill="#A79E8D" text-anchor="end">${v}</text>`; });
+  EVOL_DIMS.forEach(([k,,c])=>{
+    const pts=sem.map((s,i)=> s[k]==null?null:[x(i),y(s[k])]).filter(Boolean);
+    if(pts.length>=2) g+=`<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    pts.forEach(p=> g+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="${c}"/>`);
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">${g}</svg>`;
+}
+function resumoEvolucao(sem){
+  const nomes={corpo:'corpo',alma:'alma',espirito:'espírito'};
+  const deltas=[];
+  ['corpo','alma','espirito'].forEach(k=>{
+    const vals=sem.map(s=>s[k]).filter(v=>v!=null);
+    if(vals.length>=2) deltas.push({k, ini:vals[0], fim:vals[vals.length-1], d:vals[vals.length-1]-vals[0]});
+  });
+  if(!deltas.length) return 'Continue registrando como você está — em poucas semanas dá pra ver a sua caminhada aqui.';
+  const melhor=deltas.slice().sort((a,b)=>b.d-a.d)[0];
+  if(melhor.d>=0.5) return `Sua <b>${nomes[melhor.k]}</b> subiu de <b>${melhor.ini.toFixed(0)}</b> para <b>${melhor.fim.toFixed(0)}</b>. A luz está atravessando. 🌤️`;
+  if(deltas.every(x=>Math.abs(x.d)<0.5)) return 'Suas esferas estão firmes nas últimas semanas — constância também é caminhada. 🕊️';
+  return 'Algumas semanas pesaram mais, e tudo bem. Você está aqui — e isso já é um passo. Um dia de cada vez.';
+}
+function renderEvolEscalas(rows){
+  const box=document.getElementById('evolEsc'); if(!box) return;
+  const by={}; (rows||[]).forEach(r=>{ (by[r.scale_key]=by[r.scale_key]||[]).push(r); });
+  const nomeDe = k => { const e=((typeof ESC!=='undefined'&&ESC)||[]).find(x=>x.key===k); return e? e.nome : k.replace(/_/g,' '); };
+  const linhas=[];
+  Object.keys(by).forEach(k=>{
+    const arr=by[k]; if(arr.length<2) return;
+    const ini=Number(arr[0].score), fim=Number(arr[arr.length-1].score), d=fim-ini;
+    const seta = d<0?'↓':(d>0?'↑':'=');
+    linhas.push(`<div class="ee-item"><span>${nomeDe(k)}</span><span class="ee-delta" style="color:var(--ink-dim)">${ini} → ${fim} ${seta}</span></div>`);
+  });
+  if(!linhas.length){ box.classList.add('hide'); box.innerHTML=''; return; }
+  box.innerHTML = '<div class="esc-eyebrow" style="margin-bottom:6px">Escalas ao longo do tempo</div>'+linhas.join('');
+  box.classList.remove('hide');
+}
+function loadEvolucao(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/evolucao', { headers: authHeaders() })
+    .then(r=> r.ok ? r.json() : null)
+    .then(d=>{
+      if(!d) return;
+      const box=document.getElementById('evolucao'); if(!box) return;
+      const pontos=(d.triade||[]).filter(r=> r.corpo!=null||r.alma!=null||r.espirito!=null).length;
+      if(pontos < 2){
+        document.getElementById('evolHead').innerHTML='';
+        document.getElementById('evolChart').innerHTML='<div class="evol-vazio">Faça seus check-ins de “como estou hoje”. Em algumas semanas o seu gráfico de evolução aparece aqui. 🌱</div>';
+        document.getElementById('evolLeg').innerHTML='';
+        document.getElementById('evolEsc').classList.add('hide');
+        box.classList.remove('hide'); return;
+      }
+      const sem=_semanasEvol(d.triade);
+      document.getElementById('evolHead').innerHTML = resumoEvolucao(sem);
+      document.getElementById('evolChart').innerHTML = graficoEvolucao(sem);
+      document.getElementById('evolLeg').innerHTML = EVOL_DIMS.map(([,n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('');
+      renderEvolEscalas(d.escalas);
+      box.classList.remove('hide');
+    }).catch(()=>{});
 }
 
 /* ===== MINHA JORNADA — o paciente vê a própria evolução (Monitor) ===== */

@@ -1324,6 +1324,15 @@ app.get('/api/me/scales', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// MINHA EVOLUÇÃO — a tríade (corpo/alma/espírito) e as escalas ao longo do tempo
+app.get('/api/me/evolucao', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const [triade, escalas] = await Promise.all([ checkinSeries(uid, 90), scalesForPatient(uid) ]);
+    res.json({ triade, escalas });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 app.post('/api/me/scales/submit', requireAuth, async (req, res) => {
   try {
     const uid = req.user?.uid;
