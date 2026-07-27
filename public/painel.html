@@ -367,6 +367,8 @@
     padding:8px 16px;font-size:12px;cursor:pointer;white-space:nowrap}
   .pbtn:hover{border-color:var(--gold);color:var(--gold2)}
   .pbtn.forte{background:var(--grad);color:#141005;border-color:transparent;font-weight:600}
+  .pbtn.cris{background:var(--danger-bg);color:var(--danger-tx);border-color:var(--danger-bd);font-weight:600}
+  .pbtn.cris:hover{border-color:var(--vermelho);color:var(--vermelho)}
   .prio-legenda{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:18px}
   .pdot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
   .pdot.seguranca,.pdot.prioridade{background:var(--vermelho)}
@@ -948,6 +950,48 @@ function nivelPrioridade(p){
 
 const kpi = (v,k,alerta) => `<div class="torre-kpi ${alerta?'alerta':''}"><div class="v">${v}</div><div class="k">${k}</div></div>`;
 function indCard(v,t){ return '<div class="ind-card"><div class="ind-v">'+v+'</div><div class="ind-t">'+t+'</div></div>'; }
+/* preparo de sessão: o terapeuta entra na sala já sabendo como o paciente chega */
+async function preparoSessao(userId){
+  modalAbrir('Preparo de sessão', '<p class="muted">carregando…</p>');
+  try{
+    const [pat, tasksR, goalsR] = await Promise.all([
+      api('/api/admin/patient?id='+userId),
+      api('/api/admin/clients/tasks?id='+userId).catch(()=>null),
+      api('/api/admin/clients/goals?id='+userId).catch(()=>null)
+    ]);
+    const nome=(pat.paciente&&pat.paciente.name)||'';
+    const esf=pat.esferas;
+    const esfHtml = esf&&esf.amostras>0
+      ? '<div class="cli-esf">'+esferaBar('🫀 Corpo',esf.corpo)+esferaBar('💭 Alma',esf.alma)+esferaBar('🕊️ Espírito',esf.espirito)+'</div>'
+      : '<p class="cli-line">Sem check-ins recentes.</p>';
+    const tasks=(tasksR&&tasksR.tasks)||[]; const pend=tasks.filter(t=>t.status!=='concluida');
+    const tHtml = tasks.length
+      ? '<p class="cli-line"><b>'+tasks.filter(t=>t.status==='concluida').length+'/'+tasks.length+'</b> tarefas concluídas'+(pend.length?' · a cobrar: '+pend.slice(0,4).map(t=>escHtml(t.titulo)).join(', '):'')+'</p>'
+      : '<p class="cli-line">Sem tarefas combinadas.</p>';
+    const goals=(goalsR&&goalsR.goals)||[]; const gAtivo=goals.filter(g=>g.status!=='concluido')[0];
+    const gBloco = gAtivo?'<div class="csnap"><h4>🎯 Objetivo em foco</h4><p class="cli-line">'+escHtml(gAtivo.titulo)+' ('+(gAtivo.progresso||0)+'%)</p></div>':'';
+    const evol = blocoEvolucaoFicha(pat.checkins);
+    modalAbrir('Preparo — '+escHtml(nome),
+      '<div class="csnap"><h4>🌤️ Como chega (7 dias)</h4>'+esfHtml+(pat.streak>1?'<p class="cli-line">🌿 '+pat.streak+' dias de check-in</p>':'')+'</div>'+
+      '<div class="csnap"><h4>📋 Tarefas combinadas</h4>'+tHtml+'</div>'+gBloco+evol+
+      '<button class="btn" style="margin-top:14px" onclick="modalFechar();abrirCliente('+userId+')">Abrir ficha completa →</button>', {wide:true});
+  }catch(e){ modalAbrir('Preparo de sessão','<p class="muted">Erro: '+e.message+'</p>'); }
+}
+/* protocolo de crise: passos imediatos quando o radar acende vermelho */
+function protocoloCrise(userId){
+  const p=(pacientes||[]).find(x=>String(x.id)===String(userId))||{};
+  modalAbrir('🆘 Protocolo de crise',
+    '<p class="cli-line" style="font-size:15px"><b>'+escHtml(p.name||'Paciente')+'</b> — sinal de risco detectado.</p>'+
+    '<div class="csnap" style="border-left:3px solid var(--vermelho)"><h4>Passos imediatos</h4>'+
+    '<p class="cli-line">1. Faça contato agora (ligação/mensagem). Acolha antes de qualquer coisa.</p>'+
+    '<p class="cli-line">2. Avalie o risco direto — há intenção? plano? meios? prazo?</p>'+
+    '<p class="cli-line">3. Risco iminente à vida: acione <b>SAMU 192</b> e não deixe a pessoa sozinha.</p>'+
+    '<p class="cli-line">4. Oriente o <b>CVV — 188</b> (24h, gratuito) e o CAPS mais próximo.</p>'+
+    '<p class="cli-line">5. Acione a rede de apoio / o contato de emergência do paciente.</p>'+
+    '<p class="cli-line">6. Registre no prontuário e combine o próximo contato.</p></div>'+
+    '<p class="subc" style="margin-top:6px">Os contatos de emergência e o prontuário estão na ficha.</p>'+
+    '<button class="btn" style="margin-top:6px" onclick="modalFechar();abrirCliente('+userId+')">Abrir ficha (contatos + prontuário) →</button>');
+}
 async function carregarIndicadores(){
   const box=$('indicadores'); if(!box) return;
   try{
@@ -991,7 +1035,7 @@ async function renderPrioridades(){
   $('torreHoje').innerHTML = dash.consultas.length ? dash.consultas.map(c =>
     `<div class="torre-item"><span class="torre-hora">${c.hora||'--:--'}</span>
       <div class="torre-info"><b>${escHtml(c.paciente)}</b><small>${escHtml([c.modalidade, c.local].filter(Boolean).join(' · ')||'consulta')}</small></div>
-      <button class="tbtn" onclick="abrirCliente(${c.user_id})">abrir ficha</button></div>`
+      <button class="tbtn" onclick="preparoSessao(${c.user_id})">preparo</button><button class="tbtn" onclick="abrirCliente(${c.user_id})">abrir ficha</button></div>`
   ).join('') : '<div class="torre-vazio">Nenhuma consulta agendada para hoje.</div>';
 
   // quem precisa de você
@@ -1003,7 +1047,7 @@ async function renderPrioridades(){
       <div class="prio-nome"><b>${escHtml(p.name)}</b>
         <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}</div></div>
       <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens||0} interações</div>
-      <div class="prio-acoes"><button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
+      <div class="prio-acoes">${nivel==='seguranca'?`<button class="pbtn cris" onclick="protocoloCrise(${p.id})">🆘 Protocolo</button>`:''}<button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
     </div>`).join('') : '<div class="prio-vazio">Nenhuma prioridade agora. A luz está atravessando. 🕊️</div>';
 
   // pagamentos vencendo/atrasados
