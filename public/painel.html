@@ -1625,11 +1625,13 @@ async function renderCliVisao(body){
   const b=clienteAtual.basico, det=clienteAtual.detalhes||{};
   const prof=(clienteAtual.profissionais||[]).map(p=>p.name+(p.principal?' (principal)':'')).join(', ')||'—';
   // dados clínicos: reusa o endpoint que já agrega tudo do paciente (+ objetivos)
-  const [clin, goalsR] = await Promise.all([
+  const [clin, goalsR, tasksR] = await Promise.all([
     api('/api/admin/patient?id='+clienteAtual.id).catch(()=>null),
-    api('/api/admin/clients/goals?id='+clienteAtual.id).catch(()=>null)
+    api('/api/admin/clients/goals?id='+clienteAtual.id).catch(()=>null),
+    api('/api/admin/clients/tasks?id='+clienteAtual.id).catch(()=>null)
   ]);
   const goals=(goalsR&&goalsR.goals)||[];
+  const tasks=(tasksR&&tasksR.tasks)||[];
   const pac=(pacientes||[]).find(x=>x.id===clienteAtual.id);
 
   // 1 · banner de risco (usa o mesmo radar da Torre)
@@ -1675,9 +1677,11 @@ async function renderCliVisao(body){
 
   // 7 · evolução (tendência da tríade ao longo das semanas)
   const evolBloco=blocoEvolucaoFicha(clin&&clin.checkins);
+  // 8 · tarefas entre sessões (adesão do "dever de casa")
+  const tarefasBloco=blocoTarefasFicha(tasks);
 
   if(mySeq!==cliBodySeq) return;   // outro render assumiu o corpo; não sobrescreve
-  body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+evolBloco+
+  body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+evolBloco+tarefasBloco+
     (clienteAtual.emergencia&&clienteAtual.emergencia.length?'<p class="subc">🆘 Emergência: '+clienteAtual.emergencia.map(e=>escHtml(e.nome)+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
     (det.obs_inicial?'<p class="muted" style="margin-top:6px">Obs.: '+escHtml(det.obs_inicial)+'</p>':'')+
     '<p class="subc" style="margin-top:10px">Profissional(is): '+escHtml(prof)+(b.phone?' · 📞 '+escHtml(b.phone):'')+(b.city?' · '+escHtml(b.city):'')+'</p>';
@@ -2593,6 +2597,25 @@ function blocoEvolucaoFicha(checkins){
   return '<div class="card" style="margin-top:14px"><div class="h2c">📈 Evolução (tendência por semana)</div>'+
     '<svg viewBox="0 0 '+Wd+' '+H+'" style="width:100%;max-width:560px;display:block">'+g+'</svg>'+
     '<div style="margin-top:8px">'+leg+'</div></div>';
+}
+/* Adesão das tarefas entre sessões (dever de casa) na ficha */
+function blocoTarefasFicha(tasks){
+  if(!tasks || !tasks.length) return '';
+  const total=tasks.length, feitas=tasks.filter(t=>t.status==='concluida').length;
+  const pct=Math.round(feitas/total*100);
+  const pend=tasks.filter(t=>t.status!=='concluida');
+  const hoje=new Date();
+  const linhas=pend.slice(0,6).map(t=>{
+    const venc=t.prazo?new Date(String(t.prazo).slice(0,10)+'T23:59'):null;
+    const atras=venc&&venc<hoje;
+    return '<p class="cli-line">• '+escHtml(t.titulo)+
+      (t.prazo?' <span style="color:'+(atras?'var(--vermelho)':'var(--faint)')+'">('+(atras?'atrasada, ':'até ')+dataBR(t.prazo)+')</span>':'')+'</p>';
+  }).join('');
+  return '<div class="card" style="margin-top:14px"><div class="h2c">📋 Tarefas entre sessões — adesão</div>'+
+    '<div class="lic-bar" style="margin:2px 0 8px;max-width:260px"><i style="display:block;height:100%;width:'+pct+'%;background:linear-gradient(90deg,#B8912F,#C9A227);border-radius:99px"></i></div>'+
+    '<p class="cli-line"><b>'+feitas+'/'+total+'</b> concluídas ('+pct+'%)</p>'+
+    (pend.length?'<p class="subc" style="margin:6px 0 2px">Pendentes:</p>'+linhas+(pend.length>6?'<p class="subc">+'+(pend.length-6)+' outra(s)…</p>':'')
+      :'<p class="subc">Tudo em dia. 🌿</p>')+'</div>';
 }
 function chartLinhas(rows){
   if(!rows.length) return '<p class="muted">Sem dados ainda — os gráficos nascem das conversas.</p>';

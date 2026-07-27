@@ -421,6 +421,10 @@
   .ac-tb.feito b { text-decoration:line-through; opacity:.55; }
   .ac-tb p { font-size:12.5px; color:var(--ink-dim); margin-top:3px; line-height:1.6; }
   .ac-prazo { font-size:11px; color:var(--gold-2); margin-top:3px; }
+  .ac-prazo.atras { color:#c0442f; font-weight:600; }
+  .ac-prog { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--ink-dim); margin-bottom:6px; }
+  .ac-prog .bar { flex:1; height:7px; border-radius:99px; background:rgba(0,0,0,.06); overflow:hidden; }
+  .ac-prog .bar > i { display:block; height:100%; background:linear-gradient(90deg,#C9A227,#E4C878); border-radius:99px; }
 
   /* ===== JORNADA (tela inicial) ===== */
   #view-jornada { display:none; flex-direction:column; gap:14px; }
@@ -2073,9 +2077,15 @@ function loadShared(){
       const resumos = d.resumos || [], tarefas = d.tarefas || [];
       if(!resumos.length && !tarefas.length) return;
       if(tarefas.length){
-        document.getElementById('acTarefas').innerHTML = tarefas.map(t => {
+        const feitas = tarefas.filter(t => t.status === 'concluida').length;
+        const pct = Math.round(feitas / tarefas.length * 100);
+        const prog = `<div class="ac-prog"><span>✅ ${feitas} de ${tarefas.length}</span><span class="bar"><i style="width:${pct}%"></i></span></div>`;
+        const agora = new Date();
+        document.getElementById('acTarefas').innerHTML = prog + tarefas.map(t => {
           const feito = t.status === 'concluida';
-          const prazo = t.prazo ? `<div class="ac-prazo">até ${new Date(String(t.prazo).slice(0,10)+'T12:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>` : '';
+          const venc = t.prazo ? new Date(String(t.prazo).slice(0,10)+'T23:59') : null;
+          const atras = venc && !feito && venc < agora;
+          const prazo = t.prazo ? `<div class="ac-prazo${atras?' atras':''}">${atras?'⏰ atrasada · ':''}até ${new Date(String(t.prazo).slice(0,10)+'T12:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long'})}</div>` : '';
           return `<div class="ac-tar">
             <div class="ac-chk${feito?' on':''}" onclick="marcarTarefa(${t.id}, ${feito?'false':'true'})">${feito?'✓':''}</div>
             <div class="ac-tb${feito?' feito':''}"><b>${escAc(t.titulo)}</b>${t.descricao?`<p>${escAc(t.descricao)}</p>`:''}${prazo}</div>
