@@ -1340,6 +1340,16 @@ app.get('/api/me/scales', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// MINHAS CONSULTAS — próxima teleconsulta/presencial do paciente
+app.get('/api/me/appointments', requireAuth, async (req, res) => {
+  try {
+    const all = await patientAppointments(req.user?.uid);
+    const futuras = all.filter(a => !a.passou && a.status === 'agendada')
+      .sort((a, b) => String(a.quando_local || '').localeCompare(String(b.quando_local || '')));
+    res.json({ proxima: futuras[0] || null, futuras });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 // MINHA EVOLUÇÃO — a tríade (corpo/alma/espírito) e as escalas ao longo do tempo
 app.get('/api/me/evolucao', requireAuth, async (req, res) => {
   try {

@@ -356,6 +356,15 @@
   .evol { max-width:440px; margin:0 auto 22px; background:var(--panel); border:1px solid var(--line);
     border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
   .evol.hide { display:none; }
+  .consulta-card { max-width:440px; margin:0 auto 22px; background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
+  .consulta-card.hide { display:none; }
+  .cc-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:6px; }
+  .cc-quando { font-family:'Cormorant Garamond'; font-size:21px; color:var(--ink); text-transform:capitalize; line-height:1.25; }
+  .cc-mod { font-size:12.5px; color:var(--ink-dim); margin:2px 0 12px; }
+  .cc-entrar { display:inline-block; padding:12px 22px; border-radius:12px; background:var(--gold-grad); color:#141005;
+    font-weight:600; font-size:14px; text-decoration:none; }
+  .cc-info { font-size:13px; color:var(--ink-dim); background:var(--bg-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
   .evol-head { font-family:'Cormorant Garamond'; font-size:19px; line-height:1.35; color:var(--ink); margin:2px 0 14px; }
   .evol-head b { color:var(--gold-1); }
   .evol-leg { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; }
@@ -710,6 +719,9 @@
       <div class="eyebrow">Corpo · Alma · Espírito</div>
       <div class="section-title">Monitor</div>
       <div class="section-sub">Como a luz está atravessando você hoje.</div>
+
+      <!-- PRÓXIMA CONSULTA (teleconsulta / presencial) -->
+      <div class="consulta-card hide" id="proxConsulta"></div>
 
       <!-- PALAVRA VIVA DO DIA (personalizada) -->
       <div class="palavra hide" id="palavra">
@@ -1868,6 +1880,7 @@ function continuarAposMapa(){
   // a tela inicial agora é a JORNADA (não mais o check-in obrigatório)
   renderJornada();
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
+  loadProximaConsulta();  // próxima consulta (teleconsulta por link / presencial)
   loadEvolucao();         // gráfico da evolução (tríade + escalas ao longo do tempo)
   loadMentorMessages();   // mensagens do mentor viram bolhas na conversa
   loadPalavra();          // Palavra Viva do dia (personalizada)
@@ -2233,6 +2246,29 @@ async function enviarAudio(){
     } else st.textContent = 'Erro: ' + (d.error||'tente de novo');
   }catch(e){ st.textContent = 'Não consegui enviar. Tente de novo.'; }
   finally{ btn.disabled = false; }
+}
+
+/* ===== PRÓXIMA CONSULTA (teleconsulta por link / presencial) ===== */
+function loadProximaConsulta(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/appointments', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      const box = document.getElementById('proxConsulta'); if(!box) return;
+      const c = d && d.proxima;
+      if(!c){ box.classList.add('hide'); return; }
+      const q = String(c.quando_local || '').slice(0,16);
+      const dataFmt = q ? new Date(q).toLocaleString('pt-BR',{weekday:'long',day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'}) : '';
+      const online = c.modalidade === 'online';
+      const link = (c.local && /^https?:\/\//i.test(c.local)) ? c.local : '';
+      let acao = '';
+      if(online && link) acao = `<a class="cc-entrar" href="${encodeURI(link)}" target="_blank" rel="noopener">🎥 Entrar na sala</a>`;
+      else if(online) acao = `<div class="cc-info">O link da sala será enviado pelo seu terapeuta.</div>`;
+      else if(c.local) acao = `<div class="cc-info">📍 ${escAc(c.local)}</div>`;
+      box.innerHTML = `<div class="cc-eyebrow">📅 Sua próxima consulta</div><div class="cc-quando">${dataFmt}</div>`+
+        `<div class="cc-mod">${online?'Teleconsulta (online)':'Presencial'}</div>${acao}`;
+      box.classList.remove('hide');
+    }).catch(()=>{});
 }
 
 /* ===== MINHA EVOLUÇÃO — tendência da tríade e das escalas ao longo do tempo ===== */
