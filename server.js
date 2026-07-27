@@ -32,7 +32,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan, setPassoFeito,
          mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro, getSaudacao, setSaudacao,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
-         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary, financeDaily,
+         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary, financeDaily, reciboData,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
@@ -52,6 +52,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          reportData, salvarRelatorio, gravarPdfRelatorio, listReports, getReportPdf,
          reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
+import { buildReciboPdf } from './recibo.js';
 import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
@@ -444,6 +445,17 @@ app.post('/api/admin/finance/receivable', requireAdmin, soMentor, async (req, re
     if (b.userId && req.orgId && (await patientOrg(Number(b.userId))) !== req.orgId) return res.status(403).json({ error: 'paciente de outra organização' });
     const r = await addReceivable({ orgId: req.orgId, userId: b.userId ? Number(b.userId) : null, descricao: b.descricao, valor: b.valor, vencimento: b.vencimento });
     res.json({ ok: true, id: r.id });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// recibo em PDF de uma cobrança paga (aberto/baixado com token na URL)
+app.get('/api/admin/finance/receivable/recibo', requireAdmin, soMentor, async (req, res) => {
+  try {
+    const d = await reciboData(Number(req.query.id), req.orgId);
+    const pdf = await buildReciboPdf(d);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + d.numero + '.pdf"');
+    res.send(pdf);
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/finance/receivable/pay', requireAdmin, soMentor, async (req, res) => {

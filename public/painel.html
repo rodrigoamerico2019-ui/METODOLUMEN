@@ -1340,7 +1340,7 @@ async function carregarFinanceiro(){
       const st = r.status==='pago' ? '<span class="lic-st ativa">pago</span>'
         : (r.vencida ? '<span class="lic-st inativa">vencida</span>' : '<span class="lic-st pend">a vencer</span>');
       const acao = r.status==='pago'
-        ? `<button onclick="toggleReceber(${r.id},false)">estornar</button>`
+        ? `<button onclick="verRecibo(${r.id})">recibo</button><button onclick="toggleReceber(${r.id},false)">estornar</button>`
         : `<button onclick="toggleReceber(${r.id},true)">marcar pago</button>`;
       return `<tr><td>${r.paciente||'—'}<br><small style="color:var(--faint)">${r.descricao||''}</small></td>
         <td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${st}</td><td class="fin-act">${acao}</td></tr>`;
@@ -1372,6 +1372,7 @@ async function addPagar(){
   catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function toggleReceber(id, pago){ try{ await postAdmin('/api/admin/finance/receivable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
+function verRecibo(id){ modalArquivo('Recibo de pagamento', '/api/admin/finance/receivable/recibo?id='+id+'&'+mediaQS()); }
 async function togglePagar(id, pago){ try{ await postAdmin('/api/admin/finance/payable/pay?id='+id, {pago}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
 async function delPagar(id){ if(!await modalConfirm('Excluir esta despesa?')) return; try{ await postAdmin('/api/admin/finance/payable/delete?id='+id, {}); carregarFinanceiro(); }catch(e){ aviso('Erro: '+e.message,'erro');} }
 
@@ -1386,7 +1387,7 @@ function renderFinanceiroPaciente(f){
   const hist = (f.receber||[]);
   $('pfHist').innerHTML = hist.length
     ? `<table class="fin-tab"><thead><tr><th>Competência</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>`+
-      hist.map(r=>`<tr><td>${r.competencia||r.descricao||'—'}</td><td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${r.status==='pago'?'<span class="lic-st ativa">pago</span>':'<span class="lic-st pend">pendente</span>'}</td></tr>`).join('')+
+      hist.map(r=>`<tr><td>${r.competencia||r.descricao||'—'}</td><td class="val">${moeda(r.valor)}</td><td>${dataBR(r.vencimento)}</td><td>${r.status==='pago'?`<span class="lic-st ativa">pago</span> <button class="tbtn" style="padding:2px 9px;font-size:11px" onclick="verRecibo(${r.id})">recibo</button>`:'<span class="lic-st pend">pendente</span>'}</td></tr>`).join('')+
       `</tbody></table>`
     : '<p class="muted">Sem lançamentos ainda. Defina a mensalidade acima — a cobrança do mês é gerada automaticamente e o lembrete carinhoso é enviado sozinho.</p>';
 }

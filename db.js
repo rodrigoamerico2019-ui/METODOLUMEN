@@ -1403,6 +1403,28 @@ export async function setReceivablePaid(id, orgId, pago) {
     WHERE id=$1 AND ($2::bigint IS NULL OR org_id=$2)`, [id, orgId, pago ? 'pago' : 'pendente']);
   return { ok: true };
 }
+// dados do recibo de uma cobrança PAGA (emitente = marca da clínica; pagador = paciente)
+export async function reciboData(receivableId, orgId) {
+  if (!pool) throw new Error('banco não configurado');
+  const r = await pool.query(`SELECT r.id, r.valor, r.descricao, r.competencia, r.status, r.pago_em,
+      u.name AS paciente
+    FROM receivables r LEFT JOIN users u ON u.id=r.user_id
+    WHERE r.id=$1 AND ($2::bigint IS NULL OR r.org_id=$2)`, [receivableId, orgId]);
+  const rc = r.rows[0];
+  if (!rc) throw new Error('cobrança não encontrada');
+  if (rc.status !== 'pago') throw new Error('O recibo só é emitido para cobranças já pagas.');
+  const org = await orgById(orgId);
+  const referente = rc.descricao || (rc.competencia ? ('Mensalidade ' + rc.competencia) : 'Atendimento psicológico');
+  return {
+    numero: 'REC-' + String(rc.id).padStart(5, '0'),
+    emitente: { nome: (org && (org.marca_nome || org.nome)) || 'TriLumen', subtitulo: (org && org.marca_subtitulo) || '' },
+    pagador: { nome: rc.paciente || '—' },
+    valor: Number(rc.valor),
+    referente,
+    data: rc.pago_em || new Date(),
+    cidade: ''
+  };
+}
 export async function listPayables(orgId, limit = 200) {
   if (!pool) return [];
   const r = await pool.query(`SELECT id, descricao, valor, vencimento::text AS vencimento, status, pago_em,
