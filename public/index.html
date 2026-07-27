@@ -266,10 +266,23 @@
 
   /* porta de entrada (login/cadastro) */
   .authgate { position:absolute; inset:0; z-index:120; text-align:center;
-    background: radial-gradient(900px 520px at 50% 0%, rgba(184,134,42,0.15), transparent 60%), var(--bg);
+    background: radial-gradient(900px 560px at 50% -4%, rgba(201,162,39,0.16), transparent 62%), #0B0A09;
+    color:#EDE6D6;
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease;
     overflow-y:auto; }
   .authgate.hide { display:none; }
+  /* entrada em fundo escuro para o logo dourado brilhar */
+  .authgate .ob-logo-img { width:min(84%, 340px); max-height:40vh; }
+  .authgate .ag-tabs button { border-color:#3A342A; color:#B8AE9A; }
+  .authgate .ag-form input[type=text], .authgate .ag-form input[type=email], .authgate .ag-form input[type=password],
+  .authgate .ag-form input[type=date], .authgate .ag-form input[type=tel], .authgate .ag-form select {
+    background:#161310; border-color:#3A342A; color:#EDE6D6; color-scheme:dark; }
+  .authgate .ag-form input::placeholder { color:#8A8272; }
+  .authgate .ag-form select:invalid { color:#8A8272; }
+  .authgate .ag-foto-btn { background:#161310; border-color:#3A342A; color:#B8AE9A; }
+  .authgate .ag-lbl, .authgate .ag-foot { color:#9A917E; }
+  .authgate .ag-consent { color:#B8AE9A; }
+  .authgate .ag-foto img { border-color:#3A342A; }
   .ag-tabs { display:flex; gap:8px; margin:10px 0 18px; }
   .ag-tabs button { background:transparent; border:1px solid var(--line); color:var(--ink-dim);
     font-family:'Montserrat'; font-size:13px; letter-spacing:1px; padding:9px 22px; border-radius:999px; cursor:pointer; }
@@ -543,19 +556,7 @@
   <!-- ============ PORTA DE ENTRADA / LOGIN (restrito a pacientes e mentorados) ============ -->
   <div class="authgate hide" id="authgate">
     <div class="ob-logo">
-      <svg viewBox="0 0 100 210" xmlns="http://www.w3.org/2000/svg" aria-label="Método Lúmen">
-        <defs>
-          <linearGradient id="obg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#C9A227"/><stop offset="55%" stop-color="#E4C878"/><stop offset="100%" stop-color="#C9A227"/></linearGradient>
-          <linearGradient id="obf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E4C878" stop-opacity="0"/><stop offset="50%" stop-color="#E9C453"/><stop offset="100%" stop-color="#E4C878" stop-opacity="0"/></linearGradient>
-        </defs>
-        <circle cx="50" cy="36" r="31" fill="#FBF6E9"/><circle cx="50" cy="36" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <circle cx="50" cy="105" r="31" fill="#FBF6E9"/><circle cx="50" cy="105" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <circle cx="50" cy="174" r="31" fill="#FBF6E9"/><circle cx="50" cy="174" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <line x1="50" y1="2" x2="50" y2="208" stroke="url(#obf)" stroke-width="2.4"/>
-        <circle cx="50" cy="5" r="2.4" fill="#E9C453"/><circle cx="50" cy="70" r="2.6" fill="#E9C453"/><circle cx="50" cy="140" r="2.6" fill="#E9C453"/><circle cx="50" cy="205" r="2.4" fill="#E9C453"/>
-      </svg>
-      <div class="ob-word">LÚMEN</div>
-      <div class="ob-por">por Rodrigo Américo</div>
+      <img src="/LOGOTRILUMEN.png" alt="TRILUMEN — A Plataforma Inteligente da Jornada Humana" class="ob-logo-img"/>
     </div>
     <div class="ag-tabs">
       <button id="agTabLogin" class="on">Entrar</button>
