@@ -32,7 +32,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          getActionPlan, saveActionPlan, setPlanDelivered, deliveredPlan, setPassoFeito,
          mapaNeeded, getMapa, getMapaBussola, saveMapaInicial, ultimoEncontro, getSaudacao, setSaudacao,
          getPatientPlan, setPatientPlan, patientReceivables, listReceivables, addReceivable, setReceivablePaid,
-         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary, financeDaily, reciboData,
+         listPayables, addPayable, setPayablePaid, deletePayable, financeSummary, financeDaily, reciboData, indicadores,
          generateMonthlyReceivables, receivablesForReminder, markReceivableReminded,
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
@@ -431,6 +431,10 @@ app.post('/api/admin/plan/deliver', requireAdmin, soMentor, async (req, res) => 
 });
 
 // ===== CENTRAL FINANCEIRA DO CONSULTÓRIO (mentor) =====
+app.get('/api/admin/indicadores', requireAdmin, soMentor, async (req, res) => {
+  try { res.json(await indicadores(req.orgId, req.query.mes)); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 app.get('/api/admin/finance', requireAdmin, soMentor, async (req, res) => {
   try {
     const [resumo, receber, pagar, diario] = await Promise.all([

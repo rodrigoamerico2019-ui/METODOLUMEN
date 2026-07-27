@@ -298,6 +298,13 @@
   .prio-resumo b{color:var(--ink)}
   /* Torre de Controle */
   .torre-resumo{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .acoes-rapidas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+  .ar-btn{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 16px;font-size:13px;font-family:inherit;color:var(--ink);cursor:pointer;transition:.15s;box-shadow:0 1px 0 rgba(0,0,0,.02)}
+  .ar-btn:hover{border-color:var(--gold);color:var(--gold);transform:translateY(-1px)}
+  .ind-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .ind-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:13px 15px;text-align:center}
+  .ind-v{font-family:'Cinzel';font-size:20px;color:var(--gold-2);line-height:1.1;word-break:break-word}
+  .ind-t{font-size:11px;color:var(--dim);margin-top:5px}
   .torre-kpi{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:center}
   .torre-kpi.alerta{border-color:var(--danger-bd);background:var(--danger-bg)}
   .torre-kpi .v{font-family:'Cinzel';font-size:26px;color:var(--gold-2);line-height:1}
@@ -490,6 +497,18 @@
       <div class="topline"><h2>Sua clínica hoje</h2><span class="sub">tudo que pede sua atenção, num lugar só</span></div>
       <div id="marcaCTA"></div>
       <div id="torreResumo" class="torre-resumo"></div>
+
+      <div class="acoes-rapidas">
+        <button class="ar-btn" onclick="abrirAgendamentoModal()">📅 Novo agendamento</button>
+        <button class="ar-btn" onclick="abrirCadastroModal()">＋ Novo paciente</button>
+        <button class="ar-btn" onclick="nav('financeiro')">💰 Financeiro</button>
+        <button class="ar-btn" onclick="nav('agenda')">🗓️ Agenda</button>
+      </div>
+
+      <div class="torre-bloco">
+        <div class="torre-h">📊 Indicadores do mês</div>
+        <div id="indicadores" class="ind-grid"></div>
+      </div>
 
       <div class="torre-bloco" id="torreHojeBloco">
         <div class="torre-h">📅 Consultas de hoje <span id="torreHojeN" class="torre-cnt"></span></div>
@@ -928,8 +947,24 @@ function nivelPrioridade(p){
 }
 
 const kpi = (v,k,alerta) => `<div class="torre-kpi ${alerta?'alerta':''}"><div class="v">${v}</div><div class="k">${k}</div></div>`;
+function indCard(v,t){ return '<div class="ind-card"><div class="ind-v">'+v+'</div><div class="ind-t">'+t+'</div></div>'; }
+async function carregarIndicadores(){
+  const box=$('indicadores'); if(!box) return;
+  try{
+    const d=await api('/api/admin/indicadores');
+    const comp = d.comparecimento==null ? '—' : d.comparecimento+'%';
+    box.innerHTML=
+      indCard(brl(d.faturamento_mes),'Faturamento do mês')+
+      indCard(brl(d.a_receber),'A receber')+
+      indCard(comp,'Comparecimento')+
+      indCard((d.realizadas||0),'Consultas realizadas')+
+      indCard((d.pacientes_ativos||0)+'/'+(d.pacientes_total||0),'Ativos (30d)')+
+      indCard((d.novos_mes||0),'Novos no mês');
+  }catch(e){ box.innerHTML='<p class="muted">—</p>'; }
+}
 async function renderPrioridades(){
   renderMarcaCTA();
+  carregarIndicadores();
   const fmtH = s => s ? new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'nunca conversou';
   const nomes = {seguranca:'segurança', prioridade:'prioridade', atencao:'atenção', observar:'observar'};
 

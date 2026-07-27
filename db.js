@@ -1473,6 +1473,31 @@ export async function financeSummary(orgId, mes) {
   s.balanco = Number(s.recebido_mes || 0) - Number(s.pago_mes || 0);
   return s;
 }
+// INDICADORES DE GESTÃO do mês (faturamento, comparecimento, ativos, novos)
+export async function indicadores(orgId, mes) {
+  if (!pool) return null;
+  const m = /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes + '-01' : null;
+  const r = await pool.query(`
+    WITH mref AS (SELECT date_trunc('month', COALESCE($2::date, (now() AT TIME ZONE 'America/Sao_Paulo')::date))::date AS m)
+    SELECT
+      COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pago'
+        AND date_trunc('month', pago_em AT TIME ZONE 'America/Sao_Paulo') = (SELECT m FROM mref)),0) AS faturamento_mes,
+      COALESCE((SELECT sum(valor) FROM receivables WHERE ($1::bigint IS NULL OR org_id=$1) AND status='pendente'),0) AS a_receber,
+      (SELECT count(*)::int FROM appointments WHERE ($1::bigint IS NULL OR org_id=$1) AND status='realizada'
+        AND date_trunc('month', quando AT TIME ZONE 'America/Sao_Paulo') = (SELECT m FROM mref)) AS realizadas,
+      (SELECT count(*)::int FROM appointments WHERE ($1::bigint IS NULL OR org_id=$1) AND status='cancelada'
+        AND date_trunc('month', quando AT TIME ZONE 'America/Sao_Paulo') = (SELECT m FROM mref)) AS canceladas,
+      (SELECT count(*)::int FROM users WHERE ($1::bigint IS NULL OR org_id=$1) AND role='paciente') AS pacientes_total,
+      (SELECT count(*)::int FROM users WHERE ($1::bigint IS NULL OR org_id=$1) AND role='paciente'
+        AND last_seen_at > now() - interval '30 days') AS pacientes_ativos,
+      (SELECT count(*)::int FROM users WHERE ($1::bigint IS NULL OR org_id=$1) AND role='paciente'
+        AND date_trunc('month', created_at AT TIME ZONE 'America/Sao_Paulo') = (SELECT m FROM mref)) AS novos_mes
+  `, [orgId, m]);
+  const s = r.rows[0] || {};
+  const tot = Number(s.realizadas || 0) + Number(s.canceladas || 0);
+  s.comparecimento = tot > 0 ? Math.round(Number(s.realizadas) / tot * 100) : null;
+  return s;
+}
 // série DIÁRIA do mês: recebimentos e despesas por dia (para o gráfico)
 export async function financeDaily(orgId, mes) {
   if (!pool) return [];
