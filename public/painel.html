@@ -1673,8 +1673,11 @@ async function renderCliVisao(body){
     (goals&&goals.length?goals.slice(0,3).map(g=>'<p class="cli-line">• '+escHtml(g.titulo)+' <span style="color:var(--faint)">('+(g.progresso||0)+'%)</span></p>').join('')
       :'<div class="cli-vaziosn">Nenhum objetivo definido.</div>')+'</div>';
 
+  // 7 · evolução (tendência da tríade ao longo das semanas)
+  const evolBloco=blocoEvolucaoFicha(clin&&clin.checkins);
+
   if(mySeq!==cliBodySeq) return;   // outro render assumiu o corpo; não sobrescreve
-  body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+
+  body.innerHTML=banner+chips+'<div class="cli-snap">'+estado+escBloco+agenda+objBloco+'</div>'+evolBloco+
     (clienteAtual.emergencia&&clienteAtual.emergencia.length?'<p class="subc">🆘 Emergência: '+clienteAtual.emergencia.map(e=>escHtml(e.nome)+' ('+(e.phone||'')+')').join(', ')+'</p>':'')+
     (det.obs_inicial?'<p class="muted" style="margin-top:6px">Obs.: '+escHtml(det.obs_inicial)+'</p>':'')+
     '<p class="subc" style="margin-top:10px">Profissional(is): '+escHtml(prof)+(b.phone?' · 📞 '+escHtml(b.phone):'')+(b.city?' · '+escHtml(b.city):'')+'</p>';
@@ -2557,6 +2560,40 @@ async function togglePlano(){
 const W=460, H2=190, P=28;
 function esc(v,min,max,a,b){ return a+((v-min)/(max-min||1))*(b-a); }
 
+/* Evolução do paciente na ficha: tendência semanal da tríade (mesma leitura do app) */
+function _semTri(checkins){
+  const rows=(checkins||[]).filter(r=>r.dia).slice().sort((a,b)=> a.dia<b.dia?-1:1);
+  if(!rows.length) return [];
+  const t0=new Date(rows[0].dia+'T00:00:00').getTime();
+  const bk={};
+  rows.forEach(r=>{ const wk=Math.floor((new Date(r.dia+'T00:00:00').getTime()-t0)/(7*86400000));
+    const b=bk[wk]=bk[wk]||{corpo:[],alma:[],espirito:[]};
+    ['corpo','alma','espirito'].forEach(k=>{ if(r[k]!=null) b[k].push(Number(r[k])); }); });
+  const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+  return Object.keys(bk).map(Number).sort((a,b)=>a-b).map(w=>({corpo:avg(bk[w].corpo),alma:avg(bk[w].alma),espirito:avg(bk[w].espirito)}));
+}
+function blocoEvolucaoFicha(checkins){
+  const pts=(checkins||[]).filter(r=> r.corpo!=null||r.alma!=null||r.espirito!=null).length;
+  if(pts<2) return '';
+  const sem=_semTri(checkins);
+  const DIMS=[['corpo','Corpo','#5a9068'],['alma','Alma','#C9A227'],['espirito','Espírito','#7E6BB0']];
+  const Wd=520,H=170,P=30,n=sem.length;
+  const x=i=> n<=1?Wd/2:P+(i/(n-1))*(Wd-2*P);
+  const y=v=> (H-P)-(v/10)*(H-2*P);
+  let g='';
+  [0,5,10].forEach(v=>{ const yy=y(v);
+    g+='<line x1="'+P+'" y1="'+yy+'" x2="'+(Wd-P)+'" y2="'+yy+'" stroke="#E7DECB" stroke-width="1"/>'+
+       '<text x="'+(P-7)+'" y="'+(yy+3)+'" font-size="9" fill="#A79E8D" text-anchor="end">'+v+'</text>'; });
+  DIMS.forEach(([k,,c])=>{
+    const pp=sem.map((s,i)=> s[k]==null?null:[x(i),y(s[k])]).filter(Boolean);
+    if(pp.length>=2) g+='<polyline points="'+pp.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+'" fill="none" stroke="'+c+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+    pp.forEach(p=> g+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="2.8" fill="'+c+'"/>');
+  });
+  const leg=DIMS.map(([,nome,c])=>'<span class="stat" style="border-left:3px solid '+c+'">'+nome+'</span>').join(' ');
+  return '<div class="card" style="margin-top:14px"><div class="h2c">📈 Evolução (tendência por semana)</div>'+
+    '<svg viewBox="0 0 '+Wd+' '+H+'" style="width:100%;max-width:560px;display:block">'+g+'</svg>'+
+    '<div style="margin-top:8px">'+leg+'</div></div>';
+}
 function chartLinhas(rows){
   if(!rows.length) return '<p class="muted">Sem dados ainda — os gráficos nascem das conversas.</p>';
   const xs = rows.map((_,i)=>esc(i,0,rows.length-1,P,W-P));
