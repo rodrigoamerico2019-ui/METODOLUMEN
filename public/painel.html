@@ -1445,6 +1445,7 @@ function abrirConsultaModal(id){
   let acoes='';
   if(c.status==='agendada') acoes='<button class="btn" onclick="modalFechar();feitaConsulta('+c.id+')">✓ Realizar</button> <button class="btn ghost" onclick="modalFechar();statusConsulta('+c.id+",'cancelada')\">Cancelar</button>";
   else if(c.status==='realizada' && c.session_id && c.user_id) acoes='<button class="btn" onclick="modalFechar();abrirProntuarioSessao('+c.user_id+','+c.session_id+')">📋 Ver prontuário</button>';
+  if(c.status==='realizada' && c.user_id) acoes+=" <button class=\"btn ghost\" onclick=\"modalFechar();cobrarSessao("+c.user_id+",'"+(c.quando_local||'')+"')\">💰 Gerar cobrança</button>";
   modalAbrir('Consulta',
     '<p style="font-size:16px;color:var(--ink)"><b>'+escHtml(c.paciente||'—')+'</b></p>'+
     '<p class="cli-line">'+w.d+' às '+w.h+' · '+(c.modalidade||'')+' · '+(c.duracao_min||50)+' min · '+stTxt+'</p>'+
@@ -1508,9 +1509,35 @@ async function feitaConsulta(id){
   try{
     const d = await postAdmin('/api/admin/agenda/realizar?id='+id, {});
     if(!$('view-detalhe').classList.contains('hide') && pacienteAtual) abrirPaciente(pacienteAtual.id); else carregarAgenda();
-    if(d.session_id && await modalConfirm('Consulta realizada ✓\nAbrir o prontuário desta sessão agora?'))
+    const c=(window._agConsultas||[]).find(x=>String(x.id)===String(id));
+    const uid=d.client_user_id||(c&&c.user_id);
+    if(uid && await modalConfirm('Consulta realizada ✓\nGerar a cobrança desta sessão agora?')){ cobrarSessao(uid, c&&c.quando_local); return; }
+    if(d.session_id && await modalConfirm('Abrir o prontuário desta sessão agora?'))
       abrirProntuarioSessao(d.client_user_id, d.session_id);
   }catch(e){ aviso('Erro: '+e.message,'erro'); }
+}
+/* cobrança avulsa da sessão realizada (confirmação de valor — nunca automática) */
+function cobrarSessao(userId, quandoLocal){
+  if(!userId){ aviso('Esta consulta não está vinculada a um paciente.','erro'); return; }
+  const dia = quandoLocal ? (String(quandoLocal).slice(8,10)+'/'+String(quandoLocal).slice(5,7)) : '';
+  const pac = ((pacientes||[]).find(p=>String(p.id)===String(userId))||{}).name || '';
+  const hoje=new Date(); const iso=hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0');
+  modalAbrir('Gerar cobrança da sessão',
+    '<div class="cad-form" style="flex-direction:column;align-items:stretch;gap:11px">'+
+    (pac?'<p class="subc" style="margin:0">'+escHtml(pac)+(dia?' · sessão de '+dia:'')+'</p>':'')+
+    '<label style="font-size:12px;color:var(--dim)">Valor (R$)</label><input id="csbValor" type="number" min="0" step="0.01" placeholder="180.00"/>'+
+    '<label style="font-size:12px;color:var(--dim)">Vencimento</label><input id="csbVenc" type="date" value="'+iso+'"/>'+
+    '<label style="font-size:12px;color:var(--dim)">Descrição</label><input id="csbDesc" value="Sessão'+(dia?' de '+dia:'')+'"/>'+
+    '<p class="subc" style="margin:0;color:var(--faint)">💡 Se este paciente paga mensalidade, não gere cobrança avulsa por sessão — evita cobrar duas vezes.</p>'+
+    '<button class="btn" style="padding:10px 22px" onclick="salvarCobrancaSessao('+userId+')">Gerar cobrança</button><span class="muted" id="csbStatus"></span></div>');
+}
+async function salvarCobrancaSessao(userId){
+  const valor=$('csbValor').value, vencimento=$('csbVenc').value, descricao=$('csbDesc').value.trim();
+  if(!(Number(valor)>0)){ $('csbStatus').textContent='Informe um valor.'; return; }
+  if(!vencimento){ $('csbStatus').textContent='Informe o vencimento.'; return; }
+  $('csbStatus').textContent='gerando…';
+  try{ await postAdmin('/api/admin/finance/receivable',{userId, descricao, valor, vencimento}); modalFechar(); aviso('Cobrança gerada.','ok'); if(!$('view-financeiro').classList.contains('hide')) carregarFinanceiro(); }
+  catch(e){ $('csbStatus').textContent='erro: '+e.message; }
 }
 async function abrirProntuarioSessao(clientId, sessionId){
   await abrirCliente(clientId);       // abre a ficha do paciente
