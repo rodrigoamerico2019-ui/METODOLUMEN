@@ -643,6 +643,31 @@ export async function setOrgLimite(orgId, limite) {
   await pool.query('UPDATE organizations SET limite_pessoas=$2 WHERE id=$1', [orgId, lim]);
   return { ok: true, limite: lim };
 }
+// super-admin redefine usuário e/ou senha de acesso do cliente (mentor da org)
+export async function adminSetMentorCredenciais(orgId, { username, password } = {}) {
+  if (!pool || !orgId) throw new Error('cliente inválido');
+  const m = await pool.query(`SELECT id FROM users WHERE org_id=$1 AND role IN ('mentor','owner') ORDER BY id LIMIT 1`, [orgId]);
+  const uid = m.rows[0] && m.rows[0].id;
+  if (!uid) throw new Error('cliente sem usuário de acesso');
+  const sets = [], vals = []; let i = 1;
+  const user = username != null && String(username).trim() !== ''
+    ? String(username).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '') : null;
+  if (user) {
+    if (user.length < 3) throw new Error('Usuário: mínimo 3 caracteres, sem espaços.');
+    const dup = await pool.query('SELECT 1 FROM users WHERE lower(username)=$1 AND id<>$2', [user, uid]);
+    if (dup.rows[0]) throw new Error('Esse usuário já está em uso.');
+    sets.push(`username=$${i++}`); vals.push(user);
+  }
+  if (password) {
+    if (String(password).length < 6) throw new Error('Senha: mínimo 6 caracteres.');
+    sets.push(`password_hash=$${i++}`); vals.push(await bcrypt.hash(String(password), 10));
+    sets.push(`must_change_login=false`);
+  }
+  if (!sets.length) throw new Error('Informe um novo usuário ou uma nova senha.');
+  vals.push(uid);
+  await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id=$${i}`, vals);
+  return { ok: true, username: user || undefined };
+}
 
 // webhook: registra pagamento recebido + próximo vencimento na organização
 export async function markOrgPagamento(subscription, proximoVencimento) {

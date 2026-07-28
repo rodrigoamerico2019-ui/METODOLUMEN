@@ -37,7 +37,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listAppointments, patientAppointments, addAppointment, setAppointmentStatus, deleteAppointment, realizarConsulta,
          appointmentsForReminder, markAppointmentReminded,
          getMemberRole, listOrgMembers, registrarAuditoria, listAudit,
-         getBranding, setBranding, setLogo, getLogo, clearLogo,
+         getBranding, setBranding, setLogo, getLogo, clearLogo, adminSetMentorCredenciais,
          criarClienteRapido, listClients, getClientFull, updateClientDetails,
          getHealthProfile, saveHealthProfile, getSpiritualProfile, saveSpiritualProfile,
          addEmotionalAssessment, listEmotionalAssessments,
@@ -1128,6 +1128,14 @@ app.post('/api/admin/orgs/limite', requireAdmin, async (req, res) => {
     if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
     const b = req.body || {};
     res.json(await setOrgLimite(Number(b.orgId), b.limite));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// super-admin: redefinir usuário/senha de acesso do cliente (mentor)
+app.post('/api/admin/orgs/credenciais', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const b = req.body || {};
+    res.json(await adminSetMentorCredenciais(Number(b.orgId), { username: b.username, password: b.password }));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // TESTE do WhatsApp (super-admin): status da instância Z-API OU envia msg amigável (?phone=)
