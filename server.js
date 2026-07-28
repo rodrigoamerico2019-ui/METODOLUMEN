@@ -1352,11 +1352,34 @@ app.get('/api/me/scales', requireAuth, async (req, res) => {
 app.get('/api/me/clinica', requireAuth, async (req, res) => {
   try {
     const orgId = await patientOrg(req.user?.uid);
-    if (!orgId || orgId === 1) return res.json({ nome: null, tem_logo: false });   // org padrão não é white-label
+    if (!orgId || orgId === 1) return res.json({ org: orgId || null, nome: null, tem_logo: false });   // org padrão não é white-label
     const b = await getBranding(orgId);
     const nome = b && (b.marca_nome || '').trim() ? b.marca_nome : null;
-    res.json({ nome, subtitulo: (b && b.marca_subtitulo) || '', tem_logo: !!(b && b.tem_logo) });
+    res.json({ org: orgId, nome, subtitulo: (b && b.marca_subtitulo) || '', tem_logo: !!(b && b.tem_logo) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// MARCA PÚBLICA de uma clínica (tela de entrada white-label; link por cliente ?org=ID) — sem login
+app.get('/api/clinica', async (req, res) => {
+  try {
+    const orgId = Number(req.query.org);
+    if (!orgId || orgId === 1) return res.json({ nome: null, tem_logo: false });
+    const b = await getBranding(orgId);
+    const nome = b && (b.marca_nome || '').trim() ? b.marca_nome : null;
+    if (!nome && !(b && b.tem_logo)) return res.json({ nome: null, tem_logo: false });
+    res.json({ nome, subtitulo: (b && b.marca_subtitulo) || '', tem_logo: !!(b && b.tem_logo) });
+  } catch (e) { res.json({ nome: null, tem_logo: false }); }
+});
+app.get('/api/clinica/logo', async (req, res) => {
+  try {
+    const orgId = Number(req.query.org);
+    if (!orgId) return res.status(404).end();
+    const l = await getLogo(orgId);
+    if (!l) return res.status(404).end();
+    res.setHeader('Content-Type', ['image/png', 'image/jpeg', 'image/webp'].includes(l.mime) ? l.mime : 'image/png');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    res.send(l.bytes);
+  } catch (e) { res.status(500).end(); }
 });
 app.get('/api/me/clinica/logo', requireAuth, async (req, res) => {
   try {

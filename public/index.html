@@ -283,6 +283,14 @@
   .authgate .ag-lbl, .authgate .ag-foot { color:#9A917E; }
   .authgate .ag-consent { color:#B8AE9A; }
   .authgate .ag-foto img { border-color:#3A342A; }
+  /* marca da clínica na entrada (white-label por cliente) */
+  .gate-clinica { display:flex; flex-direction:column; align-items:center; gap:6px; animation:fade .5s ease; }
+  .gate-clinica.hide { display:none; }
+  .gate-clinica .gc-logo { max-height:96px; max-width:min(80%,300px); object-fit:contain; }
+  .gate-clinica .gc-logo.hide { display:none; }
+  .gate-clinica .gc-nome { font-family:'Cinzel'; letter-spacing:2px; font-size:22px; color:#EDE6D6; text-align:center; line-height:1.25; }
+  .gate-clinica .gc-por { font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#8A8272; margin-top:2px; }
+  .gate-clinica .gc-por b { color:var(--gold-2); font-weight:600; }
   .ag-tabs { display:flex; gap:8px; margin:10px 0 18px; }
   .ag-tabs button { background:transparent; border:1px solid var(--line); color:var(--ink-dim);
     font-family:'Montserrat'; font-size:13px; letter-spacing:1px; padding:9px 22px; border-radius:999px; cursor:pointer; }
@@ -563,7 +571,12 @@
   <!-- ============ PORTA DE ENTRADA / LOGIN (restrito a pacientes e mentorados) ============ -->
   <div class="authgate hide" id="authgate">
     <div class="ob-logo">
-      <img src="/LOGOTRILUMEN-t.png" alt="TRILUMEN — A Plataforma Inteligente da Jornada Humana" class="ob-logo-img"/>
+      <img src="/LOGOTRILUMEN-t.png" alt="TRILUMEN — A Plataforma Inteligente da Jornada Humana" class="ob-logo-img" id="gateTrilumen"/>
+      <div class="gate-clinica hide" id="gateClinica">
+        <img id="gcLogo" class="gc-logo hide" alt=""/>
+        <div class="gc-nome" id="gcNome"></div>
+        <div class="gc-por">desenvolvido por <b>TriLumen</b></div>
+      </div>
     </div>
     <div class="ag-tabs">
       <button id="agTabLogin" class="on">Entrar</button>
@@ -1789,7 +1802,32 @@ document.getElementById('toast').onclick=()=>{ if(toastUrl) window.open(toastUrl
 renderEmoChart(); renderReport();
 
 const agEl = document.getElementById('authgate');
-function showAuthGate(){ agEl.classList.remove('hide'); }
+function showAuthGate(){ agEl.classList.remove('hide'); resolveClinicaEntrada(); }
+/* white-label na entrada: descobre a clínica por ?org=ID (link do cliente) ou pela memória do aparelho */
+function resolveClinicaEntrada(){
+  try{
+    const url=new URL(location.href);
+    let org=url.searchParams.get('org');
+    if(org){ localStorage.setItem('trilumen_clinica_org', org); }
+    else { org=localStorage.getItem('trilumen_clinica_org'); }
+    if(!org) return;
+    fetch(API_BASE + '/api/clinica?org=' + encodeURIComponent(org))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if(!d || (!d.nome && !d.tem_logo)){ localStorage.removeItem('trilumen_clinica_org'); return; }
+        const tri=document.getElementById('gateTrilumen'), cli=document.getElementById('gateClinica');
+        const nome=document.getElementById('gcNome');
+        nome.textContent=d.nome||'';
+        nome.style.display=d.nome?'':'none';
+        if(d.tem_logo){ const img=document.getElementById('gcLogo');
+          img.onerror=()=>img.classList.add('hide');
+          img.src=API_BASE + '/api/clinica/logo?org=' + encodeURIComponent(org) + '&v=' + Date.now();
+          img.classList.remove('hide'); }
+        if(tri) tri.style.display='none';
+        cli.classList.remove('hide');
+      }).catch(()=>{});
+  }catch(_){}
+}
 function hideAuthGate(){ agEl.classList.add('hide'); }
 function agError(msg){ const e=document.getElementById('agErr'); e.textContent=msg||''; e.classList.toggle('hide', !msg); }
 
@@ -2270,7 +2308,8 @@ function loadClinica(){
   fetch(API_BASE + '/api/me/clinica', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : null)
     .then(d => {
-      if(!d || (!d.nome && !d.tem_logo)) return;   // clínica sem marca própria: mantém o padrão
+      if(!d || (!d.nome && !d.tem_logo)){ localStorage.removeItem('trilumen_clinica_org'); return; }   // sem marca: mantém o padrão
+      if(d.org) localStorage.setItem('trilumen_clinica_org', d.org);   // lembra p/ a tela de entrada nas próximas vezes
       const box=document.getElementById('clinicaBrand'); if(!box) return;
       const nome=document.getElementById('cbNome');
       nome.textContent = d.nome || '';
