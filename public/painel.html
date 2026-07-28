@@ -168,6 +168,13 @@
   .lic-uso{min-width:120px}
   .lic-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin-top:5px}
   .lic-bar i{display:block;height:100%;background:var(--grad)}
+  .adm-bars{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+  .adm-row{display:flex;align-items:center;gap:10px;font-size:12.5px}
+  .adm-row .adm-lb{flex:0 0 128px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adm-row .adm-lb small{color:var(--faint)}
+  .adm-row .adm-track{flex:1;height:12px;border-radius:99px;background:var(--panel2);overflow:hidden}
+  .adm-row .adm-track i{display:block;height:100%;background:linear-gradient(90deg,#B8912F,#C9A227);border-radius:99px}
+  .adm-row .adm-val{flex:0 0 auto;color:var(--ink);font-weight:600;min-width:88px;text-align:right}
   .lic-st{font-size:11px;padding:4px 10px;border-radius:999px;white-space:nowrap}
   .lic-st.ativa{background:rgba(127,176,105,.14);color:#7fb069;border:1px solid var(--ok-bd)}
   .lic-st.inativa{background:var(--danger-bg);color:var(--vermelho);border:1px solid var(--danger-bd)}
@@ -721,6 +728,7 @@
     <section id="view-licencas" class="hide">
       <div class="topline"><h2>Central de Clientes</h2><span class="sub">licenças, uso e financeiro — este painel não acessa os pacientes dos clientes</span></div>
       <div class="lic-stats" id="licStats"></div>
+      <div id="admDash" style="margin-bottom:16px"></div>
       <div class="card">
         <div class="h2c">Clientes e planos
           <button class="btn" style="float:right;padding:8px 18px" onclick="abrirCriarCliente()">+ Criar cliente</button></div>
@@ -1308,6 +1316,7 @@ async function carregarLicencas(){
       <div class="lic-card"><div class="k">Licenças ativas</div><div class="v">${ativas}</div></div>
       <div class="lic-card"><div class="k">A vencer / vencidas</div><div class="v">${aVencer}</div></div>
       <div class="lic-card"><div class="k">Receita/mês</div><div class="v"><small>${brl(receita)}</small></div></div>`;
+    renderAdmDash(orgs);
     const linhas = orgs.map(o=>{
       const pct = o.limite_pessoas ? Math.min(100, Math.round((o.pessoas/o.limite_pessoas)*100)) : 0;
       const fin = statusFinanceiro(o);
@@ -1372,6 +1381,55 @@ async function editarLimite(orgId, atual){
   if(!v) return;
   try{ await postAdmin('/api/admin/orgs/limite', {orgId, limite:Number(v)}); carregarLicencas(); }
   catch(e){ aviso('Erro: '+e.message,'erro'); }
+}
+/* ===== DASHBOARD DO ADM: receita por plano + novos clientes por mês ===== */
+function renderAdmDash(orgs){
+  const box=$('admDash'); if(!box) return;
+  const ativos=orgs.filter(o=>o.status==='ativa');
+  const planos={};
+  ativos.forEach(o=>{ const k=o.plano_nome||o.plano||'—'; const p=planos[k]=planos[k]||{nome:k,clientes:0,receita:0}; p.clientes++; p.receita+=Number(o.preco||0); });
+  const porPlano=Object.values(planos).sort((a,b)=>b.receita-a.receita);
+  const mrr=porPlano.reduce((s,p)=>s+p.receita,0);
+  const usados=orgs.reduce((s,o)=>s+(o.pessoas||0),0);
+  const cap=orgs.reduce((s,o)=>s+(o.limite_pessoas||0),0);
+  const meses=admNovosPorMes(orgs,12);
+  box.innerHTML='<div class="grid">'+
+    '<div class="card"><div class="h2c">💰 Receita recorrente por plano</div>'+
+      '<p class="subc">MRR total: <b>'+brl(mrr)+'/mês</b> · '+ativos.length+' cliente(s) ativo(s)</p>'+
+      admBarrasPlano(porPlano)+'</div>'+
+    '<div class="card"><div class="h2c">📈 Novos clientes por mês</div>'+
+      '<p class="subc">licenças em uso: <b>'+usados+'</b> de '+cap+' ('+(cap?Math.round(usados/cap*100):0)+'% da capacidade)</p>'+
+      admBarrasMes(meses)+'</div>'+
+    '</div>';
+}
+function admNovosPorMes(orgs,n){
+  const now=new Date(); const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const map={}; orgs.forEach(o=>{ if(!o.created_at) return; const k=key(new Date(o.created_at)); map[k]=(map[k]||0)+1; });
+  const out=[]; for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    out.push({ label:String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getFullYear()).slice(2), novos:map[key(d)]||0 }); }
+  return out;
+}
+function admBarrasPlano(rows){
+  if(!rows.length) return '<p class="muted">Sem clientes ativos ainda.</p>';
+  const max=Math.max.apply(null,rows.map(r=>r.receita).concat([1]));
+  return '<div class="adm-bars">'+rows.map(r=>{
+    const w=Math.round(r.receita/max*100);
+    return '<div class="adm-row"><span class="adm-lb">'+escHtml(r.nome)+' <small>('+r.clientes+')</small></span>'+
+      '<span class="adm-track"><i style="width:'+w+'%"></i></span><span class="adm-val">'+brl(r.receita)+'</span></div>';
+  }).join('')+'</div>';
+}
+function admBarrasMes(rows){
+  const W=470,H=155,P=26,n=rows.length;
+  const max=Math.max.apply(null,rows.map(r=>r.novos).concat([1]));
+  const step=(W-2*P)/n, bw=step*0.58;
+  let g='';
+  rows.forEach((r,i)=>{
+    const x=P+(i+0.5)*step, h=(r.novos/max)*(H-2*P);
+    g+='<rect x="'+(x-bw/2).toFixed(1)+'" y="'+(H-P-h).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(h,0).toFixed(1)+'" rx="3" fill="#C9A227"/>';
+    if(r.novos) g+='<text x="'+x.toFixed(1)+'" y="'+(H-P-h-4).toFixed(1)+'" font-size="9" fill="#6B6355" text-anchor="middle">'+r.novos+'</text>';
+    g+='<text x="'+x.toFixed(1)+'" y="'+(H-P+13)+'" font-size="8" fill="#A79E8D" text-anchor="middle">'+r.label+'</text>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block">'+g+'</svg>';
 }
 /* super-admin: alterar usuário/senha de acesso do cliente */
 function editarAcesso(orgId, username){
