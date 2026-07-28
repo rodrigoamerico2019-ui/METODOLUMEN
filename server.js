@@ -1348,6 +1348,29 @@ app.get('/api/me/scales', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// MINHA CLÍNICA — marca (white-label) da clínica do paciente para a tela inicial
+app.get('/api/me/clinica', requireAuth, async (req, res) => {
+  try {
+    const orgId = await patientOrg(req.user?.uid);
+    if (!orgId || orgId === 1) return res.json({ nome: null, tem_logo: false });   // org padrão não é white-label
+    const b = await getBranding(orgId);
+    const nome = b && (b.marca_nome || '').trim() ? b.marca_nome : null;
+    res.json({ nome, subtitulo: (b && b.marca_subtitulo) || '', tem_logo: !!(b && b.tem_logo) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/me/clinica/logo', requireAuth, async (req, res) => {
+  try {
+    const orgId = await patientOrg(req.user?.uid);
+    if (!orgId) return res.status(404).end();
+    const l = await getLogo(orgId);
+    if (!l) return res.status(404).end();
+    res.setHeader('Content-Type', ['image/png', 'image/jpeg', 'image/webp'].includes(l.mime) ? l.mime : 'image/png');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(l.bytes);
+  } catch (e) { res.status(500).end(); }
+});
+
 // MINHAS CONSULTAS — próxima teleconsulta/presencial do paciente
 app.get('/api/me/appointments', requireAuth, async (req, res) => {
   try {

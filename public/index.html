@@ -372,6 +372,13 @@
   .consulta-card { max-width:440px; margin:0 auto 22px; background:var(--panel); border:1px solid var(--line);
     border-left:3px solid var(--gold-2); border-radius:16px; padding:20px 22px; text-align:left; box-shadow:var(--sh); animation:fade .5s ease; }
   .consulta-card.hide { display:none; }
+  .clinica-brand { display:flex; flex-direction:column; align-items:center; gap:4px; margin:2px auto 16px; max-width:440px; }
+  .clinica-brand.hide { display:none; }
+  .clinica-brand .cb-logo { max-height:64px; max-width:220px; object-fit:contain; margin-bottom:2px; }
+  .clinica-brand .cb-logo.hide { display:none; }
+  .clinica-brand .cb-nome { font-family:'Cormorant Garamond'; font-size:20px; color:var(--ink); text-align:center; line-height:1.2; }
+  .clinica-brand .cb-por { font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-faint); }
+  .clinica-brand .cb-por b { color:var(--gold-soft); font-weight:600; }
   .cc-eyebrow { font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:6px; }
   .cc-quando { font-family:'Cormorant Garamond'; font-size:21px; color:var(--ink); text-transform:capitalize; line-height:1.25; }
   .cc-mod { font-size:12.5px; color:var(--ink-dim); margin:2px 0 12px; }
@@ -665,6 +672,13 @@
 
     <!-- ============ JORNADA (tela inicial) ============ -->
     <div class="view active" id="view-jornada">
+      <!-- marca da clínica (white-label do cliente) -->
+      <div class="clinica-brand hide" id="clinicaBrand">
+        <img id="cbLogo" class="cb-logo hide" alt=""/>
+        <div class="cb-nome" id="cbNome"></div>
+        <div class="cb-por">desenvolvido por <b>TriLumen</b></div>
+      </div>
+
       <div class="jor-hello">
         <div class="jor-day" id="jorDay">Olá.</div>
         <div class="jor-mem" id="jorMem"></div>
@@ -1880,6 +1894,7 @@ function continuarAposMapa(){
     }).catch(()=>{});
   // a tela inicial agora é a JORNADA (não mais o check-in obrigatório)
   renderJornada();
+  loadClinica();          // marca da clínica (white-label) na tela inicial
   loadJourney();          // esferas, sequência de dias e vitórias no Monitor
   loadProximaConsulta();  // próxima consulta (teleconsulta por link / presencial)
   loadEvolucao();         // gráfico da evolução (tríade + escalas ao longo do tempo)
@@ -2247,6 +2262,27 @@ async function enviarAudio(){
     } else st.textContent = 'Erro: ' + (d.error||'tente de novo');
   }catch(e){ st.textContent = 'Não consegui enviar. Tente de novo.'; }
   finally{ btn.disabled = false; }
+}
+
+/* ===== MARCA DA CLÍNICA (white-label do cliente na tela inicial) ===== */
+function loadClinica(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/clinica', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if(!d || (!d.nome && !d.tem_logo)) return;   // clínica sem marca própria: mantém o padrão
+      const box=document.getElementById('clinicaBrand'); if(!box) return;
+      const nome=document.getElementById('cbNome');
+      nome.textContent = d.nome || '';
+      nome.style.display = d.nome ? '' : 'none';
+      if(d.tem_logo){
+        fetch(API_BASE + '/api/me/clinica/logo', { headers: authHeaders() })
+          .then(r => r.ok ? r.blob() : null)
+          .then(b => { if(!b) return; const img=document.getElementById('cbLogo'); img.src=URL.createObjectURL(b); img.classList.remove('hide'); })
+          .catch(()=>{});
+      }
+      box.classList.remove('hide');
+    }).catch(()=>{});
 }
 
 /* ===== PRÓXIMA CONSULTA (teleconsulta por link / presencial) ===== */
