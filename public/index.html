@@ -146,6 +146,18 @@
   .send-btn:active { transform:scale(.9); }
   .send-btn:disabled { opacity:.4; cursor:default; }
   .composer .hint { font-size:10px; color:var(--ink-faint); text-align:center; margin-top:7px; letter-spacing:.4px; }
+  /* voz: falar com a Lúmen (microfone) e ouvir as respostas */
+  .mic-btn { width:42px; height:42px; border-radius:50%; border:1px solid var(--line); background:var(--panel); color:var(--gold-2);
+    font-size:18px; cursor:pointer; flex:0 0 auto; display:grid; place-items:center; transition:transform .15s; }
+  .mic-btn.hide { display:none; }
+  .mic-btn:active { transform:scale(.9); }
+  .mic-btn.on { background:#7a2f2f; border-color:#c0504d; color:#fff; animation:micPulse 1.2s ease-in-out infinite; }
+  @keyframes micPulse { 0%,100% { box-shadow:0 0 0 0 rgba(192,80,77,.55); } 50% { box-shadow:0 0 0 8px rgba(192,80,77,0); } }
+  .voz-bar { display:flex; justify-content:center; gap:14px; margin-top:6px; font-size:10.5px; color:var(--ink-faint); }
+  .voz-bar button { background:none; border:none; color:var(--ink-dim); font:inherit; cursor:pointer; padding:2px 4px; }
+  .voz-bar button.on { color:var(--gold-2); }
+  .bub-ouvir { display:inline-block; margin-top:6px; background:none; border:none; color:var(--gold-2); font-size:11px; cursor:pointer; padding:0; font-family:inherit; opacity:.8; }
+  .ag-consent.hide { display:none; }
 
   /* ---------- MONITOR ---------- */
   .aura-wrap { display:grid; place-items:center; margin:8px 0 20px; }
@@ -584,7 +596,7 @@
     </div>
 
     <form class="ag-form" id="agLoginForm" autocomplete="on">
-      <input type="email" id="agLoginEmail" placeholder="Seu e-mail" autocomplete="email" required />
+      <input type="text" id="agLoginEmail" placeholder="Seu usuário ou e-mail" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
       <input type="password" id="agLoginPass" placeholder="Sua senha" autocomplete="current-password" required />
       <button type="submit" class="ag-btn" id="agLoginBtn">Entrar</button>
     </form>
@@ -624,12 +636,29 @@
       <a href="/instalar.html" style="color:var(--gold-soft);text-decoration:none">📲 Instalar o app no celular</a></div>
   </div>
 
+  <!-- ============ 1º ACESSO: troca da senha provisória criada pelo terapeuta ============ -->
+  <div class="mapagate hide" id="senhaGate">
+    <div class="mg-wrap">
+      <div class="mg-eyebrow">🔑 Primeiro acesso</div>
+      <div class="mg-titulo">Crie a sua senha</div>
+      <div class="mg-intro">Você entrou com a senha provisória que recebeu. Agora escolha uma senha só sua — ninguém mais vai saber qual é.</div>
+      <form class="ag-form" id="sgForm" style="margin:0 auto">
+        <input type="password" id="sgPass" placeholder="Nova senha (mín. 6)" autocomplete="new-password" required />
+        <input type="password" id="sgPass2" placeholder="Repita a nova senha" autocomplete="new-password" required />
+        <label class="ag-consent hide" id="sgConsentRow"><input type="checkbox" id="sgConsent" />
+          Aceito que minhas conversas, respostas e mensagens de voz fiquem guardadas com segurança para o meu acompanhamento, acessíveis ao meu terapeuta. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
+        <button type="submit" class="ag-btn" id="sgBtn">Salvar e continuar</button>
+      </form>
+      <div class="ag-err hide" id="sgErr" style="margin:14px auto 0"></div>
+    </div>
+  </div>
+
   <!-- ============ MAPA INICIAL (questionário obrigatório do 1º acesso) ============ -->
   <div class="mapagate hide" id="mapaGate">
     <div class="mg-wrap">
       <div class="mg-eyebrow">🧭 Antes de começarmos</div>
       <div class="mg-titulo">Seu ponto de partida</div>
-      <div class="mg-intro">São 10 perguntas rápidas para eu te conhecer e caminhar com você desde o primeiro dia. Não existe resposta certa — só a sua verdade.</div>
+      <div class="mg-intro">São <span id="mgTotal">algumas</span> perguntas rápidas sobre como você está hoje: emoções, corpo e vida com Deus. Assim eu te conheço e caminho com você desde o primeiro dia. Não existe resposta certa — só a sua verdade.</div>
       <div class="mg-prog"><i id="mgProg" style="width:0%"></i></div>
       <div id="mgQuizArea"></div>
       <div class="mg-passo" id="mgPasso"></div>
@@ -735,9 +764,11 @@
       <div class="chat-scroll" id="chatScroll"></div>
       <div class="composer">
         <div class="composer-row">
+          <button class="mic-btn hide" id="micBtn" aria-label="falar com a Lúmen" title="Toque para falar">🎙</button>
           <textarea id="input" rows="1" placeholder="Fala comigo…"></textarea>
           <button class="send-btn" id="sendBtn">↑</button>
         </div>
+        <div class="voz-bar" id="vozBar"><button id="vozToggle" aria-pressed="false">🔈 ouvir respostas: desligado</button></div>
         <div class="hint" id="composerHint">Lúmen é um apoio, não substitui acompanhamento profissional</div>
       </div>
     </div>
@@ -1165,6 +1196,12 @@ function addBubble(role, text){
   const bub = document.createElement('div');
   bub.className = 'bubble ' + (role === 'user' ? 'me' : 'lumen');
   bub.innerHTML = formatText(text);
+  if(role !== 'user' && 'speechSynthesis' in window){
+    const ouvir = document.createElement('button');
+    ouvir.className = 'bub-ouvir'; ouvir.textContent = '▶ ouvir';
+    ouvir.onclick = () => falarTexto(text);
+    bub.appendChild(document.createElement('br')); bub.appendChild(ouvir);
+  }
   wrap.appendChild(av); wrap.appendChild(bub);
   chatScroll.appendChild(wrap);
   scrollBottom();
@@ -1238,6 +1275,7 @@ function triggerAlert(userText, type){
 
 async function sendMessage(text){
   if(!text) return;
+  const porVoz = vozOrigem; vozOrigem = false;   // falou pelo microfone → a resposta vem em voz
   addBubble('user', text);
   state.history.push({ role:'user', content:text });
   state.msgCount++;
@@ -1264,6 +1302,7 @@ async function sendMessage(text){
     applyMeta(meta);
     if(!message) message = (state.name ? state.name + ', ' : '') + '*estou aqui com você.* Me conta um pouco mais do que está passando?';
     addBubble('lumen', message);
+    if(porVoz || vozLigada) falarTexto(message);
 
     if(selfHarm) crisisCard(); // recursos CVV para risco à própria vida
     state.history.push({ role:'assistant', content:message });
@@ -1442,6 +1481,96 @@ function localLumenReply(text, flags){
 sendBtn.onclick = send;
 input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
 input.addEventListener('input', () => { input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,110)+'px'; });
+
+/* ============================================================
+   VOZ — a pessoa fala com a Lúmen pelo microfone (reconhecimento de
+   fala do próprio aparelho) e pode ouvir as respostas em voz alta.
+   O que foi dito vira texto e entra no histórico como qualquer
+   mensagem — o terapeuta vê tudo no painel.
+============================================================ */
+let vozOrigem = false;
+let vozLigada = false;
+try { vozLigada = localStorage.getItem('lumen_voz') === 'on'; } catch(_){}
+const micBtn = document.getElementById('micBtn');
+const vozToggle = document.getElementById('vozToggle');
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function pintarVozToggle(){
+  vozToggle.textContent = vozLigada ? '🔊 ouvir respostas: ligado' : '🔈 ouvir respostas: desligado';
+  vozToggle.classList.toggle('on', vozLigada);
+  vozToggle.setAttribute('aria-pressed', String(vozLigada));
+}
+if('speechSynthesis' in window){
+  pintarVozToggle();
+  vozToggle.onclick = () => {
+    vozLigada = !vozLigada;
+    try { localStorage.setItem('lumen_voz', vozLigada ? 'on' : 'off'); } catch(_){}
+    if(!vozLigada) speechSynthesis.cancel();
+    pintarVozToggle();
+  };
+} else document.getElementById('vozBar').style.display = 'none';
+
+// escolhe a voz em português mais natural disponível no aparelho
+function vozPtBr(){
+  const vs = speechSynthesis.getVoices().filter(v => /^pt(-|_)?BR/i.test(v.lang) || /portugu.s.*brasil/i.test(v.name));
+  return vs.find(v => /natural|online|neural/i.test(v.name)) || vs.find(v => /google/i.test(v.name)) || vs[0] || null;
+}
+if('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => {};   // força o carregamento das vozes
+
+function falarTexto(texto){
+  if(!('speechSynthesis' in window)) return;
+  const limpo = String(texto || '')
+    .replace(/##META\{[\s\S]*?\}##/g, '')
+    .replace(/[*_#>`]/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/\s+/g, ' ').trim();
+  if(!limpo) return;
+  speechSynthesis.cancel();
+  // frases curtas: alguns navegadores cortam falas longas no meio
+  const partes = limpo.match(/[^.!?…]+[.!?…]*/g) || [limpo];
+  const voz = vozPtBr();
+  partes.forEach(p => {
+    const u = new SpeechSynthesisUtterance(p.trim());
+    u.lang = 'pt-BR'; u.rate = 1.0; u.pitch = 1.0;
+    if(voz) u.voice = voz;
+    speechSynthesis.speak(u);
+  });
+}
+
+if(SpeechRec){
+  micBtn.classList.remove('hide');
+  let rec = null, gravando = false, base = '', ouvido = '';
+  const parar = () => { if(rec) try { rec.stop(); } catch(_){} };
+  micBtn.onclick = () => {
+    if(gravando){ parar(); return; }
+    if('speechSynthesis' in window) speechSynthesis.cancel();   // a Lúmen se cala quando a pessoa vai falar
+    rec = new SpeechRec();
+    rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true;
+    base = input.value.trim(); ouvido = '';
+    rec.onstart = () => { gravando = true; micBtn.classList.add('on'); micBtn.textContent = '■'; input.placeholder = 'Estou ouvindo… toque ■ para enviar'; };
+    rec.onresult = ev => {
+      let final = '', parcial = '';
+      for(let i = 0; i < ev.results.length; i++){
+        const t = ev.results[i][0].transcript;
+        if(ev.results[i].isFinal) final += t; else parcial += t;
+      }
+      ouvido = (final + ' ' + parcial).trim();
+      input.value = (base ? base + ' ' : '') + ouvido;
+      input.dispatchEvent(new Event('input'));
+    };
+    rec.onerror = ev => {
+      if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed')
+        toast('🎙 Permita o uso do microfone para falar com a Lúmen (nas configurações do navegador).');
+      else if(ev.error === 'no-speech') toast('Não ouvi nada. Toque no 🎙 e fale de novo.');
+    };
+    rec.onend = () => {
+      gravando = false; micBtn.classList.remove('on'); micBtn.textContent = '🎙'; input.placeholder = 'Fala comigo…';
+      if(ouvido && input.value.trim()){ vozOrigem = true; send(); }
+      rec = null;
+    };
+    try { rec.start(); } catch(_){ toast('Não consegui ligar o microfone agora.'); }
+  };
+}
 
 /* ---- parse META do modelo ---- */
 function parseReply(raw){
@@ -1853,7 +1982,7 @@ async function agSubmit(url, body, btn){
 }
 document.getElementById('agLoginForm').onsubmit = ev => { ev.preventDefault();
   agSubmit('/api/auth/login', {
-    email: document.getElementById('agLoginEmail').value,
+    login: document.getElementById('agLoginEmail').value.trim(),
     password: document.getElementById('agLoginPass').value
   }, document.getElementById('agLoginBtn'));
 };
@@ -1912,6 +2041,40 @@ function afterLogin(){
     const inp = document.getElementById('obNameInput');
     inp.value = AUTH.name; inp.readOnly = true; inp.style.opacity = .8;
   }
+  // 1º ACESSO: quem entrou com a senha provisória do terapeuta cria a própria senha antes de tudo
+  fetch(API_BASE + '/api/auth/me', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : {})
+    .then(me => { if(me && me.must_change) mostrarSenhaGate(!!me.precisa_consentimento); else seguirParaMapa(); })
+    .catch(() => seguirParaMapa());
+}
+
+function mostrarSenhaGate(pedirConsentimento){
+  document.getElementById('sgConsentRow').classList.toggle('hide', !pedirConsentimento);
+  document.getElementById('senhaGate').classList.remove('hide');
+  document.getElementById('sgForm').onsubmit = async ev => {
+    ev.preventDefault();
+    const err = document.getElementById('sgErr'), btn = document.getElementById('sgBtn');
+    const p1 = document.getElementById('sgPass').value, p2 = document.getElementById('sgPass2').value;
+    const fail = m => { err.textContent = m; err.classList.remove('hide'); };
+    err.classList.add('hide');
+    if(p1.length < 6) return fail('A senha precisa de pelo menos 6 caracteres.');
+    if(p1 !== p2) return fail('As duas senhas não são iguais.');
+    const consent = document.getElementById('sgConsent').checked;
+    if(pedirConsentimento && !consent) return fail('Para continuar, marque que aceita o termo.');
+    btn.disabled = true;
+    try {
+      const r = await fetch(API_BASE + '/api/auth/password', { method:'POST', headers: authHeaders(), body: JSON.stringify({ password: p1, consent }) });
+      const d = await r.json().catch(() => ({ error:'Falha de conexão. Tente de novo.' }));
+      if(d.error) throw new Error(d.error);
+      document.getElementById('senhaGate').classList.add('hide');
+      toast('🔑 Senha criada. Use-a nos próximos acessos.');
+      seguirParaMapa();
+    } catch(e){ fail(e.message || 'Não consegui salvar a senha.'); }
+    finally { btn.disabled = false; }
+  };
+}
+
+function seguirParaMapa(){
   // MAPA INICIAL obrigatório: se ainda não respondeu, ele bloqueia a entrada
   fetch(API_BASE + '/api/me/mapa', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : { done: true })
@@ -1952,6 +2115,7 @@ function continuarAposMapa(){
 let mapaSt = null;
 function mostrarMapaGate(catalogo){
   mapaSt = { cat: catalogo, i: 0, resp: [] };
+  document.getElementById('mgTotal').textContent = catalogo.length;
   document.getElementById('mapaGate').classList.remove('hide');
   paintMapa();
 }

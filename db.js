@@ -514,18 +514,45 @@ export async function register({ name, email, password, invite, consent, birth, 
   return issueToken(u.rows[0]);
 }
 
-export async function login({ email, password }) {
+// login do app: por e-mail OU pelo usuário que o terapeuta definiu (só pacientes)
+export async function login({ email, login: lg, password }) {
   if (!pool) throw new Error('banco não configurado');
-  const u = await pool.query('SELECT * FROM users WHERE email=$1', [norm(email)]);
+  const l = norm(lg || email);
+  const u = await pool.query(
+    `SELECT * FROM users WHERE email=$1 OR (role='paciente' AND lower(username)=$1) ORDER BY (email=$1) DESC LIMIT 1`, [l]);
   if (!u.rows[0] || !(await bcrypt.compare(String(password || ''), u.rows[0].password_hash)))
-    throw new Error('E-mail ou senha incorretos.');
+    throw new Error('Usuário ou senha incorretos.');
   await pool.query('UPDATE users SET last_seen_at=now() WHERE id=$1', [u.rows[0].id]);
   return issueToken(u.rows[0]);
 }
 
 function issueToken(u) {
   const token = jwt.sign({ uid: u.id, name: u.name, role: u.role }, JWT_SECRET, { expiresIn: '30d' });
-  return { token, name: u.name, email: u.email, role: u.role };
+  return { token, name: u.name, email: u.email, role: u.role, must_change: !!u.must_change_login };
+}
+
+// situação da conta do paciente: precisa trocar a senha provisória? já deu o consentimento?
+export async function contaPaciente(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query('SELECT must_change_login, consent_at FROM users WHERE id=$1', [uid]);
+  if (!r.rows[0]) return null;
+  return { must_change: !!r.rows[0].must_change_login, precisa_consentimento: !r.rows[0].consent_at };
+}
+
+// 1º acesso: o paciente troca a senha provisória (e aceita o termo, se ainda não aceitou)
+export async function trocarSenhaPaciente(uid, { password, consent }) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const senha = String(password || '');
+  if (senha.length < 6) throw new Error('A nova senha precisa de pelo menos 6 caracteres.');
+  const st = await contaPaciente(uid);
+  if (!st) throw new Error('Conta não encontrada.');
+  if (st.precisa_consentimento && !consent) throw new Error('É preciso aceitar o termo para usar o app.');
+  const hash = await bcrypt.hash(senha, 10);
+  await pool.query(`UPDATE users SET password_hash=$2, must_change_login=false,
+      consent_at=COALESCE(consent_at, CASE WHEN $3 THEN now() END) WHERE id=$1`, [uid, hash, !!consent]);
+  const org = await pool.query('SELECT org_id FROM users WHERE id=$1', [uid]);
+  await registrarAuditoria({ orgId: org.rows[0]?.org_id, userId: uid, clientId: uid, acao: 'senha_trocada_1o_acesso', entidade: 'client_access', entidadeId: uid });
+  return { ok: true };
 }
 
 // --- middleware: exige login nas rotas de conversa ---
@@ -2012,14 +2039,37 @@ export async function updateSessionTask(id, orgId, clientId, t = {}, uid) {
 // APENAS o que foi liberado (resumos compartilhados + tarefas compartilhadas).
 export async function statusAcessoCliente(clientId) {
   if (!pool || !clientId) return null;
-  const u = await pool.query(`SELECT (password_hash <> '') AS tem_acesso, email, name FROM users WHERE id=$1`, [clientId]);
+  const u = await pool.query(`SELECT (password_hash <> '') AS tem_acesso, email, name, username, must_change_login, last_seen_at
+    FROM users WHERE id=$1`, [clientId]);
   if (!u.rows[0]) return null;
   const t = await pool.query(`SELECT token, expira_em FROM client_access_tokens
     WHERE client_user_id=$1 AND usado_em IS NULL AND expira_em > now() ORDER BY created_at DESC LIMIT 1`, [clientId]);
   const semEmail = !u.rows[0].email || u.rows[0].email.includes('@sem-email.');
   return { tem_acesso: u.rows[0].tem_acesso, nome: u.rows[0].name,
     email: semEmail ? null : u.rows[0].email,
+    usuario: u.rows[0].username || null,
+    senha_provisoria: !!u.rows[0].must_change_login,
+    ultimo_acesso: u.rows[0].last_seen_at || null,
     convite: t.rows[0] ? { token: t.rows[0].token, expira_em: t.rows[0].expira_em } : null };
+}
+// O terapeuta define usuário + senha provisória do paciente; no 1º acesso o app pede a troca.
+export async function definirLoginPaciente(clientId, orgId, uid, { username, password }) {
+  if (!pool || !clientId) throw new Error('banco não configurado');
+  const user = String(username || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,30}$/.test(user)) throw new Error('Usuário: 3 a 30 caracteres, só letras sem acento, números, ponto, hífen ou _.');
+  const senha = String(password || '');
+  if (senha.length < 6) throw new Error('A senha provisória precisa de pelo menos 6 caracteres.');
+  const c = await pool.query(`SELECT id FROM users WHERE id=$1 AND role='paciente'`, [clientId]);
+  if (!c.rows[0]) throw new Error('Paciente não encontrado.');
+  const dup = await pool.query('SELECT 1 FROM users WHERE (lower(username)=$1 OR email=$1) AND id<>$2', [user, clientId]);
+  if (dup.rows[0]) throw new Error('Esse usuário já está em uso. Escolha outro.');
+  const hash = await bcrypt.hash(senha, 10);
+  await pool.query('UPDATE users SET username=$2, password_hash=$3, must_change_login=true WHERE id=$1', [clientId, user, hash]);
+  // o link de convite antigo deixa de valer (agora o acesso é por usuário e senha)
+  await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
+  await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [clientId]);
+  await registrarAuditoria({ orgId, userId: uid, clientId, acao: 'acesso_login_definido', entidade: 'client_access', entidadeId: clientId, dados: { usuario: user } });
+  return { ok: true, usuario: user };
 }
 export async function criarAcessoCliente(clientId, orgId, uid) {
   if (!pool || !clientId) throw new Error('banco não configurado');

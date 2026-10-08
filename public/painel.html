@@ -950,7 +950,7 @@ function nivelPrioridade(p){
   if(st==='vermelho')                 return {nivel:'prioridade',ordem:4, motivo:'Último atendimento terminou em estado vermelho'};
   if(dias>=7 && p.mensagens>0)        return {nivel:'atencao',   ordem:3, motivo:`Sem acessar há ${dias} dias — pode ter se afastado da jornada`};
   if(st==='amarelo')                  return {nivel:'atencao',   ordem:3, motivo:'Última conversa em atenção (amarelo) — dor ainda ativa'};
-  if(p.mapa_risco)                    return {nivel:'atencao',   ordem:3, motivo:'Sinais de alerta no Mapa Inicial (passado difícil / desesperança) — acolher com atenção'};
+  if(p.mapa_risco)                    return {nivel:'atencao',   ordem:3, motivo:'Sinais de alerta no Mapa Inicial — acolher com atenção'};
   if(dias>=5)                         return {nivel:'observar',  ordem:2, motivo:`${dias} dias sem acesso`};
   if(!p.ultima_conversa)              return {nivel:'observar',  ordem:2, motivo:'Ainda não iniciou nenhuma conversa'};
   return {nivel:'informativo', ordem:1, motivo:'Acolhido, sem sinais de atenção'};
@@ -2174,24 +2174,42 @@ async function renderCliAcesso(body){
   body.innerHTML='<p class="muted">carregando…</p>';
   let st; try{ st=await api('/api/admin/clients/access?id='+clienteAtual.id); }catch(e){ body.innerHTML='<p class="muted">Erro: '+e.message+'</p>'; return; }
   const temEmail=!!st.email;
-  const cabeca = st.tem_acesso
-    ? '<div id="dStats"><span class="stat"><b>ativo</b>acesso ao app</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail de login</span>':'')+'</div>'+
-      '<p class="subc" style="margin-top:12px">O paciente já tem senha e entra no app pelo e-mail dele. Ele vê apenas os resumos e tarefas que você compartilhou — nunca o prontuário.</p>'
-    : '<div id="dStats"><span class="stat"><b>sem acesso</b>ainda não entrou</span>'+(temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail</span>':'<span class="stat"><b>sem e-mail</b>use o link</span>')+'</div>'+
-      '<p class="subc" style="margin-top:12px">Gere um convite para o paciente criar a própria senha. O link vale 7 dias e só pode ser usado uma vez.</p>';
+  acAppLink = st.app || (location.origin + '/instalar.html');
+  const situacao = !st.tem_acesso ? '<span class="stat"><b>sem acesso</b>ainda não pode entrar</span>'
+    : st.senha_provisoria ? '<span class="stat"><b>aguardando 1º acesso</b>senha provisória</span>'
+    : '<span class="stat"><b>ativo</b>já entrou no app</span>';
+  const cabeca = '<div id="dStats">'+situacao+
+      (st.usuario?'<span class="stat"><b>'+escHtml(st.usuario)+'</b>usuário do app</span>':'')+
+      (temEmail?'<span class="stat"><b>'+escHtml(st.email)+'</b>e-mail</span>':'')+
+      (st.ultimo_acesso?'<span class="stat"><b>'+new Date(st.ultimo_acesso).toLocaleDateString('pt-BR')+'</b>último acesso</span>':'')+'</div>';
+  // usuário sugerido a partir do nome: "Maria da Silva" → maria.silva
+  const partes=String(st.nome||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/).filter(p=>p.length>2);
+  const sugestao = st.usuario || (partes.length>1 ? partes[0]+'.'+partes[partes.length-1] : (partes[0]||''));
+  const formLogin =
+    '<div class="section-title" style="font-size:14px;margin-top:16px">Usuário e senha do app</div>'+
+    '<p class="subc" style="margin:4px 0 10px">Você define o usuário e uma senha provisória e entrega ao paciente. No primeiro acesso o app pede para ele criar a própria senha, e então aparece o questionário inicial.</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+    '<input id="acUser" placeholder="usuário (ex.: maria.silva)" value="'+escHtml(sugestao)+'" autocomplete="off" style="flex:1 1 180px"/>'+
+    '<input id="acPass" placeholder="senha provisória (mín. 6)" value="'+gerarSenhaProvisoria()+'" autocomplete="off" style="flex:1 1 160px"/>'+
+    '<button class="btn ghost" style="padding:8px 14px" title="gerar outra senha" onclick="$(\'acPass\').value=gerarSenhaProvisoria()">↻</button>'+
+    '<button class="btn" style="padding:9px 20px" onclick="salvarLoginPaciente()">'+(st.usuario?'Redefinir acesso':'Criar acesso')+'</button>'+
+    '</div><div id="acCred"></div>';
   const pend = st.convite
     ? '<div class="cad-ok" style="margin:14px 0">🔗 Convite pendente — <small>expira '+new Date(st.convite.expira_em).toLocaleDateString('pt-BR')+'</small>'+
       '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
       '<input id="acLink" readonly value="'+escHtml(st.convite.link||'')+'" style="flex:1 1 260px;font-size:12px"/>'+
       '<button class="btn ghost" style="padding:8px 16px" onclick="copiarLink()">copiar link</button></div></div>'
     : '';
-  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 O acesso é do paciente: a senha é criada por ele e você nunca a vê.</p>'+
-    cabeca + pend +
+  body.innerHTML='<p class="cli-vazio" style="padding:8px;text-align:left;color:var(--faint)">🔒 A senha provisória só aparece aqui na hora em que você cria. Depois que o paciente troca, nem você vê a nova senha.</p>'+
+    cabeca + formLogin +
+    '<details style="margin-top:18px"><summary class="muted" style="cursor:pointer">Outra opção: link para o paciente criar a própria senha (login por e-mail)</summary>'+
+    pend +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'+
-    '<button class="btn" style="padding:9px 20px" onclick="gerarAcesso(false)">'+(st.convite?'Gerar novo link':'Gerar link de acesso')+'</button>'+
+    '<button class="btn ghost" style="padding:9px 20px" onclick="gerarAcesso(false)">'+(st.convite?'Gerar novo link':'Gerar link de acesso')+'</button>'+
     (temEmail?'<button class="btn ghost" style="padding:9px 20px" onclick="gerarAcesso(true)">Gerar e enviar por e-mail</button>':'')+
-    (st.tem_acesso?'<button class="btn ghost" style="padding:9px 20px" onclick="revogarAcesso()">Revogar acesso</button>':'')+
-    '</div><div class="muted" id="acStatus" style="margin-top:10px"></div>'+
+    '</div></details>'+
+    (st.tem_acesso?'<div style="margin-top:14px"><button class="btn ghost" style="padding:9px 20px" onclick="revogarAcesso()">Revogar acesso</button></div>':'')+
+    '<div class="muted" id="acStatus" style="margin-top:10px"></div>'+
     // preferência de WhatsApp (opt-out): os lembretes saem do número central da TriLumen, assinados por você
     '<hr style="margin:20px 0;border:none;border-top:1px solid var(--line)"/>'+
     '<div class="section-title" style="font-size:14px">Lembretes por WhatsApp</div>'+
@@ -2205,6 +2223,38 @@ async function alternarWhatsOptout(optout){
     clienteAtual.basico.whats_optout=d.whats_optout;
     $('whatsOptStatus').textContent = optout?'não receberá WhatsApp ✓':'voltará a receber ✓';
   }catch(e){ $('whatsOptStatus').textContent='erro: '+e.message; }
+}
+let acAppLink = '';
+function gerarSenhaProvisoria(){
+  const c='abcdefghjkmnpqrstuvwxyz23456789'; let s='';
+  const r=new Uint32Array(8); crypto.getRandomValues(r);
+  r.forEach(n=>{ s+=c[n%c.length]; }); return s;
+}
+async function salvarLoginPaciente(){
+  const username=$('acUser').value.trim().toLowerCase(), password=$('acPass').value.trim();
+  $('acCred').innerHTML='<p class="muted" style="margin-top:8px">salvando…</p>';
+  try{
+    const d=await postAdmin('/api/admin/clients/login?id='+clienteAtual.id,{username,password});
+    const primeiro=String(clienteAtual.basico&&clienteAtual.basico.name||'').split(' ')[0];
+    const msg='Olá, '+primeiro+'! Seu acesso ao app de acompanhamento está pronto.\n\n'+
+      '📲 Instale o app: '+(d.app||acAppLink)+'\n'+
+      '👤 Usuário: '+d.usuario+'\n🔑 Senha provisória: '+password+'\n\n'+
+      'No primeiro acesso você vai criar a sua própria senha e responder algumas perguntas rápidas para começarmos bem.';
+    const fone=String((clienteAtual.basico&&clienteAtual.basico.phone)||'').replace(/\D/g,'');
+    const wa = fone ? 'https://wa.me/'+(fone.length<=11?'55'+fone:fone)+'?text='+encodeURIComponent(msg) : '';
+    await renderCliAcesso($('cliTabBody'));
+    $('acCred').innerHTML='<div class="cad-ok" style="margin:14px 0">✅ Acesso criado. Envie ao paciente (a senha não fica salva para consulta):'+
+      '<textarea id="acMsg" readonly rows="7" style="width:100%;margin-top:10px;font-size:12.5px">'+escHtml(msg)+'</textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
+      '<button class="btn ghost" style="padding:8px 16px" onclick="copiarMsgAcesso()">copiar mensagem</button>'+
+      (wa?'<a class="btn" style="padding:8px 16px;text-decoration:none" target="_blank" rel="noopener" href="'+escHtml(wa)+'">enviar pelo WhatsApp</a>':'')+
+      '</div></div>';
+  }catch(e){ $('acCred').innerHTML='<p style="color:var(--vermelho);margin-top:8px">Erro: '+escHtml(e.message)+'</p>'; }
+}
+function copiarMsgAcesso(){
+  const el=$('acMsg'); if(!el) return;
+  navigator.clipboard.writeText(el.value).then(()=>{ $('acStatus').textContent='mensagem copiada ✓'; })
+    .catch(()=>{ el.select(); document.execCommand('copy'); $('acStatus').textContent='mensagem copiada ✓'; });
 }
 function copiarLink(){
   const el=$('acLink'); if(!el) return;

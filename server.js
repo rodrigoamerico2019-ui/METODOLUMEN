@@ -46,6 +46,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listSessions, createSession, getSessionFull, updateSession, deleteSession,
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
+         definirLoginPaciente, contaPaciente, trocarSenhaPaciente,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -148,8 +149,15 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   try { res.json(await login(req.body || {})); }
   catch (e) { res.status(401).json({ error: String(e.message || e) }); }
 });
-app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ ok: true, name: req.user?.name || '', role: req.user?.role || 'paciente' });
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  const conta = await contaPaciente(req.user?.uid).catch(() => null);
+  res.json({ ok: true, name: req.user?.name || '', role: req.user?.role || 'paciente',
+             must_change: !!conta?.must_change, precisa_consentimento: !!conta?.precisa_consentimento });
+});
+// 1º acesso: troca da senha provisória criada pelo terapeuta (+ aceite do termo)
+app.post('/api/auth/password', authLimiter, requireAuth, async (req, res) => {
+  try { const b = req.body || {}; res.json(await trocarSenhaPaciente(req.user?.uid, { password: b.password, consent: !!b.consent })); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // histórico recente do próprio paciente (para retomar a conversa entre sessões)
 app.get('/api/auth/history', requireAuth, async (req, res) => {
@@ -743,11 +751,20 @@ app.post('/api/admin/clients/documents/delete', ...clin, async (req, res) => {
 
 // ===== ETAPA 6: acesso do cliente ao app (convite) + portal do compartilhado =====
 const baseUrl = req => process.env.APP_URL || (req.protocol + '://' + req.get('host'));
+// endereço do APP do paciente: no domínio painel.* a raiz "/" abre o painel, então
+// links para o paciente nunca podem usar esse host.
+const appUrl = req => {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
+  const host = String(req.hostname || '').toLowerCase();
+  if (host.startsWith('painel.') || host === 'trilumen.com.br' || host.startsWith('www.')) return 'https://metodolumen.onrender.com';
+  return req.protocol + '://' + req.get('host');
+};
 // status do acesso (tem senha? há convite pendente?)
 app.get('/api/admin/clients/access', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
     const st = await statusAcessoCliente(id);
-    if (st && st.convite) st.convite.link = baseUrl(req) + '/acesso.html?t=' + st.convite.token;
+    if (st && st.convite) st.convite.link = appUrl(req) + '/acesso.html?t=' + st.convite.token;
+    if (st) st.app = appUrl(req) + '/instalar.html';
     res.json(st || {}); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -756,7 +773,7 @@ app.post('/api/admin/clients/access', ...clin, async (req, res) => {
   try {
     const id = await clienteDaOrg(req, res); if (id == null) return;
     const a = await criarAcessoCliente(id, req.orgId, req.mentorUid);
-    const link = baseUrl(req) + '/acesso.html?t=' + a.token;
+    const link = appUrl(req) + '/acesso.html?t=' + a.token;
     let enviado = false, erroEnvio = null;
     const t = mailer();
     if ((req.body || {}).enviar && a.email && t) {
@@ -780,6 +797,14 @@ app.post('/api/admin/clients/access', ...clin, async (req, res) => {
     else if ((req.body || {}).enviar && !t) erroEnvio = 'e-mail não configurado no servidor';
     res.json({ ok: true, link, email: a.email, enviado, erroEnvio });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// usuário + senha provisória definidos pelo terapeuta (o paciente troca a senha no 1º acesso)
+app.post('/api/admin/clients/login', ...clin, async (req, res) => {
+  try { const id = await clienteDaOrg(req, res); if (id == null) return;
+    const b = req.body || {};
+    const r = await definirLoginPaciente(id, req.orgId, req.mentorUid, { username: b.username, password: b.password });
+    res.json({ ...r, app: appUrl(req) + '/instalar.html' }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/clients/access/revoke', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
