@@ -1744,6 +1744,7 @@ async function carregarClientes(){
 // abre o cadastro numa JANELA dentro do sistema (não caixa inline nem popup)
 async function abrirCadastroModal(){
   if(!membrosOrg.length){ try{ membrosOrg=(await api('/api/admin/clients/members')).membros||[]; }catch(_){ } }
+  await carregarCanais();
   modalAbrir('Novo paciente', formCadastroHTML());
 }
 async function toggleCadRapido(){ return abrirCadastroModal(); }   // compatibilidade
@@ -1763,6 +1764,8 @@ function formCadastroHTML(){
     '<input id="crOrigem" placeholder="Origem (indicação, site…)"/>'+
     '<input id="crCanal" placeholder="Canal preferencial"/>'+
     '<input id="crObs" placeholder="Observação inicial" style="flex-basis:100%"/>'+
+    '<div style="flex-basis:100%;margin:4px 0 2px"><b style="font-size:13px">📲 Enviar o link do app com usuário e senha por:</b>'+
+    escolhaCanaisHTML('cr', true)+'</div>'+
     '<button class="btn" style="padding:9px 20px" onclick="salvarCadRapido()">Salvar paciente</button>'+
     '<div id="crResult" style="width:100%"></div></div>';
 }
@@ -1774,9 +1777,15 @@ async function salvarCadRapido(){
   if(!body.name){ $('crResult').innerHTML='<span style="color:var(--amarelo)">Informe o nome.</span>'; return; }
   $('crResult').innerHTML='salvando…';
   try{
+    const canais=canaisMarcados('cr');
     const d=await postAdmin('/api/admin/clients', body);
+    let envio='';
+    if(canais.length){
+      $('crResult').innerHTML='paciente criado — enviando o acesso…';
+      envio = await enviarAcessoApp(d.cliente.id, canais, body.name);
+    }
     $('crResult').innerHTML='<div class="cad-ok">✅ Paciente criado — código <b>'+d.cliente.codigo+'</b>. '+
-      '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="modalFechar();abrirCliente('+d.cliente.id+')">Abrir ficha</button></div>';
+      '<button class="btn" style="padding:6px 14px;margin-left:8px" onclick="modalFechar();abrirCliente('+d.cliente.id+')">Abrir ficha</button>'+envio+'</div>';
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
@@ -2185,9 +2194,16 @@ async function renderCliAcesso(body){
   // usuário sugerido a partir do nome: "Maria da Silva" → maria.silva
   const partes=String(st.nome||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/).filter(p=>p.length>2);
   const sugestao = st.usuario || (partes.length>1 ? partes[0]+'.'+partes[partes.length-1] : (partes[0]||''));
-  const formLogin =
-    '<div class="section-title" style="font-size:14px;margin-top:16px">Usuário e senha do app</div>'+
-    '<p class="subc" style="margin:4px 0 10px">Você define o usuário e uma senha provisória e entrega ao paciente. No primeiro acesso o app pede para ele criar a própria senha, e então aparece o questionário inicial.</p>'+
+  await carregarCanais();
+  const formEnvio =
+    '<div class="section-title" style="font-size:14px;margin-top:16px">Enviar acesso ao app</div>'+
+    '<p class="subc" style="margin:4px 0 4px">O sistema cria o usuário e uma senha provisória e envia ao paciente o link para instalar o app. No primeiro acesso ele cria a própria senha e responde o questionário inicial.</p>'+
+    escolhaCanaisHTML('ac', !st.tem_acesso)+
+    '<button class="btn" style="padding:9px 20px;margin-top:10px" onclick="enviarAcessoFicha()">'+(st.tem_acesso?'Reenviar acesso':'Enviar acesso')+'</button>'+
+    '<div id="acEnvio"></div>';
+  const formLogin = formEnvio +
+    '<div class="section-title" style="font-size:14px;margin-top:22px">Ou defina usuário e senha manualmente</div>'+
+    '<p class="subc" style="margin:4px 0 10px">Você escolhe o usuário e a senha provisória e entrega ao paciente do jeito que preferir.</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
     '<input id="acUser" placeholder="usuário (ex.: maria.silva)" value="'+escHtml(sugestao)+'" autocomplete="off" style="flex:1 1 180px"/>'+
     '<input id="acPass" placeholder="senha provisória (mín. 6)" value="'+gerarSenhaProvisoria()+'" autocomplete="off" style="flex:1 1 160px"/>'+
@@ -2224,6 +2240,53 @@ async function alternarWhatsOptout(optout){
     $('whatsOptStatus').textContent = optout?'não receberá WhatsApp ✓':'voltará a receber ✓';
   }catch(e){ $('whatsOptStatus').textContent='erro: '+e.message; }
 }
+/* ===== envio do acesso ao app (WhatsApp / e-mail / SMS) ===== */
+let canaisDisp = null;
+async function carregarCanais(){
+  if(canaisDisp) return canaisDisp;
+  try{ canaisDisp = await api('/api/admin/canais'); }catch(_){ canaisDisp = { whatsapp:false, email:false, sms:false }; }
+  return canaisDisp;
+}
+const CANAIS_ROT = { whatsapp:'WhatsApp', email:'E-mail', sms:'SMS' };
+function escolhaCanaisHTML(pref, marcarPadrao){
+  const c = canaisDisp || {};
+  return '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">'+
+    ['whatsapp','email','sms'].map(k=>{
+      const on=!!c[k];
+      return '<label class="fin-chk" style="display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;width:auto;'+(on?'':'opacity:.5')+'" title="'+(on?'':'não configurado no servidor')+'">'+
+        '<input type="checkbox" style="width:auto;min-width:0;flex:0 0 auto;margin:0;padding:0" id="'+pref+'Canal_'+k+'" '+(on?'':'disabled ')+((on&&marcarPadrao&&k!=='sms')?'checked':'')+'/> '+
+        CANAIS_ROT[k]+(on?'':' <small>(não configurado)</small>')+'</label>';
+    }).join('')+'</div>';
+}
+function canaisMarcados(pref){ return ['whatsapp','email','sms'].filter(k=>{ const el=$(pref+'Canal_'+k); return el && el.checked; }); }
+// chama o servidor; se o paciente já tem senha própria, pede confirmação antes de gerar outra
+async function enviarAcessoApp(id, canais, nome){
+  const chamar = redefinir => fetch(authQS('/api/admin/clients/access/send?id='+id), {
+    method:'POST', headers:{'Content-Type':'application/json', ...authHead()}, body: JSON.stringify({ canais, redefinir }) })
+    .then(r=>r.json());
+  try{
+    let d = await chamar(false);
+    if(d.ja_ativo){
+      if(!await modalConfirm((nome||'Este paciente')+' já criou a própria senha. Enviar uma NOVA senha provisória? A senha atual dele deixa de valer.')) return '<div class="muted" style="margin-top:8px">Envio cancelado.</div>';
+      d = await chamar(true);
+    }
+    if(d.error) throw new Error(d.error);
+    const linhas = d.resultados.map(r=> (r.ok?'✅ ':'⚠️ ')+CANAIS_ROT[r.canal]+(r.ok?' enviado':' não enviado — '+escHtml(r.erro||''))).join('<br>');
+    const algumOk = d.resultados.some(r=>r.ok);
+    return '<div style="margin-top:10px;font-size:13px;line-height:1.7">'+linhas+'</div>'+
+      '<div class="muted" style="margin-top:6px;font-size:12.5px">Usuário <b>'+escHtml(d.usuario)+'</b> · senha provisória <b>'+escHtml(d.senha)+'</b>'+
+      (algumOk?'':' — <b>nada foi enviado</b>; passe esses dados ao paciente manualmente')+'</div>';
+  }catch(e){ return '<div style="color:var(--vermelho);margin-top:8px">Não consegui enviar o acesso: '+escHtml(e.message)+'</div>'; }
+}
+async function enviarAcessoFicha(){
+  const canais=canaisMarcados('ac');
+  if(!canais.length){ $('acEnvio').innerHTML='<p class="muted" style="margin-top:8px">Marque pelo menos um canal.</p>'; return; }
+  $('acEnvio').innerHTML='<p class="muted" style="margin-top:8px">enviando…</p>';
+  const html = await enviarAcessoApp(clienteAtual.id, canais, clienteAtual.basico && clienteAtual.basico.name);
+  await renderCliAcesso($('cliTabBody'));
+  $('acEnvio').innerHTML='<div class="cad-ok" style="margin:12px 0">'+html+'</div>';
+}
+
 let acAppLink = '';
 function gerarSenhaProvisoria(){
   const c='abcdefghjkmnpqrstuvwxyz23456789'; let s='';

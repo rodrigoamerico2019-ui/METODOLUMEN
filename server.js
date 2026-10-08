@@ -14,6 +14,7 @@ import basicAuth from 'express-basic-auth';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { randomInt } from 'node:crypto';
 import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHistory, createInvite, listUsers,
          getProntuario, setProntuario, messagesSinceProfile, patientDaily, getUserBasic,
          todayCheckin, saveCheckin, checkinSeries, sessionDays, transcriptOfDay, triadAverages,
@@ -46,7 +47,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listSessions, createSession, getSessionFull, updateSession, deleteSession,
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
-         definirLoginPaciente, contaPaciente, trocarSenhaPaciente,
+         definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -805,6 +806,79 @@ app.post('/api/admin/clients/login', ...clin, async (req, res) => {
     const r = await definirLoginPaciente(id, req.orgId, req.mentorUid, { username: b.username, password: b.password });
     res.json({ ...r, app: appUrl(req) + '/instalar.html' }); }
   catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// quais canais de envio estão configurados neste servidor (o painel mostra só os que funcionam)
+function canaisEnvio() {
+  return {
+    whatsapp: (process.env.WHATSAPP_PROVIDER || 'none').toLowerCase().trim() !== 'none',
+    email: !!mailer(),
+    sms: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_SMS_FROM)
+  };
+}
+app.get('/api/admin/canais', requireAdmin, (req, res) => res.json(canaisEnvio()));
+
+const escHtmlSrv = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function senhaProvisoria() {
+  const c = 'abcdefghjkmnpqrstuvwxyz23456789';
+  return Array.from({ length: 8 }, () => c[randomInt(c.length)]).join('');
+}
+// ENVIAR ACESSO: cria usuário + senha provisória e manda o link do app pelos canais escolhidos.
+// Se o paciente já tinha trocado a senha, gera uma nova provisória (exige confirmação no painel).
+app.post('/api/admin/clients/access/send', ...clin, async (req, res) => {
+  try {
+    const id = await clienteDaOrg(req, res); if (id == null) return;
+    const b = req.body || {};
+    const pedidos = ['whatsapp', 'email', 'sms'].filter(k => Array.isArray(b.canais) && b.canais.includes(k));
+    if (!pedidos.length) return res.status(400).json({ error: 'Escolha pelo menos um canal de envio.' });
+    const c = await contatoAcessoPaciente(id, req.mentorUid);
+    if (!c) return res.status(404).json({ error: 'Paciente não encontrado.' });
+    if (c.ja_ativo && !b.redefinir) return res.status(409).json({ error: 'Este paciente já criou a própria senha. Confirme para gerar uma nova senha provisória.', ja_ativo: true });
+
+    const usuario = c.usuario || await usuarioDisponivel(c.nome);
+    const senha = senhaProvisoria();
+    await definirLoginPaciente(id, req.orgId, req.mentorUid, { username: usuario, password: senha });
+
+    const link = appUrl(req) + '/instalar.html';
+    const primeiro = String(c.nome || '').trim().split(' ')[0] || 'você';
+    const clinica = c.clinica || 'Instituto Américo';
+    const corpo = `Seu acesso ao nosso app de acompanhamento está pronto. 📲\n\n` +
+      `1) Instale o app: ${link}\n2) Entre com:\n👤 Usuário: ${usuario}\n🔑 Senha provisória: ${senha}\n\n` +
+      `No primeiro acesso você cria a sua própria senha e responde algumas perguntas rápidas para começarmos bem.`;
+    const disp = canaisEnvio();
+    const resultados = [];
+    for (const canal of pedidos) {
+      if (!disp[canal]) { resultados.push({ canal, ok: false, erro: 'não configurado no servidor' }); continue; }
+      try {
+        if (canal === 'whatsapp') {
+          if (!c.celular) throw new Error('paciente sem celular cadastrado');
+          const r = await sendWhatsApp(c.celular, msgWhatsCentral({ primeiro, clinica, profissional: c.profissional, corpo }));
+          if (!r.sent) throw new Error(r.detail || 'o provedor não confirmou o envio');
+        } else if (canal === 'sms') {
+          if (!c.celular) throw new Error('paciente sem celular cadastrado');
+          const r = await sendSms(c.celular, `${clinica}: Olá, ${primeiro}! Instale o app: ${link} | Usuário: ${usuario} | Senha provisória: ${senha}`);
+          if (!r.sent) throw new Error(r.detail || 'o provedor não confirmou o envio');
+        } else if (canal === 'email') {
+          if (!c.email) throw new Error('paciente sem e-mail cadastrado');
+          const assina = (c.profissional ? c.profissional + ' · ' : '') + clinica;
+          await mailer().sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER, to: c.email,
+            subject: 'Seu acesso ao app — ' + clinica,
+            text: `Olá, ${primeiro}!\n\n${corpo}\n\n— ${assina}`,
+            html: `<p>Olá, ${escHtmlSrv(primeiro)}!</p>
+              <p>Seu acesso ao nosso app de acompanhamento está pronto.</p>
+              <p><a href="${link}" style="background:#D4AF37;color:#1a1a1a;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Instalar o app</a></p>
+              <p>Entre com:<br>👤 <b>Usuário:</b> ${escHtmlSrv(usuario)}<br>🔑 <b>Senha provisória:</b> ${escHtmlSrv(senha)}</p>
+              <p>No primeiro acesso você cria a sua própria senha e responde algumas perguntas rápidas para começarmos bem.</p>
+              <p style="color:#666;font-size:13px">— ${escHtmlSrv(assina)}</p>`
+          });
+        }
+        resultados.push({ canal, ok: true });
+      } catch (e) { resultados.push({ canal, ok: false, erro: String(e.message || e) }); }
+    }
+    await registrarAuditoria({ orgId: req.orgId, userId: req.mentorUid, clientId: id, acao: 'acesso_enviado', entidade: 'client_access', entidadeId: id,
+      dados: { canais: resultados.map(r => r.canal + ':' + (r.ok ? 'ok' : 'falhou')) } }).catch(() => {});
+    res.json({ ok: true, usuario, senha, link, resultados });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/clients/access/revoke', ...clin, async (req, res) => {
   try { const id = await clienteDaOrg(req, res); if (id == null) return;
@@ -1956,6 +2030,19 @@ function normPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '');
   if (d.length <= 11 && !d.startsWith('55')) d = '55' + d;
   return d;
+}
+
+// SMS via Twilio (opcional): precisa de TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN e TWILIO_SMS_FROM (+5511...)
+async function sendSms(to, body) {
+  const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN, from = process.env.TWILIO_SMS_FROM;
+  if (!sid || !token || !from) return { sent: false, detail: 'SMS não configurado' };
+  const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+  const form = new URLSearchParams({ From: from, To: `+${normPhone(to)}`, Body: body });
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form
+  });
+  const d = await r.json().catch(() => ({}));
+  return { sent: r.ok, id: d.sid || null, detail: d.message || null };
 }
 
 async function sendWhatsApp(to, body) {

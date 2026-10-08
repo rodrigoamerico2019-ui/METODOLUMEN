@@ -2052,6 +2052,37 @@ export async function statusAcessoCliente(clientId) {
     ultimo_acesso: u.rows[0].last_seen_at || null,
     convite: t.rows[0] ? { token: t.rows[0].token, expira_em: t.rows[0].expira_em } : null };
 }
+// Contatos para enviar o acesso ao app (WhatsApp/SMS/e-mail) + nome da clínica e do profissional
+export async function contatoAcessoPaciente(clientId, mentorUid) {
+  if (!pool || !clientId) return null;
+  const r = await pool.query(`
+    SELECT u.name, u.email, u.phone, u.whats_optout, u.username, u.org_id,
+           (password_hash <> '' AND NOT COALESCE(must_change_login,false)) AS ja_ativo,
+           d.whatsapp, COALESCE(o.marca_nome, o.nome) AS clinica,
+           (SELECT m.name FROM users m WHERE m.id=$2) AS profissional
+    FROM users u LEFT JOIN client_details d ON d.user_id=u.id LEFT JOIN organizations o ON o.id=u.org_id
+    WHERE u.id=$1 AND u.role='paciente'`, [clientId, mentorUid || null]);
+  const c = r.rows[0];
+  if (!c) return null;
+  const dig = s => String(s || '').replace(/\D/g, '');
+  return { nome: c.name, email: c.email && !c.email.includes('@sem-email.') ? c.email : null,
+    celular: dig(c.whatsapp) || dig(c.phone) || null, whats_optout: !!c.whats_optout,
+    usuario: c.username || null, ja_ativo: !!c.ja_ativo, clinica: c.clinica || null, profissional: c.profissional || null };
+}
+// usuário livre a partir do nome: "Maria Aparecida da Silva" → maria.silva (ou maria.silva2…)
+export async function usuarioDisponivel(nome) {
+  if (!pool) throw new Error('banco não configurado');
+  const p = String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z\s]/g, '').split(/\s+/).filter(x => x.length > 2);
+  let base = (p.length > 1 ? p[0] + '.' + p[p.length - 1] : (p[0] || 'paciente')).slice(0, 24);
+  if (base.length < 3) base = 'paciente';
+  for (let n = 1; n < 500; n++) {
+    const cand = n === 1 ? base : base + n;
+    const r = await pool.query('SELECT 1 FROM users WHERE lower(username)=$1 OR email=$1', [cand]);
+    if (!r.rows[0]) return cand;
+  }
+  return base + Date.now().toString().slice(-5);
+}
 // O terapeuta define usuário + senha provisória do paciente; no 1º acesso o app pede a troca.
 export async function definirLoginPaciente(clientId, orgId, uid, { username, password }) {
   if (!pool || !clientId) throw new Error('banco não configurado');
