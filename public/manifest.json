@@ -1,12 +1,12 @@
 {
-  "name": "TRILUMEN",
-  "short_name": "TRILUMEN",
-  "description": "A Plataforma Inteligente da Jornada Humana — Corpo, Alma e Espírito. A luz só atravessa o que está alinhado.",
+  "name": "Instituto Américo",
+  "short_name": "Instituto Américo",
+  "description": "Um lugar de novos começos. Cuidando de pessoas. Fortalecendo vidas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0B0A09",
+  "background_color": "#0D3B4E",
   "theme_color": "#F4EEE2",
   "lang": "pt-BR",
   "icons": [

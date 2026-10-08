@@ -3,7 +3,7 @@
 //  Recebe notificações push mesmo com o app fechado e
 //  mantém a casca do app disponível offline.
 // =========================================================
-const CACHE = 'lumen-v1';
+const CACHE = 'instituto-americo-v2';
 const SHELL = ['/', '/index.html', '/logo.png', '/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -34,7 +34,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_) { data = { body: e.data && e.data.text() }; }
-  const title = data.title || 'Lúmen';
+  const title = data.title || 'Instituto Américo';
   e.waitUntil(self.registration.showNotification(title, {
     body: data.body || 'Você tem uma nova mensagem.',
     icon: '/icon-192.png',
