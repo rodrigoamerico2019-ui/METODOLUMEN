@@ -48,7 +48,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
-         orgAtiva, excluirOrganizacao,
+         orgAtiva, excluirOrganizacao, terapeutaDoPaciente,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -335,7 +335,7 @@ app.get('/api/admin/invite', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.get('/api/admin/users', requireAdmin, soMentor, async (req, res) => {
-  try { res.json({ pacientes: await listUsers(req.orgId) }); }
+  try { res.json({ pacientes: await listUsers(req.orgId, req.mentorUid || null) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // Torre de Controle: consultas de hoje + cobranças vencendo/atrasadas
@@ -396,6 +396,7 @@ app.get('/api/admin/patient', requireAdmin, soMentor, async (req, res) => {
     const id = Number(req.query.id);
     // mentor só acessa paciente da própria organização
     if (req.orgId && (await patientOrg(id)) !== req.orgId) return res.status(403).json({ error: 'sem acesso a este paciente' });
+    if (!(await soDoTerapeuta(req, res, id))) return;
     const [basico, pront, diario, esferas, checkins, sessoes, extras, streak, audios, escalasRows, plano, mentorMsgs, mapa, planoFin, receberFin, consultasPac] = await Promise.all([
       getUserBasic(id), getProntuario(id), patientDaily(id, Number(req.query.days || 60)),
       triadAverages(id, 7), checkinSeries(id, 60), sessionDays(id), getExtras(id), checkinStreak(id), listAudios(id),
@@ -920,22 +921,32 @@ app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
 
 // SAUDAÇÃO DA JORNADA — uma linha humana e real que retoma o ASSUNTO concreto
 // da última conversa (nada de "de onde paramos"). Gerada 1x por conversa (cache).
-async function gerarSaudacaoJornada(ultimo) {
+// frase que fala SOBRE a pessoa (para um terapeuta) em vez de falar COM ela → descarta
+const SAUDACAO_ERRADA = /\b(cliente|paciente|terapeuta|mentor(a)?|atendid[oa])\b|trabalhar com ela|trabalhar com ele|\bela est[áa]\b|\bele est[áa]\b/i;
+
+async function gerarSaudacaoJornada(ultimo, ctx = {}) {
   if (!process.env.ANTHROPIC_API_KEY || !ultimo || !ultimo.falas?.length) return null;
   const d = Number(ultimo.dias_atras);
   const quando = d <= 0 ? 'mais cedo hoje' : d === 1 ? 'ontem' : d < 7 ? `há ${d} dias` : d < 30 ? 'na semana passada' : 'há um tempo';
-  const contexto = `Última conversa foi ${quando}. Nas palavras da própria pessoa:\n`
+  const primeiro = String(ctx.nome || '').trim().split(/\s+/)[0] || '';
+  const contexto = `QUEM VAI LER: ${primeiro || 'a própria pessoa'} — é o app DELA, ela mesma abre e lê.\n\n`
+    + `ÚLTIMA CONVERSA (${quando}), nas palavras dela:\n`
     + ultimo.falas.map(f => '- "' + f + '"').join('\n')
-    + (ultimo.emocao ? `\nComo ela estava: ${ultimo.emocao}.` : '')
-    + (ultimo.risco && ultimo.risco !== 'nenhum' ? '\nHavia sinais de dor forte/risco — seja gentil e cuidadosa, nunca leve.' : '');
-  try {
+    + (ultimo.emocao ? `\nComo estava: ${ultimo.emocao}.` : '')
+    + (ultimo.risco && ultimo.risco !== 'nenhum' ? '\nHavia sinais de dor forte/risco — seja gentil e cuidadosa, nunca leve.' : '')
+    + (ctx.prontuario ? `\n\nMEMÓRIA DA CAMINHADA DELA (só para você entender; NÃO cite, NÃO resuma):\n${String(ctx.prontuario).slice(0, 1800)}` : '')
+    + (ctx.retrato ? `\n\nSINAIS RECENTES DO APP DELA:\n${ctx.retrato}` : '');
+  const pedir = async extra => {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 80,
-        system: `Você é a Lúmen. A pessoa vai abrir o app agora e verá UMA frase sua na tela inicial. Escreva UMA frase curta (máx 18 palavras), humana e real, que RETOME o assunto CONCRETO da última conversa dela: a pessoa, a situação, a decisão que estava em jogo. Regras: cite o assunto real com naturalidade; PROIBIDO "de onde paramos", "na última conversa", "retomando", qualquer clichê, travessão em prosa e construções "não é X, é Y"; sem enrolação, sem melação; fale "você" por extenso. Pode terminar com uma pergunta curta e genuína, ou não. Se havia dor forte ou risco, seja gentil, nunca leve. Responda SÓ a frase, sem aspas.`,
+        max_tokens: 90,
+        system: `Você é a Lúmen, a companheira de jornada que vive no app da PRÓPRIA pessoa. Ela acabou de abrir o app e vai ler UMA frase sua na tela inicial.
+FALE DIRETAMENTE COM ELA, em segunda pessoa ("você"). Você NÃO está falando com terapeuta, mentor ou qualquer outra pessoa. NUNCA a chame de cliente ou paciente, NUNCA fale dela em terceira pessoa ("ela está…"), NUNCA pergunte o que "você vai trabalhar com ela".
+Escreva UMA frase curta (máx 20 palavras), humana e real, que retome o assunto CONCRETO que ela viveu (a pessoa, a situação, a decisão em jogo), costurando com o que os sinais recentes mostram, se fizer sentido.
+PROIBIDO: "de onde paramos", "na última conversa", "retomando", clichês, travessão em prosa, "não é X, é Y", melação, números de escala ou de check-in. Escreva "você" por extenso. Pode terminar com uma pergunta curta e genuína. Se havia dor forte ou risco, seja gentil, nunca leve. Responda SÓ a frase, sem aspas.${extra || ''}`,
         messages: [{ role: 'user', content: contexto }]
       })
     });
@@ -944,7 +955,48 @@ async function gerarSaudacaoJornada(ultimo) {
     let t = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
     t = t.replace(/^["'“”]+|["'“”]+$/g, '').trim();
     return t.length > 4 ? tirarCe(t) : null;
+  };
+  try {
+    let t = await pedir();
+    if (t && SAUDACAO_ERRADA.test(t)) t = await pedir('\nATENÇÃO: sua tentativa anterior falou SOBRE a pessoa. Reescreva falando COM ela, usando "você".');
+    return t && !SAUDACAO_ERRADA.test(t) ? t : null;
   } catch { return null; }
+}
+
+// RETRATO DO PACIENTE — comportamento real no app (check-ins, escalas, plano, vitórias, áudios),
+// para a IA cruzar o que a pessoa DIZ com o que ela VIVE e raciocinar com profundidade.
+async function retratoPaciente(uid) {
+  if (!uid || !dbReady) return null;
+  const [serie, escalas, plano, extras, audios] = await Promise.all([
+    checkinSeries(uid, 21).catch(() => []), latestScales(uid).catch(() => []), getActionPlan(uid).catch(() => null),
+    getExtras(uid).catch(() => ({})), listAudios(uid).catch(() => [])
+  ]);
+  const linhas = [];
+  if (serie.length) {
+    const fmt = c => `${c.dia.slice(8, 10)}/${c.dia.slice(5, 7)} ${c.emocao || '—'} (corpo ${c.corpo ?? '—'}, alma ${c.alma ?? '—'}, espírito ${c.espirito ?? '—'})`;
+    linhas.push('CHECK-INS (últimas 3 semanas, notas 0–10 dadas por ela): ' + serie.slice(-8).map(fmt).join(' · '));
+    const media = (arr, k) => { const v = arr.map(c => Number(c[k])).filter(n => !isNaN(n)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    if (serie.length >= 4) {
+      const meio = Math.floor(serie.length / 2), a = serie.slice(0, meio), b = serie.slice(meio);
+      const tend = ['corpo', 'alma', 'espirito'].map(k => {
+        const x = media(a, k), y = media(b, k); if (x == null || y == null) return null;
+        const dlt = y - x; return `${k} ${Math.abs(dlt) < 0.8 ? 'estável' : dlt > 0 ? 'subindo' : 'caindo'}`;
+      }).filter(Boolean);
+      if (tend.length) linhas.push('TENDÊNCIA: ' + tend.join(', ') + '.');
+    }
+  } else linhas.push('CHECK-INS: ela ainda não registrou check-ins recentes.');
+  const esc = (escalas || []).map(u => { const e = escalaByKey(u.scale_key); if (!e) return null; const f = faixaPorChave(u.scale_key, Number(u.score)); return `${e.titulo}: ${f ? f.rotulo : u.score}`; }).filter(Boolean);
+  if (esc.length) linhas.push('ESCALAS (últimas respostas): ' + esc.join('; ') + '.');
+  if (plano && plano.entregue && Array.isArray(plano.passos)) {
+    const feitos = (plano.passos_feitos || []).length;
+    linhas.push(`PLANO DA SEMANA: foco "${plano.foco || ''}" — ${feitos} de ${plano.passos.length} passos feitos` +
+      (feitos < plano.passos.length ? `; próximo: ${plano.passos.find((_, i) => !(plano.passos_feitos || []).map(Number).includes(i))?.titulo || ''}` : '') + '.');
+  }
+  const vit = (extras.vitorias || []).slice(-3).map(v => v.texto).filter(Boolean);
+  if (vit.length) linhas.push('VITÓRIAS RECENTES: ' + vit.join('; ') + '.');
+  const au = (audios || []).filter(a => a.resumo && a.resumo.resumo).slice(0, 2).map(a => a.resumo.resumo);
+  if (au.length) linhas.push('O QUE ELA DISSE EM ÁUDIO: ' + au.join(' | '));
+  return linhas.join('\n');
 }
 app.get('/api/me/greeting', requireAuth, async (req, res) => {
   try {
@@ -954,10 +1006,14 @@ app.get('/api/me/greeting', requireAuth, async (req, res) => {
     const base = ultimo.ultima_em ? new Date(ultimo.ultima_em).toISOString() : null;
     const cache = await getSaudacao(uid).catch(() => null);
     const cacheBase = cache?.saudacao_base ? new Date(cache.saudacao_base).toISOString() : null;
-    if (cache?.saudacao && cacheBase && cacheBase === base) return res.json({ saudacao: cache.saudacao, tem_historico: true });
-    const nova = await gerarSaudacaoJornada(ultimo);
+    const cacheBom = cache?.saudacao && !SAUDACAO_ERRADA.test(cache.saudacao);   // frases antigas "sobre" a pessoa são refeitas
+    if (cacheBom && cacheBase && cacheBase === base) return res.json({ saudacao: cache.saudacao, tem_historico: true });
+    const [pront, retrato] = await Promise.all([
+      getProntuario(uid).catch(() => null), retratoPaciente(uid).catch(() => null)
+    ]);
+    const nova = await gerarSaudacaoJornada(ultimo, { nome: req.user.name, prontuario: pront?.prontuario, retrato });
     if (nova) { await setSaudacao(uid, nova, ultimo.ultima_em).catch(() => {}); return res.json({ saudacao: nova, tem_historico: true }); }
-    res.json({ saudacao: cache?.saudacao || null, tem_historico: true });
+    res.json({ saudacao: cacheBom ? cache.saudacao : null, tem_historico: true });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -1084,6 +1140,17 @@ app.get('/api/admin/overview', requireAdmin, soMentor, async (req, res) => {
 async function guardPaciente(req, res) {
   if (!req.orgId) return true;
   if ((await patientOrg(Number(req.query.id))) !== req.orgId) { res.status(403).json({ error: 'sem acesso' }); return false; }
+  return soDoTerapeuta(req, res, Number(req.query.id));
+}
+// Conversas e dados do APP do paciente: só o terapeuta responsável (quem liberou o acesso).
+// Outros profissionais da mesma clínica não veem. Sem responsável definido, vale a regra da clínica.
+async function soDoTerapeuta(req, res, pid) {
+  if (!req.mentorUid) return true;
+  const t = await terapeutaDoPaciente(pid).catch(() => null);
+  if (t && Number(t) !== Number(req.mentorUid)) {
+    res.status(403).json({ error: 'Somente o terapeuta responsável por este paciente tem acesso às conversas e aos dados do app.' });
+    return false;
+  }
   return true;
 }
 // transcrição de um dia de atendimento (consulta do mentor)
@@ -1421,6 +1488,7 @@ app.get('/api/admin/audio', requireAdmin, soMentor, async (req, res) => {
     const a = await getAudioBytes(Number(req.query.id));
     if (!a) return res.status(404).end();
     if (req.orgId && a.org_id !== req.orgId) return res.status(403).end();
+    if (!(await soDoTerapeuta(req, res, a.user_id))) return;
     res.set('Content-Type', a.mime || 'audio/webm');
     res.set('Cache-Control', 'private, max-age=3600');
     res.send(a.bytes);
@@ -1939,7 +2007,7 @@ Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadado
 // Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
 // com cache_control para o prompt caching baratear cada conversa. Nome e prontuário
 // mudam por pessoa e ficam fora do cache.
-function buildSystem(name, prontuario, bussola, ultimo) {
+function buildSystem(name, prontuario, bussola, ultimo, retrato) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
   const conhecimento = KNOWLEDGE
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
@@ -1961,6 +2029,12 @@ ${COLETIVO}
 
 Como usar: isto é só intuição pastoral sobre o que tende a ajudar as pessoas a curar. Deixe informar a sua sensibilidade, com naturalidade. REGRA ABSOLUTA DE PRIVACIDADE: nunca cite, revele ou traga a história, o nome ou a situação de OUTRA pessoa. A pessoa com quem você fala só existe ela — a memória dela é sagrada e separada de todas as outras.` });
   if (bussola) blocos.push({ type: 'text', text: bussola });
+  if (retrato) blocos.push({ type: 'text', text:
+`SINAIS E COMPORTAMENTO RECENTES NO APP DESTA PESSOA (o que ela VIVE, além do que ela diz):
+${retrato}
+
+Como usar: raciocine em profundidade. Cruze o que ela conta com estes sinais e com a memória da caminhada: perceba padrões (o que melhora, o que piora, o que ela adia, o que se repete), ligue causas e efeitos entre corpo, alma e espírito, e note contradições entre o que ela diz e o que os dados mostram — e traga isso com delicadeza, como quem enxerga a pessoa inteira. NUNCA recite números, notas ou nomes de escalas; transforme em percepção humana (ex.: "tenho sentido você mais cansada nesses dias").` });
+  blocos.push({ type: 'text', text: 'COM QUEM VOCÊ FALA: sempre com a PRÓPRIA pessoa dona deste app, em segunda pessoa ("você"). Você nunca fala com terapeuta, mentor ou familiar aqui; nunca a chame de cliente ou paciente e nunca fale dela em terceira pessoa.' });
   if (prontuario) blocos.push({ type: 'text', text:
 `PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
 ${prontuario}
@@ -1996,10 +2070,11 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     // com login, o nome oficial vem da conta (não do que o front mandar)
     const nome = (req.user && req.user.name) || name;
     // memória viva: o prontuário evolutivo + a bússola do mapa inicial entram no sistema desta conversa
-    let prontuario = null, bussola = null, ultimo = null;
+    let prontuario = null, bussola = null, ultimo = null, retrato = null;
     if (req.user && req.user.uid) {
       prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
       bussola = await getMapaBussola(req.user.uid).catch(() => null);
+      retrato = await retratoPaciente(req.user.uid).catch(() => null);
       // primeira mensagem de uma conversa nova → resgata o assunto real do último encontro
       if (messages.filter(m => m.role === 'user').length <= 1) {
         ultimo = await ultimoEncontro(req.user.uid).catch(() => null);
@@ -2015,7 +2090,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(nome, prontuario, bussola, ultimo),
+        system: buildSystem(nome, prontuario, bussola, ultimo, retrato),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });

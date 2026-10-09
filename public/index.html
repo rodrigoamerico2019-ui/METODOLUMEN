@@ -162,6 +162,14 @@
   .voz-bar button.on { color:var(--gold-2); }
   .bub-ouvir { display:inline-block; margin-top:6px; background:none; border:none; color:var(--gold-2); font-size:11px; cursor:pointer; padding:0; font-family:inherit; opacity:.8; }
   .ag-consent.hide { display:none; }
+  /* abertura (splash) */
+  .splash { position:absolute; inset:0; z-index:300; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background: radial-gradient(700px 480px at 50% 42%, rgba(226,194,122,.16), transparent 65%), var(--bg); transition: opacity .6s ease; }
+  .splash img { width:min(72vw, 300px); height:auto; border-radius:50%; box-shadow:0 0 50px rgba(226,194,122,.30); animation: spIn 1s ease both; }
+  .splash .sp-nome { font-family:'Cinzel'; color:var(--gold-2); letter-spacing:4px; font-size:18px; animation: spIn 1s .25s ease both; }
+  .splash .sp-tag { font-family:'Cormorant Garamond'; font-style:italic; color:var(--ink-dim); font-size:15px; animation: spIn 1s .45s ease both; }
+  .splash.sai { opacity:0; pointer-events:none; }
+  @keyframes spIn { from { opacity:0; transform:scale(.94); } to { opacity:1; transform:none; } }
 
   /* ---------- MONITOR ---------- */
   .aura-wrap { display:grid; place-items:center; margin:8px 0 20px; }
@@ -583,6 +591,13 @@
 </style>
 
 <div class="app">
+
+  <!-- ============ ABERTURA: logo grande do Instituto Américo a cada vez que o app abre ============ -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <img src="/logo-instituto.png" alt="Instituto Américo" />
+    <div class="sp-nome">INSTITUTO AMÉRICO</div>
+    <div class="sp-tag">um lugar de novos começos</div>
+  </div>
 
   <!-- ============ PORTA DE ENTRADA / LOGIN (restrito a pacientes e mentorados) ============ -->
   <div class="authgate hide" id="authgate">
@@ -2664,6 +2679,12 @@ function esferasEmblema(e){
 }
 
 /* na abertura: se o servidor tem contas, exige login; senão segue como antes */
+/* abertura: mostra o logo por ~1,8 s e some suavemente */
+(function(){
+  const sp = document.getElementById('splash'); if(!sp) return;
+  setTimeout(() => { sp.classList.add('sai'); setTimeout(() => sp.remove(), 700); }, 1800);
+})();
+
 (async function boot(){
   try {
     const h = await fetch(API_BASE + '/api/health').then(r=>r.json());

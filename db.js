@@ -451,6 +451,15 @@ export async function initDb() {
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS appointment_id BIGINT;
     -- como o consentimento foi obtido (presencial, documento assinado, verbal, digital)
     ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS metodo TEXT;
+    -- TERAPEUTA RESPONSÁVEL: quem liberou o acesso do paciente ao app. Só ele vê as conversas
+    -- e os dados do app (prontuário evolutivo, áudios, mapa, check-ins). Outros profissionais não.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS terapeuta_id INT;
+    UPDATE users p SET terapeuta_id = COALESCE(
+        (SELECT m.user_id FROM client_professionals cp JOIN org_members m ON m.id=cp.member_id
+          WHERE cp.client_user_id=p.id ORDER BY cp.principal DESC, cp.id LIMIT 1),
+        (SELECT d.created_by FROM client_details d WHERE d.user_id=p.id),
+        (SELECT u.id FROM users u WHERE u.org_id=p.org_id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1))
+      WHERE p.role='paciente' AND p.terapeuta_id IS NULL;
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -928,7 +937,13 @@ export async function markCheckoutProvisioned(sub) {
   await pool.query("UPDATE checkouts SET status='provisionado', provisioned_at=now() WHERE asaas_subscription=$1", [sub]);
 }
 
-export async function listUsers(orgId = null) {
+// terapeuta responsável pelo paciente (null = sem dono definido → regra da organização)
+export async function terapeutaDoPaciente(pid) {
+  if (!pool || !pid) return null;
+  const r = await pool.query('SELECT terapeuta_id FROM users WHERE id=$1', [pid]);
+  return r.rows[0] ? r.rows[0].terapeuta_id : null;
+}
+export async function listUsers(orgId = null, terapeutaId = null) {
   if (!pool) return [];
   const r = await pool.query(`
     SELECT u.id, u.name, u.email, u.created_at, u.last_seen_at, u.birth_date,
@@ -942,7 +957,8 @@ export async function listUsers(orgId = null) {
            (SELECT p.mapa_risco FROM profiles p WHERE p.user_id=u.id) AS mapa_risco
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
     WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1)
-    GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`, [orgId]);
+      AND ($2::int IS NULL OR u.terapeuta_id IS NULL OR u.terapeuta_id=$2)
+    GROUP BY u.id ORDER BY max(m.created_at) DESC NULLS LAST`, [orgId, terapeutaId]);
   return r.rows;
 }
 
@@ -1036,7 +1052,7 @@ export async function setAudioSummary(id, resumo, transcript) {
 }
 export async function getAudioBytes(id) {
   if (!pool) return null;
-  const r = await pool.query(`SELECT a.mime, a.bytes, u.org_id
+  const r = await pool.query(`SELECT a.mime, a.bytes, u.org_id, a.user_id
     FROM audio_entries a JOIN users u ON u.id=a.user_id WHERE a.id=$1`, [id]);
   return r.rows[0] || null;
 }
@@ -2174,7 +2190,9 @@ export async function definirLoginPaciente(clientId, orgId, uid, { username, pas
   const dup = await pool.query('SELECT 1 FROM users WHERE (lower(username)=$1 OR email=$1) AND id<>$2', [user, clientId]);
   if (dup.rows[0]) throw new Error('Esse usuário já está em uso. Escolha outro.');
   const hash = await bcrypt.hash(senha, 10);
-  await pool.query('UPDATE users SET username=$2, password_hash=$3, must_change_login=true WHERE id=$1', [clientId, user, hash]);
+  // quem libera o acesso vira o terapeuta responsável (se ainda não houver um)
+  await pool.query('UPDATE users SET username=$2, password_hash=$3, must_change_login=true, terapeuta_id=COALESCE(terapeuta_id, $4) WHERE id=$1',
+    [clientId, user, hash, uid || null]);
   // o link de convite antigo deixa de valer (agora o acesso é por usuário e senha)
   await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
   await pool.query('INSERT INTO profiles (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [clientId]);
@@ -2187,6 +2205,7 @@ export async function criarAcessoCliente(clientId, orgId, uid) {
   if (!u.rows[0]) throw new Error('Paciente não encontrado.');
   // invalida convites anteriores ainda não usados
   await pool.query('UPDATE client_access_tokens SET expira_em=now() WHERE client_user_id=$1 AND usado_em IS NULL', [clientId]);
+  if (uid) await pool.query('UPDATE users SET terapeuta_id=COALESCE(terapeuta_id, $2) WHERE id=$1', [clientId, uid]);
   const token = crypto.randomBytes(24).toString('hex');
   await pool.query(`INSERT INTO client_access_tokens (token, org_id, client_user_id, criado_por, expira_em)
     VALUES ($1,$2,$3,$4, now() + interval '7 days')`, [token, orgId, clientId, uid || null]);
