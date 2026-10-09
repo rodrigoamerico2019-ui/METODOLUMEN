@@ -2394,6 +2394,7 @@ COMPROMETIMENTO (postura mental diante do problema):
 - insuportavel: não suporta mais a vida que leva; está disposto a enfrentar e mudar.
 GRAVIDADE do envio: normal (dia comum) | atencao (fora do padrão, observar) | urgente (risco de vida, risco a terceiros, crise aguda).
 
+Seja enxuto: cada campo de texto com no máximo 4 frases objetivas (a análise vai pelo WhatsApp do terapeuta).
 Responda SOMENTE um JSON válido:
 {"classificacao":"verde|amarelo|vermelho","comprometimento":"tanto_faz|cansei|insuportavel","gravidade":"normal|atencao|urgente","emocoes":["..."],"resumo":"2-3 frases do que o paciente relatou","analise":"Comece com 'Segue a análise de ${primeiro}:' e explique o que se percebe nas palavras e na linguagem (emoções, padrões, crenças, contradições), ligando ao histórico","direcionamento":"o que o terapeuta deve fazer e como atuar, baseado no histórico e no Método (técnicas, perguntas, tarefa sugerida)","base_metodo":"conceito do Método Lúmen que fundamenta a leitura","base_biblica":"Referência (NVI) — por que se aplica","pontos_atencao":["..."],"motivo_classificacao":"1 frase"}` },
     ];
@@ -2402,7 +2403,7 @@ Responda SOMENTE um JSON válido:
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 1400, system: sys, messages: [{ role: 'user', content: ctx }] })
+        body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 3500, system: sys, messages: [{ role: 'user', content: ctx }] })
       });
       const d = await r.json();
       const txt = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
