@@ -921,44 +921,89 @@ app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
 
 // SAUDAÇÃO DA JORNADA — uma linha humana e real que retoma o ASSUNTO concreto
 // da última conversa (nada de "de onde paramos"). Gerada 1x por conversa (cache).
-// frase que fala SOBRE a pessoa (para um terapeuta) em vez de falar COM ela → descarta
+// TOQUE DO DIA — a frase da tela inicial (e do lembrete da manhã). Fala COM a paciente,
+// como uma amiga que acompanha a jornada dela: puxa o compromisso concreto mais importante
+// (passo do plano, tarefa da sessão, meta, algo que ela disse que ia fazer), uma luta em curso
+// ou uma vitória. Muda por período do dia (manhã/tarde/noite) e quando há conversa nova.
+function periodoAgora() {
+  const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+  return hora < 12 ? 'manha' : hora < 18 ? 'tarde' : 'noite';
+}
+function hojeSP() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()); }
+
+// compromissos em aberto: o que a paciente tem pra fazer na jornada
+async function compromissosPaciente(uid) {
+  const [plano, tarefas, metas, chk] = await Promise.all([
+    deliveredPlan(uid).catch(() => null), listSessionTasks(uid).catch(() => []),
+    listGoals(uid).catch(() => []), todayCheckin(uid).catch(() => null)
+  ]);
+  const l = [];
+  if (plano && Array.isArray(plano.passos)) {
+    const feitos = (plano.passos_feitos || []).map(Number);
+    const pend = plano.passos.map((p, i) => ({ ...p, i })).filter(p => !feitos.includes(p.i));
+    if (pend.length) l.push(`PLANO DA SEMANA (foco "${plano.foco || ''}") — passos ainda NÃO feitos: ` + pend.map(p => `${p.titulo}${p.descricao ? ' (' + p.descricao + ')' : ''}`).join('; ') + '.');
+    else if (plano.passos.length) l.push(`PLANO DA SEMANA: ela concluiu todos os ${plano.passos.length} passos (foco "${plano.foco || ''}") — vale celebrar e manter o hábito.`);
+  }
+  const tp = (tarefas || []).filter(t => t.compartilhada !== false && t.status !== 'concluida').slice(0, 4);
+  if (tp.length) l.push('TAREFAS COMBINADAS NA SESSÃO (pendentes): ' + tp.map(t => t.titulo + (t.prazo ? ` (até ${String(t.prazo).slice(0, 10).split('-').reverse().join('/')})` : '')).join('; ') + '.');
+  const mt = (metas || []).filter(g => !['concluido', 'concluída', 'cancelado'].includes(String(g.status || '').toLowerCase())).slice(0, 3);
+  if (mt.length) l.push('METAS DO ACOMPANHAMENTO: ' + mt.map(g => g.titulo + (g.progresso ? ` (${g.progresso}% feito)` : '')).join('; ') + '.');
+  l.push(chk ? 'CHECK-IN DE HOJE: já fez.' : 'CHECK-IN DE HOJE: ainda não fez.');
+  return l.join('\n');
+}
+
 const SAUDACAO_ERRADA = /\b(cliente|paciente|terapeuta|mentor(a)?|atendid[oa])\b|trabalhar com ela|trabalhar com ele|\bela est[áa]\b|\bele est[áa]\b/i;
 
-async function gerarSaudacaoJornada(ultimo, ctx = {}) {
-  if (!process.env.ANTHROPIC_API_KEY || !ultimo || !ultimo.falas?.length) return null;
-  const d = Number(ultimo.dias_atras);
-  const quando = d <= 0 ? 'mais cedo hoje' : d === 1 ? 'ontem' : d < 7 ? `há ${d} dias` : d < 30 ? 'na semana passada' : 'há um tempo';
-  const primeiro = String(ctx.nome || '').trim().split(/\s+/)[0] || '';
-  const contexto = `QUEM VAI LER: ${primeiro || 'a própria pessoa'} — é o app DELA, ela mesma abre e lê.\n\n`
-    + `ÚLTIMA CONVERSA (${quando}), nas palavras dela:\n`
-    + ultimo.falas.map(f => '- "' + f + '"').join('\n')
-    + (ultimo.emocao ? `\nComo estava: ${ultimo.emocao}.` : '')
-    + (ultimo.risco && ultimo.risco !== 'nenhum' ? '\nHavia sinais de dor forte/risco — seja gentil e cuidadosa, nunca leve.' : '')
-    + (ctx.prontuario ? `\n\nMEMÓRIA DA CAMINHADA DELA (só para você entender; NÃO cite, NÃO resuma):\n${String(ctx.prontuario).slice(0, 1800)}` : '')
-    + (ctx.retrato ? `\n\nSINAIS RECENTES DO APP DELA:\n${ctx.retrato}` : '');
+async function gerarToqueDoDia(uid, nome) {
+  if (!process.env.ANTHROPIC_API_KEY || !uid) return null;
+  const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
+  const per = periodoAgora();
+  const [ultimo, pront, retrato, comp, bussola] = await Promise.all([
+    ultimoEncontro(uid).catch(() => null), getProntuario(uid).catch(() => null),
+    retratoPaciente(uid).catch(() => null), compromissosPaciente(uid).catch(() => ''), getMapaBussola(uid).catch(() => null)
+  ]);
+  if (!ultimo && !comp && !bussola) return null;
+  let ctx = `QUEM VAI LER: ${primeiro || 'a própria pessoa'} — é o app DELA, ela mesma abre e lê.\nAGORA É: ${per === 'manha' ? 'manhã' : per}.\n`;
+  if (ultimo) {
+    const d = Number(ultimo.dias_atras);
+    const quando = d <= 0 ? 'hoje mais cedo' : d === 1 ? 'ontem' : d < 7 ? `há ${d} dias` : d < 30 ? 'na semana passada' : 'há um tempo';
+    ctx += `\nÚLTIMA CONVERSA (${quando}), nas palavras dela:\n` + ultimo.falas.map(f => '- "' + f + '"').join('\n')
+      + (ultimo.emocao ? `\nComo estava: ${ultimo.emocao}.` : '')
+      + (ultimo.risco && !['nenhum', 'NENHUM'].includes(ultimo.risco) ? '\nHavia sinais de dor forte/risco — seja gentil e cuidadosa, nunca leve.' : '');
+  } else ctx += '\nEla ainda não conversou com você no app.';
+  if (comp) ctx += `\n\nCOMPROMISSOS DA JORNADA DELA:\n${comp}`;
+  if (retrato) ctx += `\n\nSINAIS RECENTES DO APP DELA:\n${retrato}`;
+  if (pront?.prontuario) ctx += `\n\nMEMÓRIA DA CAMINHADA (desafios, lutas, vitórias e testemunhos — só para você entender; NÃO cite nem resuma):\n${String(pront.prontuario).slice(0, 2000)}`;
+  else if (bussola) ctx += `\n\nPONTO DE PARTIDA (questionário inicial — só para entender):\n${String(bussola).slice(0, 900)}`;
+
   const pedir = async extra => {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 90,
-        system: `Você é a Lúmen, a companheira de jornada que vive no app da PRÓPRIA pessoa. Ela acabou de abrir o app e vai ler UMA frase sua na tela inicial.
-FALE DIRETAMENTE COM ELA, em segunda pessoa ("você"). Você NÃO está falando com terapeuta, mentor ou qualquer outra pessoa. NUNCA a chame de cliente ou paciente, NUNCA fale dela em terceira pessoa ("ela está…"), NUNCA pergunte o que "você vai trabalhar com ela".
-Escreva UMA frase curta (máx 20 palavras), humana e real, que retome o assunto CONCRETO que ela viveu (a pessoa, a situação, a decisão em jogo), costurando com o que os sinais recentes mostram, se fizer sentido.
-PROIBIDO: "de onde paramos", "na última conversa", "retomando", clichês, travessão em prosa, "não é X, é Y", melação, números de escala ou de check-in. Escreva "você" por extenso. Pode terminar com uma pergunta curta e genuína. Se havia dor forte ou risco, seja gentil, nunca leve. Responda SÓ a frase, sem aspas.${extra || ''}`,
-        messages: [{ role: 'user', content: contexto }]
+        max_tokens: 110,
+        system: `Você é a Lúmen, a companheira de jornada que vive no app da PRÓPRIA pessoa, como uma amiga próxima que acompanha de perto a caminhada dela. Ela acabou de abrir o app e vai ler a sua mensagem na tela inicial, logo abaixo de "${per === 'manha' ? 'Bom dia' : per === 'tarde' ? 'Boa tarde' : 'Boa noite'}, ${primeiro}".
+FALE DIRETAMENTE COM ELA, em segunda pessoa ("você"), sobre a VIDA DELA: os desafios, as lutas, as tarefas, as metas, as vitórias e os testemunhos da jornada dela. Nunca fale com terapeuta, nunca a chame de cliente ou paciente, nunca fale dela em terceira pessoa. Mesmo que ela tenha conversado sobre outras pessoas, o foco é ELA (o cuidado dela, o corpo dela, a fé dela, o que ela se comprometeu a fazer).
+O QUE ESCREVER: escolha UMA coisa concreta e mais importante agora, nesta ordem de prioridade:
+1) um compromisso em aberto (passo do plano, tarefa da sessão, meta, ou algo que ela disse que ia fazer) → dê um toque carinhoso e direto para ela fazer, adequado ao período do dia (manhã: "já fez ou vai mais tarde?"; noite: "conseguiu hoje?"), e lembre por que isso importa PARA ELA;
+2) uma luta que ela está vivendo → pergunte como está, citando a situação real;
+3) uma vitória recente → celebre e incentive a manter.
+Tom: próximo, humano, brasileiro, como amiga que se importa. Exemplo de tom (NÃO copie o conteúdo): "E aí, Marcelina, já saiu pra caminhar hoje ou vai mais tarde? Não esquece, isso é importantíssimo pra você."
+Formato: 1 ou 2 frases curtas (máx 30 palavras no total). Não repita "Bom dia/Boa tarde/Boa noite" nem o nome dela no começo (já aparece acima); pode usar o nome no meio se soar natural. Escreva "você" por extenso.
+PROIBIDO: "de onde paramos", "na última conversa", "retomando", clichês, travessão, "não é X, é Y", melação, números de escala ou de check-in, inventar compromisso que não está nos dados. Responda SÓ a mensagem, sem aspas.${extra || ''}`,
+        messages: [{ role: 'user', content: ctx }]
       })
     });
     const data = await r.json();
     if (data.error) return null;
     let t = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
-    t = t.replace(/^["'“”]+|["'“”]+$/g, '').trim();
+    t = t.replace(/^["'“”]+|["'“”]+$/g, '').replace(/\s*[—–]\s*/g, ', ').trim();
     return t.length > 4 ? tirarCe(t) : null;
   };
   try {
     let t = await pedir();
-    if (t && SAUDACAO_ERRADA.test(t)) t = await pedir('\nATENÇÃO: sua tentativa anterior falou SOBRE a pessoa. Reescreva falando COM ela, usando "você".');
+    if (t && SAUDACAO_ERRADA.test(t)) t = await pedir('\nATENÇÃO: sua tentativa anterior falou SOBRE a pessoa ou sobre outra pessoa. Reescreva falando COM ela, sobre a vida e os compromissos DELA.');
     return t && !SAUDACAO_ERRADA.test(t) ? t : null;
   } catch { return null; }
 }
@@ -1002,18 +1047,14 @@ app.get('/api/me/greeting', requireAuth, async (req, res) => {
   try {
     const uid = req.user.uid;
     const ultimo = await ultimoEncontro(uid).catch(() => null);
-    if (!ultimo) return res.json({ saudacao: null, tem_historico: false });
-    const base = ultimo.ultima_em ? new Date(ultimo.ultima_em).toISOString() : null;
+    // a frase muda por dia + período (manhã/tarde/noite) e quando há conversa nova
+    const chave = hojeSP() + '|' + periodoAgora() + '|' + (ultimo?.ultima_em ? new Date(ultimo.ultima_em).toISOString() : '-');
     const cache = await getSaudacao(uid).catch(() => null);
-    const cacheBase = cache?.saudacao_base ? new Date(cache.saudacao_base).toISOString() : null;
-    const cacheBom = cache?.saudacao && !SAUDACAO_ERRADA.test(cache.saudacao);   // frases antigas "sobre" a pessoa são refeitas
-    if (cacheBom && cacheBase && cacheBase === base) return res.json({ saudacao: cache.saudacao, tem_historico: true });
-    const [pront, retrato] = await Promise.all([
-      getProntuario(uid).catch(() => null), retratoPaciente(uid).catch(() => null)
-    ]);
-    const nova = await gerarSaudacaoJornada(ultimo, { nome: req.user.name, prontuario: pront?.prontuario, retrato });
-    if (nova) { await setSaudacao(uid, nova, ultimo.ultima_em).catch(() => {}); return res.json({ saudacao: nova, tem_historico: true }); }
-    res.json({ saudacao: cacheBom ? cache.saudacao : null, tem_historico: true });
+    const cacheBom = cache?.saudacao && !SAUDACAO_ERRADA.test(cache.saudacao);
+    if (cacheBom && cache.saudacao_chave === chave) return res.json({ saudacao: cache.saudacao, tem_historico: !!ultimo });
+    const nova = await gerarToqueDoDia(uid, req.user.name);
+    if (nova) { await setSaudacao(uid, nova, ultimo?.ultima_em || null, chave).catch(() => {}); return res.json({ saudacao: nova, tem_historico: !!ultimo }); }
+    res.json({ saudacao: cacheBom ? cache.saudacao : null, tem_historico: !!ultimo });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -2318,10 +2359,26 @@ const LEMBRETES = [
     title: '🕊️ Momento com Deus', body: 'Antes do dia terminar: já teve seu momento com o Pai hoje? Alguns minutos em oração realinham tudo.' }
 ];
 
+async function enviarToquesManha() {
+  const pacientes = await usersForReminders();
+  for (const p of pacientes) {
+    try {
+      if (await reminderSent(p.id, 'toque')) continue;
+      if (!(await orgAtiva(await patientOrg(p.id)))) continue;          // clínica pausada: não envia
+      const texto = await gerarToqueDoDia(p.id, p.name);
+      if (!texto) continue;
+      const nome = String(p.name || '').split(' ')[0];
+      const enviados = await sendPushToUser(p.id, { title: '🌿 ' + (nome ? nome + ', um toque pra hoje' : 'Um toque pra hoje'), body: texto, tag: 'toque', url: '/' });
+      if (enviados > 0) await markReminderSent(p.id, 'toque');
+    } catch (e) { console.error('toque manhã:', e.message); }
+  }
+}
 async function rodarLembretes() {
   if (!PUSH_ON || !dbReady || String(process.env.REMINDERS || 'on') !== 'on') return;
   try {
     const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+    // TOQUE DA MANHÃ (9h–11h): mensagem personalizada ligada ao plano, tarefas, metas e conversas de cada paciente
+    if (hora >= 9 && hora < 11) await enviarToquesManha();
     const ativos = LEMBRETES.filter(l => hora >= l.deHora && hora < l.ateHora);
     if (!ativos.length) return;
     const pacientes = await usersForReminders();

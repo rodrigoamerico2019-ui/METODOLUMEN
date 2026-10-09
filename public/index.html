@@ -512,6 +512,8 @@
   .jor-step.done .jor-check svg { opacity:1; }
   .jor-step-txt { font-size:14.5px; color:var(--ink); line-height:1.5; }
   .jor-step.done .jor-step-txt { color:var(--ink-dim); text-decoration:line-through; text-decoration-color:var(--ink-faint); }
+  /* plano todo concluído: é comemoração, não item riscado */
+  .jor-step.done.completo .jor-step-txt { color:var(--gold-2); text-decoration:none; font-weight:500; }
   .jor-step-hint { display:block; margin-top:4px; font-size:12px; color:var(--ink-faint); }
   .jor-word { background:linear-gradient(160deg,rgba(201,162,39,.10),var(--panel) 62%); border-left:3px solid var(--gold-2); }
   .jor-verse { font-family:'Cormorant Garamond',Georgia,serif; font-style:italic; font-size:17.5px; color:var(--ink); margin-top:9px; line-height:1.4; }
@@ -1105,7 +1107,7 @@ async function renderJornada(){
       stepCard.dataset.idx = '';
       document.getElementById('jorStepTxt').textContent = 'Você concluiu os passos do seu plano. Que caminhada. 🌱';
       document.getElementById('jorStepHint').textContent = total + ' de ' + total + ' concluídos.';
-      stepCard.classList.add('done'); check.style.visibility = 'hidden';
+      stepCard.classList.add('done', 'completo'); check.style.visibility = 'hidden';
     } else {
       const passo = p.passos[idx];
       stepCard.dataset.idx = String(idx);
@@ -1113,7 +1115,7 @@ async function renderJornada(){
       document.getElementById('jorStepHint').textContent = total > 1
         ? ('passo ' + (feitos.length + 1) + ' de ' + total + ' · toque quando fizer')
         : 'toque no círculo quando fizer';
-      stepCard.classList.remove('done'); check.style.visibility = '';
+      stepCard.classList.remove('done', 'completo'); check.style.visibility = '';
     }
     stepCard.classList.remove('hide');
   } else {

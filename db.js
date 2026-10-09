@@ -132,6 +132,8 @@ export async function initDb() {
     -- saudação da Jornada: uma linha humana que retoma o assunto real da última conversa
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS saudacao TEXT;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS saudacao_base TIMESTAMPTZ;
+    -- chave do 'toque do dia' (dia + período + última conversa): a frase muda de manhã, à tarde e à noite
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS saudacao_chave TEXT;
     -- check-in diário (o "filtro" de consciência: como estou hoje em corpo/alma/espírito)
     CREATE TABLE IF NOT EXISTS checkins (
       id BIGSERIAL PRIMARY KEY,
@@ -2492,13 +2494,13 @@ export async function ultimoEncontro(userId) {
 // cache da saudação da Jornada (regenera só quando há conversa nova)
 export async function getSaudacao(userId) {
   if (!pool || !userId) return null;
-  const r = await pool.query('SELECT saudacao, saudacao_base FROM profiles WHERE user_id=$1', [userId]);
+  const r = await pool.query('SELECT saudacao, saudacao_base, saudacao_chave FROM profiles WHERE user_id=$1', [userId]);
   return r.rows[0] || null;
 }
-export async function setSaudacao(userId, texto, base) {
+export async function setSaudacao(userId, texto, base, chave) {
   if (!pool || !userId) return;
-  await pool.query(`INSERT INTO profiles (user_id, saudacao, saudacao_base) VALUES ($1,$2,$3)
-    ON CONFLICT (user_id) DO UPDATE SET saudacao=$2, saudacao_base=$3`, [userId, texto || null, base || null]);
+  await pool.query(`INSERT INTO profiles (user_id, saudacao, saudacao_base, saudacao_chave) VALUES ($1,$2,$3,$4)
+    ON CONFLICT (user_id) DO UPDATE SET saudacao=$2, saudacao_base=$3, saudacao_chave=$4`, [userId, texto || null, base || null, chave || null]);
 }
 
 // médias da tríade nos últimos N dias (para as esferas do painel)
