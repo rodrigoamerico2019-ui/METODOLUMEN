@@ -1307,6 +1307,7 @@ async function sendMessage(text){
     setMode('live');
   } catch(e){
     hideTyping();
+    if(e && e.message === 'acesso pausado') return;   // clínica pausada: não cai no modo local
     console.error('Lúmen erro:', e);
     // Modo local: o app nunca trava. Toda a detecção/alerta/relatório continua ativa.
     if(selfHarm || harmOthers){ state.risk='ALTO'; state.status='vermelho'; }
@@ -1682,6 +1683,7 @@ async function callLumen(){
   let data;
   try { data = await res.json(); }
   catch(_){ throw new Error('resposta inválida do servidor (HTTP ' + res.status + ')'); }
+  if(data.pausado){ AUTH.token = ''; showAuthGate(); agError(data.error); throw new Error('acesso pausado'); }
   if(data.error) throw new Error(data.error);
   const text = (data.text || '').trim();
   if(!text) throw new Error('resposta vazia do servidor');
@@ -2669,7 +2671,7 @@ function esferasEmblema(e){
     if(!AUTH.token) return showAuthGate();
     const me = await fetch(API_BASE + '/api/auth/me', { headers: authHeaders() }).then(r=>r.json()).catch(()=>({}));
     if(me && me.ok){ AUTH.name = me.name || AUTH.name; afterLogin(); }
-    else { AUTH.token=''; showAuthGate(); }
+    else { AUTH.token=''; showAuthGate(); if(me && me.pausado) agError(me.error); }
   } catch(_){ /* servidor fora: app segue no modo local */ }
 })();
 

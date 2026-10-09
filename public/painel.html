@@ -877,7 +877,7 @@ function modalPrompt(msg, valorInicial, titulo){
   return new Promise(res=>{
     let done=false; const fin=v=>{ if(done)return; done=true; modalFechar(); res(v); };
     modalAbrir(titulo||'',
-      '<label style="display:block;font-size:13px;color:var(--dim);margin-bottom:8px">'+escHtml(msg)+'</label>'+
+      '<label style="display:block;font-size:13px;color:var(--dim);margin-bottom:8px;white-space:pre-line">'+escHtml(msg)+'</label>'+
       '<input id="mpInput" style="width:100%;padding:11px 13px;font-size:14px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:inherit" value="'+escHtml(valorInicial||'')+'"/>'+
       '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px"><button class="btn ghost" id="mpNao">Cancelar</button><button class="btn" id="mpSim">OK</button></div>',
       { onClose:()=>{ if(!done){ done=true; res(null); } } });
@@ -1303,7 +1303,7 @@ async function recarregarMarca(){
 /* ===== CENTRAL DE CLIENTES (super-admin) ===== */
 const brl = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',');
 function statusFinanceiro(o){
-  if(o.status!=='ativa') return { txt:'suspenso', cls:'inativa', venc:'' };
+  if(o.status!=='ativa') return { txt:'⏸ pausado', cls:'inativa', venc:'acesso bloqueado' };
   if(!o.proximo_vencimento) return { txt: o.origem==='manual'?'manual':'—', cls:'pend', venc:'' };
   const hoje=new Date(); hoje.setHours(0,0,0,0);
   const venc=new Date(o.proximo_vencimento+'T00:00:00');
@@ -1332,9 +1332,10 @@ async function carregarLicencas(){
       const fin = statusFinanceiro(o);
       const primeiro = o.primeiro_acesso_pendente ? ' · <span style="color:var(--gold2)">aguarda 1º acesso</span>' : '';
       const acoes = o.id==1 ? '<small class="muted">—</small>' : `<div class="lic-act">
-        <button onclick="toggleCliente(${o.id},'${o.status==='ativa'?'inativa':'ativa'}')">${o.status==='ativa'?'Suspender':'Reativar'}</button>
+        <button onclick="toggleCliente(${o.id},'${o.status==='ativa'?'inativa':'ativa'}',${escHtml(JSON.stringify(o.nome||''))})">${o.status==='ativa'?'⏸ Pausar assinatura':'▶ Liberar acesso'}</button>
         <button onclick="editarLimite(${o.id},${o.limite_pessoas})">Limite</button>
-        <button onclick="editarAcesso(${o.id},'${(o.mentor_username||'').replace(/'/g,'')}')">Acesso</button></div>`;
+        <button onclick="editarAcesso(${o.id},'${(o.mentor_username||'').replace(/'/g,'')}')">Acesso</button>
+        <button style="color:var(--vermelho)" onclick="excluirCliente(${o.id},${escHtml(JSON.stringify(o.nome||''))},${o.pessoas||0},${o.asaas_subscription?'true':'false'})">🗑 Excluir</button></div>`;
       return `<tr>
         <td class="lic-cliente"><b>${o.nome||'—'}</b><small>${o.mentor_username?('@'+o.mentor_username):(o.mentor_email||'')}${o.origem==='manual'?' · manual':''}${primeiro}</small></td>
         <td><span class="lic-plano">${o.plano_nome||o.plano}</span><br><small style="color:var(--faint)">${o.preco?brl(o.preco)+'/mês':'—'}</small></td>
@@ -1382,8 +1383,27 @@ async function criarCliente(){
     carregarLicencas();
   }catch(e){ $('ccResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-async function toggleCliente(orgId, status){
-  try{ await postAdmin('/api/admin/orgs/status', {orgId, status}); carregarLicencas(); }
+async function toggleCliente(orgId, status, nome){
+  const pausar = status!=='ativa';
+  const msg = pausar
+    ? 'Pausar a assinatura de '+(nome||'este cliente')+'? O painel do cliente e o app dos pacientes dele ficam BLOQUEADOS até você liberar. Nenhum dado é apagado.'
+    : 'Liberar o acesso de '+(nome||'este cliente')+'? O painel e o app dos pacientes voltam a funcionar na hora.';
+  if(!await modalConfirm(msg)) return;
+  try{ await postAdmin('/api/admin/orgs/status', {orgId, status}); aviso(pausar?'Assinatura pausada ⏸':'Acesso liberado ▶','ok'); carregarLicencas(); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
+}
+// EXCLUIR cliente: irreversível — exige digitar o nome exato
+async function excluirCliente(orgId, nome, pacientes, temAsaas){
+  const aviso1 = ['⚠️ EXCLUIR DEFINITIVAMENTE o cliente '+nome+'?',
+    'Serão apagados o acesso do cliente e '+pacientes+' paciente(s), com conversas, prontuários, agenda e financeiro. NÃO dá para desfazer.',
+    temAsaas ? 'Este cliente tem assinatura no Asaas: cancele a cobrança lá também.' : null,
+    'Se quiser só bloquear, use “Pausar assinatura”.',
+    'Para confirmar, digite o nome do cliente:'].filter(Boolean).join(String.fromCharCode(10, 10));
+  const v = await modalPrompt(aviso1, '', 'Excluir cliente');
+  if(v==null || v==='') return;
+  if(String(v).trim().toLowerCase()!==String(nome).trim().toLowerCase()){ aviso('O nome digitado não confere. Nada foi excluído.','erro'); return; }
+  try{ const d=await postAdmin('/api/admin/orgs/delete', {orgId, confirmacao:v});
+    aviso('Cliente '+d.nome+' excluído ('+d.pacientes+' paciente(s)).','ok'); carregarLicencas(); }
   catch(e){ aviso('Erro: '+e.message,'erro'); }
 }
 async function editarLimite(orgId, atual){

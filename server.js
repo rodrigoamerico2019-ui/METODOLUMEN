@@ -48,6 +48,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
+         orgAtiva, excluirOrganizacao,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -287,17 +288,22 @@ Gere de 3 a 5 passos, variando as dimensões conforme a necessidade da pessoa (p
 // ---------------------------------------------------------
 // Acesso ao painel: ADMIN_KEY = super-admin (Rodrigo, vê TODAS as orgs, req.orgId=null)
 // OU token de mentor (Bearer) = vê apenas a própria organização (req.orgId setado).
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   const esperado = String(process.env.ADMIN_KEY || '').trim();
   const recebido = String(req.query.key || '').trim();
   if (esperado && recebido === esperado) { req.orgId = null; req.superAdmin = true; return next(); }
+  let tok = null;
   try {
     // token de mentor: no header Authorization OU na query ?token= (para <audio src>)
     const h = req.headers.authorization || '';
     const raw = h.startsWith('Bearer ') ? h.slice(7) : (req.query.token ? String(req.query.token) : null);
-    const tok = raw ? jwtVerify(raw) : null;
-    if (tok && tok.mentor) { req.orgId = tok.org_id; req.mentorUid = tok.uid; return next(); }
+    tok = raw ? jwtVerify(raw) : null;
   } catch (_) {}
+  if (tok && tok.mentor) {
+    // assinatura pausada pelo ADM → o painel do cliente para de funcionar até liberar
+    try { if (!(await orgAtiva(tok.org_id))) return res.status(403).json({ error: 'A assinatura desta conta está pausada. Fale com a TRILUMEN para liberar o acesso.', pausado: true }); } catch (_) {}
+    req.orgId = tok.org_id; req.mentorUid = tok.uid; return next();
+  }
   res.status(403).json({ error: 'acesso não autorizado' });
 }
 function jwtVerify(token) {
@@ -1218,7 +1224,16 @@ app.post('/api/admin/orgs/status', requireAdmin, async (req, res) => {
   try {
     if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
     const b = req.body || {};
+    if (Number(b.orgId) === 1) return res.status(400).json({ error: 'A organização padrão não pode ser pausada.' });
     res.json(await setOrgStatus(Number(b.orgId), b.status));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+// EXCLUIR cliente com todos os dados (irreversível; exige o nome exato como confirmação)
+app.post('/api/admin/orgs/delete', requireAdmin, async (req, res) => {
+  try {
+    if (!req.superAdmin) return res.status(403).json({ error: 'apenas super-admin' });
+    const b = req.body || {};
+    res.json(await excluirOrganizacao(Number(b.orgId), b.confirmacao));
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 // alterar o limite de pacientes do cliente

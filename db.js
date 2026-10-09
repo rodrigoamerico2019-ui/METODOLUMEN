@@ -522,6 +522,7 @@ export async function login({ email, login: lg, password }) {
     `SELECT * FROM users WHERE email=$1 OR (role='paciente' AND lower(username)=$1) ORDER BY (email=$1) DESC LIMIT 1`, [l]);
   if (!u.rows[0] || !(await bcrypt.compare(String(password || ''), u.rows[0].password_hash)))
     throw new Error('Usuário ou senha incorretos.');
+  if (!(await orgAtiva(u.rows[0].org_id))) throw new Error(MSG_PAUSADO);
   await pool.query('UPDATE users SET last_seen_at=now() WHERE id=$1', [u.rows[0].id]);
   return issueToken(u.rows[0]);
 }
@@ -556,16 +557,20 @@ export async function trocarSenhaPaciente(uid, { password, consent }) {
 }
 
 // --- middleware: exige login nas rotas de conversa ---
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   if (!pool) return next(); // sem banco, segue sem contas (modo antigo)
   try {
     const h = req.headers.authorization || '';
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     req.user = jwt.verify(token, JWT_SECRET);
-    next();
   } catch {
-    res.status(401).json({ error: 'login_necessario' });
+    return res.status(401).json({ error: 'login_necessario' });
   }
+  // assinatura da clínica pausada → o app deixa de funcionar até liberar
+  try {
+    if (!(await orgAtiva(await orgDoUsuario(req.user.uid)))) return res.status(403).json({ error: MSG_PAUSADO, pausado: true });
+  } catch (_) { /* se a checagem falhar, não derruba o atendimento */ }
+  next();
 }
 
 // --- grava mensagens (com o META da Lúmen) por paciente ---
@@ -635,23 +640,95 @@ export async function provisionarManual({ nome, email, plano, limite, vencimento
   const p = PLANOS[String(plano || '').toLowerCase()] || PLANOS.essencial;
   const lim = Math.max(1, Math.min(2000, Number(limite) || p.limite));
   const nomeOrg = String(nome || email.split('@')[0]).trim();
-  if ((await pool.query('SELECT 1 FROM users WHERE email=$1', [email])).rows[0])
-    throw new Error('Já existe uma conta com este e-mail.');
+  // o e-mail é único no sistema todo (pacientes e terapeutas): diz ONDE ele já está em uso
+  const ex = await pool.query(`SELECT u.role, COALESCE(o.marca_nome, o.nome) AS org FROM users u
+    LEFT JOIN organizations o ON o.id=u.org_id WHERE u.email=$1`, [email]);
+  if (ex.rows[0]) {
+    const papel = ex.rows[0].role === 'paciente' ? 'um PACIENTE' : 'o acesso de um cliente';
+    throw new Error(`Este e-mail já está em uso por ${papel}${ex.rows[0].org ? ' (' + ex.rows[0].org + ')' : ''}. Use outro e-mail para o novo cliente.`);
+  }
   const venc = (vencimento && /^\d{4}-\d{2}-\d{2}$/.test(vencimento)) ? vencimento : null;
-  const org = await pool.query(
-    `INSERT INTO organizations (nome, plano, limite_pessoas, status, origem, proximo_vencimento)
-     VALUES ($1,$2,$3,'ativa','manual',$4) RETURNING id`,
-    [nomeOrg, String(plano || 'essencial').toLowerCase(), lim, venc]);
-  const orgId = org.rows[0].id;
-  const username = slugUser(email);
-  const senhaTemp = Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  const senhaTemp = crypto.randomBytes(6).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'acesso' + Date.now() % 10000;
   const hash = await bcrypt.hash(senhaTemp, 10);
-  await pool.query(
-    `INSERT INTO users (email, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
-     VALUES ($1,$2,$3,'mentor',$4,$5,true,now(),now())`,
-    [email, nomeOrg, hash, orgId, username]);
-  return { org_id: orgId, nome: nomeOrg, email, username, senha_temp: senhaTemp,
-           plano: String(plano || 'essencial').toLowerCase(), plano_nome: p.nome, limite: lim };
+  // tudo numa transação: ou cria cliente + acesso, ou não cria nada (sem cliente "pela metade")
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    const org = await cx.query(
+      `INSERT INTO organizations (nome, plano, limite_pessoas, status, origem, proximo_vencimento)
+       VALUES ($1,$2,$3,'ativa','manual',$4) RETURNING id`,
+      [nomeOrg, String(plano || 'essencial').toLowerCase(), lim, venc]);
+    const orgId = org.rows[0].id;
+    let username = slugUser(email);
+    for (let i = 0; i < 20 && (await cx.query('SELECT 1 FROM users WHERE lower(username)=$1', [username])).rows[0]; i++) username = slugUser(email);
+    const u = await cx.query(
+      `INSERT INTO users (email, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
+       VALUES ($1,$2,$3,'mentor',$4,$5,true,now(),now()) RETURNING id`,
+      [email, nomeOrg, hash, orgId, username]);
+    await cx.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1,$2,'owner') ON CONFLICT (org_id, user_id) DO NOTHING`, [orgId, u.rows[0].id]);
+    await cx.query('COMMIT');
+    return { org_id: orgId, nome: nomeOrg, email, username, senha_temp: senhaTemp,
+             plano: String(plano || 'essencial').toLowerCase(), plano_nome: p.nome, limite: lim };
+  } catch (e) {
+    await cx.query('ROLLBACK').catch(() => {});
+    throw new Error('Não foi possível criar o cliente: ' + (e.message || e));
+  } finally { cx.release(); }
+}
+
+// ---- situação da assinatura (pausada/liberada) com cache curto, para não pesar em cada requisição ----
+const cacheOrgStatus = new Map();   // org_id → { ativa, ts }
+const cacheUserOrg = new Map();     // uid → { org, ts }
+const TTL_ORG = 60 * 1000;
+export function limparCacheOrg(orgId) { if (orgId == null) { cacheOrgStatus.clear(); cacheUserOrg.clear(); } else cacheOrgStatus.delete(Number(orgId)); }
+export async function orgAtiva(orgId) {
+  if (!pool || !orgId) return true;
+  const k = Number(orgId), c = cacheOrgStatus.get(k);
+  if (c && Date.now() - c.ts < TTL_ORG) return c.ativa;
+  const r = await pool.query('SELECT status FROM organizations WHERE id=$1', [k]);
+  const ativa = !r.rows[0] || r.rows[0].status === 'ativa';
+  cacheOrgStatus.set(k, { ativa, ts: Date.now() });
+  return ativa;
+}
+async function orgDoUsuario(uid) {
+  const c = cacheUserOrg.get(uid);
+  if (c && Date.now() - c.ts < TTL_ORG) return c.org;
+  const r = await pool.query('SELECT org_id FROM users WHERE id=$1', [uid]);
+  const org = r.rows[0] ? r.rows[0].org_id : null;
+  cacheUserOrg.set(uid, { org, ts: Date.now() });
+  return org;
+}
+export const MSG_PAUSADO = 'O acesso está pausado no momento. Fale com a sua clínica ou terapeuta para liberar.';
+
+// EXCLUIR CLIENTE (organização) com TODOS os dados: terapeutas, pacientes, conversas, agenda, financeiro…
+// Irreversível. Exige o nome exato do cliente como confirmação. A organização padrão (1) é protegida.
+export async function excluirOrganizacao(orgId, confirmacao) {
+  if (!pool) throw new Error('banco não configurado');
+  orgId = Number(orgId);
+  if (!orgId || orgId === 1) throw new Error('Esta organização não pode ser excluída.');
+  const o = await pool.query('SELECT id, nome, asaas_subscription FROM organizations WHERE id=$1', [orgId]);
+  if (!o.rows[0]) throw new Error('Cliente não encontrado.');
+  if (String(confirmacao || '').trim().toLowerCase() !== String(o.rows[0].nome).trim().toLowerCase())
+    throw new Error('Confirmação não confere: digite exatamente o nome do cliente.');
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    const n = (await cx.query(`SELECT count(*) FILTER (WHERE role='paciente')::int AS pacientes, count(*)::int AS usuarios FROM users WHERE org_id=$1`, [orgId])).rows[0];
+    await cx.query('DELETE FROM sessions WHERE org_id=$1 OR client_user_id IN (SELECT id FROM users WHERE org_id=$1)', [orgId]);
+    await cx.query('DELETE FROM reports WHERE org_id=$1', [orgId]);
+    for (const t of ['receivables', 'payables', 'appointments', 'invite_codes', 'client_access_tokens'])
+      await cx.query(`DELETE FROM ${t} WHERE org_id=$1`, [orgId]);
+    await cx.query('DELETE FROM users WHERE org_id=$1', [orgId]);          // cascata: conversas, prontuários, fichas…
+    await cx.query('DELETE FROM org_members WHERE org_id=$1', [orgId]);
+    await cx.query('DELETE FROM organizations WHERE id=$1', [orgId]);      // cascata: unidades, marca
+    await cx.query(`INSERT INTO audit_logs (org_id, acao, entidade, entidade_id, dados) VALUES ($1,'organizacao_excluida','organization',$2,$3)`,
+      [orgId, String(orgId), JSON.stringify({ nome: o.rows[0].nome, ...n })]);
+    await cx.query('COMMIT');
+    limparCacheOrg();
+    return { ok: true, nome: o.rows[0].nome, ...n, tinha_assinatura_asaas: !!o.rows[0].asaas_subscription };
+  } catch (e) {
+    await cx.query('ROLLBACK').catch(() => {});
+    throw new Error('Não foi possível excluir: ' + (e.message || e));
+  } finally { cx.release(); }
 }
 
 // suspender / reativar uma licença
@@ -659,6 +736,7 @@ export async function setOrgStatus(orgId, status) {
   if (!pool || !orgId) throw new Error('banco não configurado');
   const st = status === 'ativa' ? 'ativa' : 'inativa';
   await pool.query('UPDATE organizations SET status=$2 WHERE id=$1', [orgId, st]);
+  limparCacheOrg(orgId);
   return { ok: true, status: st };
 }
 
@@ -713,6 +791,7 @@ export async function mentorLogin({ login, password }) {
     `SELECT * FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(username)=$1)`, [l]);
   if (!u.rows[0] || !(await bcrypt.compare(String(password || ''), u.rows[0].password_hash)))
     throw new Error('Usuário ou senha incorretos.');
+  if (!(await orgAtiva(u.rows[0].org_id))) throw new Error('A assinatura desta conta está pausada. Fale com a TRILUMEN para liberar o acesso.');
   await pool.query('UPDATE users SET last_seen_at=now() WHERE id=$1', [u.rows[0].id]);
   const token = jwt.sign({ uid: u.rows[0].id, org_id: u.rows[0].org_id, role: u.rows[0].role, mentor: true },
     JWT_SECRET, { expiresIn: '30d' });
