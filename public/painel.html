@@ -820,6 +820,7 @@
         <div class="ficha-head">
           <img id="cliFoto" class="ficha-foto" alt=""/>
           <div style="flex:1"><div class="h2c" id="cliNome"></div><p class="subc" id="cliSub"></p></div>
+          <button class="btn" style="padding:9px 18px;align-self:center" onclick="dispararWhatsApp(clienteAtual.id, clienteAtual.basico&&clienteAtual.basico.name)" title="Envia ao WhatsApp do paciente o link de instalação do app com usuário e senha provisória">📲 Enviar app pelo WhatsApp</button>
         </div>
         <div class="cli-tabs" id="cliTabs"></div>
         <div id="cliTabBody"></div>
@@ -1735,7 +1736,8 @@ async function carregarClientes(){
       const acesso = c.tem_acesso ? '<span class="lic-st ativa">com acesso</span>' : '<span class="muted">sem acesso</span>';
       return '<tr><td class="lic-cliente"><b>'+escHtml(c.name||'—')+'</b><small>'+escHtml(c.codigo||'')+(c.tipo_acompanhamento?' · '+escHtml(c.tipo_acompanhamento):'')+'</small></td>'+
         '<td>'+(c.profissional?escHtml(c.profissional):'<span class="muted">—</span>')+'</td><td>'+badge+'</td><td>'+acesso+'</td>'+
-        '<td class="fin-act"><button onclick="abrirCliente('+c.id+')">Abrir ficha →</button></td></tr>';
+        '<td class="fin-act"><button title="Enviar o link do app pelo WhatsApp" onclick="dispararWhatsApp('+c.id+', '+escHtml(JSON.stringify(c.name||''))+')">📲 WhatsApp</button> '+
+        '<button onclick="abrirCliente('+c.id+')">Abrir ficha →</button></td></tr>';
     }).join('');
     $('cliTabela').innerHTML = '<thead><tr><th>Paciente</th><th>Profissional</th><th>Status</th><th>Acesso</th><th></th></tr></thead>'+
       '<tbody>'+(linhas||'<tr><td colspan="5" class="muted">Nenhum paciente ainda. Clique em “Novo paciente”.</td></tr>')+'</tbody>';
@@ -1764,7 +1766,7 @@ function formCadastroHTML(){
     '<input id="crOrigem" placeholder="Origem (indicação, site…)"/>'+
     '<input id="crCanal" placeholder="Canal preferencial"/>'+
     '<input id="crObs" placeholder="Observação inicial" style="flex-basis:100%"/>'+
-    '<div style="flex-basis:100%;margin:4px 0 2px"><b style="font-size:13px">📲 Enviar o link do app com usuário e senha por:</b>'+
+    '<div style="flex-basis:100%;margin:4px 0 2px"><b style="font-size:13px">📲 Ao salvar, disparar o link de instalação do app (com usuário e senha) para:</b>'+
     escolhaCanaisHTML('cr', true)+'</div>'+
     '<button class="btn" style="padding:9px 20px" onclick="salvarCadRapido()">Salvar paciente</button>'+
     '<div id="crResult" style="width:100%"></div></div>';
@@ -2277,6 +2279,15 @@ async function enviarAcessoApp(id, canais, nome){
       '<div class="muted" style="margin-top:6px;font-size:12.5px">Usuário <b>'+escHtml(d.usuario)+'</b> · senha provisória <b>'+escHtml(d.senha)+'</b>'+
       (algumOk?'':' — <b>nada foi enviado</b>; passe esses dados ao paciente manualmente')+'</div>';
   }catch(e){ return '<div style="color:var(--vermelho);margin-top:8px">Não consegui enviar o acesso: '+escHtml(e.message)+'</div>'; }
+}
+// disparo direto pelo WhatsApp (lista de pacientes e topo da ficha)
+async function dispararWhatsApp(id, nome){
+  if(!id) return;
+  if(!await modalConfirm('Enviar para o WhatsApp de '+(nome||'este paciente')+' o link de instalação do app com usuário e senha provisória?')) return;
+  aviso('enviando pelo WhatsApp…');
+  const html = await enviarAcessoApp(id, ['whatsapp'], nome);
+  modalAbrir('Envio do acesso — '+(nome||'paciente'), '<div style="padding:4px 2px">'+html+'</div>');
+  if(typeof carregarClientes==='function') carregarClientes();
 }
 async function enviarAcessoFicha(){
   const canais=canaisMarcados('ac');
