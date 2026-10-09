@@ -1068,12 +1068,35 @@ function abrirCheckin(){
   ob.classList.remove('hide');
 }
 
+/* SAUDAÇÃO DO TOPO — respeita o horário do aparelho (5h–11h bom dia · 12h–17h boa tarde ·
+   18h–4h boa noite) e usa o nome do CADASTRO (vem do servidor em /api/auth/me). */
+function periodoDoDia(){ const h = new Date().getHours(); return (h >= 5 && h < 12) ? 'manha' : (h >= 12 && h < 18) ? 'tarde' : 'noite'; }
+function nomeBonito(n){
+  const s = String(n || '').trim().replace(/\s+/g, ' ');
+  if(!s) return '';
+  if(s !== s.toUpperCase() && s !== s.toLowerCase()) return s;
+  return s.toLowerCase().replace(/(^|\s|-)(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+}
+let periodoPintado = null;
+function pintarSaudacaoTopo(){
+  const el = document.getElementById('jorDay'); if(!el) return;
+  const per = periodoDoDia();
+  const primeiro = nomeBonito(AUTH.name || state.name || '').split(' ')[0] || '';
+  el.textContent = ({ manha:'Bom dia', tarde:'Boa tarde', noite:'Boa noite' })[per] + (primeiro ? ', ' + primeiro : '') + '.';
+  periodoPintado = per;
+}
+// app que ficou aberto em segundo plano: ao voltar (ou a cada minuto), se o período mudou,
+// atualiza a saudação E o toque do dia (que também é por período)
+function conferirPeriodo(){
+  if(!AUTH.token || periodoPintado === null) return;
+  if(periodoDoDia() !== periodoPintado) renderJornada();
+}
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') conferirPeriodo(); });
+setInterval(conferirPeriodo, 60 * 1000);
+
 async function renderJornada(){
   if(!AUTH.token) return;
-  const primeiro = (AUTH.name || state.name || '').trim().split(/\s+/)[0] || '';
-  const hora = new Date().getHours();
-  const periodo = hora < 12 ? 'Bom dia' : (hora < 18 ? 'Boa tarde' : 'Boa noite');
-  document.getElementById('jorDay').textContent = periodo + (primeiro ? ', ' + primeiro : '') + '.';
+  pintarSaudacaoTopo();
 
   // busca tudo em paralelo (tolerante a falhas)
   const get = p => fetch(API_BASE + p, { headers: authHeaders(), cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
@@ -2061,7 +2084,13 @@ function afterLogin(){
   // 1º ACESSO: quem entrou com a senha provisória do terapeuta cria a própria senha antes de tudo
   fetch(API_BASE + '/api/auth/me', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : {})
-    .then(me => { if(me && me.must_change) mostrarSenhaGate(!!me.precisa_consentimento); else seguirParaMapa(); })
+    .then(me => {
+      if(me && me.name){   // nome sempre do cadastro
+        AUTH.name = me.name; state.name = me.name; pintarSaudacaoTopo();
+        const inp = document.getElementById('obNameInput'); if(inp) inp.value = me.name;
+      }
+      if(me && me.must_change) mostrarSenhaGate(!!me.precisa_consentimento); else seguirParaMapa();
+    })
     .catch(() => seguirParaMapa());
 }
 

@@ -48,7 +48,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveSessionRecord, saveSharedSummary, listSessionTasks, addSessionTask, updateSessionTask,
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
-         orgAtiva, excluirOrganizacao, terapeutaDoPaciente,
+         orgAtiva, excluirOrganizacao, terapeutaDoPaciente, nomeDoPaciente,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -153,7 +153,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 });
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   const conta = await contaPaciente(req.user?.uid).catch(() => null);
-  res.json({ ok: true, name: req.user?.name || '', role: req.user?.role || 'paciente',
+  const nomeCad = await nomeCadastro(req.user?.uid, req.user?.name);
+  res.json({ ok: true, name: nomeCad || req.user?.name || '', role: req.user?.role || 'paciente',
              must_change: !!conta?.must_change, precisa_consentimento: !!conta?.precisa_consentimento });
 });
 // 1º acesso: troca da senha provisória criada pelo terapeuta (+ aceite do termo)
@@ -927,7 +928,19 @@ app.post('/api/me/tasks/done', requireAuth, async (req, res) => {
 // ou uma vitória. Muda por período do dia (manhã/tarde/noite) e quando há conversa nova.
 function periodoAgora() {
   const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
-  return hora < 12 ? 'manha' : hora < 18 ? 'tarde' : 'noite';
+  return (hora >= 5 && hora < 12) ? 'manha' : (hora >= 12 && hora < 18) ? 'tarde' : 'noite';
+}
+// 'MARCELINA' / 'marcelina' → 'Marcelina' (mantém como está quem já escreveu certo)
+function formatarNome(n) {
+  const s = String(n || '').trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+  if (s !== s.toUpperCase() && s !== s.toLowerCase()) return s;
+  return s.toLowerCase().replace(/(^|\s|-)(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
+    .replace(/ (Da|De|Do|Das|Dos|E)(?= )/g, w => w.toLowerCase());
+}
+async function nomeCadastro(uid, reserva) {
+  const n = await nomeDoPaciente(uid).catch(() => '');
+  return formatarNome(n || reserva || '');
 }
 function hojeSP() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()); }
 
@@ -1052,9 +1065,10 @@ app.get('/api/me/greeting', requireAuth, async (req, res) => {
     const cache = await getSaudacao(uid).catch(() => null);
     const cacheBom = cache?.saudacao && !SAUDACAO_ERRADA.test(cache.saudacao);
     if (cacheBom && cache.saudacao_chave === chave) return res.json({ saudacao: cache.saudacao, tem_historico: !!ultimo });
-    const nova = await gerarToqueDoDia(uid, req.user.name);
+    const nova = await gerarToqueDoDia(uid, await nomeCadastro(uid, req.user.name));
     if (nova) { await setSaudacao(uid, nova, ultimo?.ultima_em || null, chave).catch(() => {}); return res.json({ saudacao: nova, tem_historico: !!ultimo }); }
-    res.json({ saudacao: cacheBom ? cache.saudacao : null, tem_historico: !!ultimo });
+    const mesmoPeriodo = cacheBom && String(cache.saudacao_chave || '').startsWith(hojeSP() + '|' + periodoAgora() + '|');
+    res.json({ saudacao: mesmoPeriodo ? cache.saudacao : null, tem_historico: !!ultimo });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -1820,7 +1834,7 @@ app.get('/api/me/palavra', requireAuth, async (req, res) => {
   try {
     if (!PALAVRA_ON) return res.json({ palavra: null });
     let p = await palavraToday(req.user?.uid);
-    if (!p) { const pr = await getProntuario(req.user?.uid).catch(() => null); p = await gerarPalavra(req.user?.uid, req.user?.name, pr?.prontuario); }
+    if (!p) { const pr = await getProntuario(req.user?.uid).catch(() => null); p = await gerarPalavra(req.user?.uid, await nomeCadastro(req.user?.uid, req.user?.name), pr?.prontuario); }
     res.json({ palavra: p });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -2054,7 +2068,7 @@ function buildSystem(name, prontuario, bussola, ultimo, retrato) {
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
     : '';
   const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
-  const periodo = hora < 12 ? 'bom dia' : (hora < 18 ? 'boa tarde' : 'boa noite');
+  const periodo = { manha: 'bom dia', tarde: 'boa tarde', noite: 'boa noite' }[periodoAgora()];
   const blocos = [
     { type: 'text', text: SYSTEM_BASE + conhecimento, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `NOME DA PESSOA: ${nome} (chame pelo PRIMEIRO nome, com naturalidade, não em toda frase). HORÁRIO AGORA: ${periodo}. Se esta for a PRIMEIRA mensagem da conversa (sem histórico anterior), comece cumprimentando: "Olá, ${String(nome).trim().split(/\s+/)[0]}, ${periodo}." — e siga direto ao ponto, sem melação.` }
@@ -2109,7 +2123,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY não configurada no .env' });
     }
     // com login, o nome oficial vem da conta (não do que o front mandar)
-    const nome = (req.user && req.user.name) || name;
+    const nome = (req.user && req.user.uid) ? await nomeCadastro(req.user.uid, req.user.name) : name;
     // memória viva: o prontuário evolutivo + a bússola do mapa inicial entram no sistema desta conversa
     let prontuario = null, bussola = null, ultimo = null, retrato = null;
     if (req.user && req.user.uid) {
@@ -2365,9 +2379,10 @@ async function enviarToquesManha() {
     try {
       if (await reminderSent(p.id, 'toque')) continue;
       if (!(await orgAtiva(await patientOrg(p.id)))) continue;          // clínica pausada: não envia
-      const texto = await gerarToqueDoDia(p.id, p.name);
+      const nomeCad = await nomeCadastro(p.id, p.name);
+      const texto = await gerarToqueDoDia(p.id, nomeCad);
       if (!texto) continue;
-      const nome = String(p.name || '').split(' ')[0];
+      const nome = nomeCad.split(' ')[0];
       const enviados = await sendPushToUser(p.id, { title: '🌿 ' + (nome ? nome + ', um toque pra hoje' : 'Um toque pra hoje'), body: texto, tag: 'toque', url: '/' });
       if (enviados > 0) await markReminderSent(p.id, 'toque');
     } catch (e) { console.error('toque manhã:', e.message); }

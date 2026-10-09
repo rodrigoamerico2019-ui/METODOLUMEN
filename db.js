@@ -939,6 +939,13 @@ export async function markCheckoutProvisioned(sub) {
   await pool.query("UPDATE checkouts SET status='provisionado', provisioned_at=now() WHERE asaas_subscription=$1", [sub]);
 }
 
+// nome do CADASTRO (o nome social, se houver, tem preferência) — é por ele que o app chama a pessoa
+export async function nomeDoPaciente(uid) {
+  if (!pool || !uid) return '';
+  const r = await pool.query(`SELECT u.name, d.nome_social FROM users u LEFT JOIN client_details d ON d.user_id=u.id WHERE u.id=$1`, [uid]);
+  const x = r.rows[0]; if (!x) return '';
+  return String((x.nome_social && x.nome_social.trim()) || x.name || '').trim();
+}
 // terapeuta responsável pelo paciente (null = sem dono definido → regra da organização)
 export async function terapeutaDoPaciente(pid) {
   if (!pool || !pid) return null;
