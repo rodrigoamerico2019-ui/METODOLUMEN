@@ -948,7 +948,7 @@ function nivelPrioridade(p){
   const st = p.ultimo_meta?.status;
   const riscoAlto = p.risco_recente || p.ultimo_meta?.risco === 'ALTO';
   if(riscoAlto)                       return {nivel:'seguranca', ordem:5, motivo:'Sinal de risco identificado nos últimos 7 dias — acolher e acionar o protocolo de segurança'};
-  if(st==='vermelho')                 return {nivel:'prioridade',ordem:4, motivo:'Último atendimento terminou em estado vermelho'};
+  if(st==='vermelho' || p.classificacao==='vermelho') return {nivel:'prioridade',ordem:4, motivo:'Classificação VERMELHA — precisa do seu contato'};
   if(dias>=7 && p.mensagens>0)        return {nivel:'atencao',   ordem:3, motivo:`Sem acessar há ${dias} dias — pode ter se afastado da jornada`};
   if(st==='amarelo')                  return {nivel:'atencao',   ordem:3, motivo:'Última conversa em atenção (amarelo) — dor ainda ativa'};
   if(p.mapa_risco)                    return {nivel:'atencao',   ordem:3, motivo:'Sinais de alerta no Mapa Inicial — acolher com atenção'};
@@ -1054,7 +1054,7 @@ async function renderPrioridades(){
   $('prioCards').innerHTML = precisam.length ? precisam.map(({p,nivel,motivo})=>
     `<div class="prio-card ${nivel}">
       <div class="prio-nome"><b>${escHtml(p.name)}</b>
-        <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}</div></div>
+        <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}${p.classificacao||p.comprometimento?'<br><small>'+(COR_TXT[p.classificacao]||'')+(p.comprometimento?' · '+(COMP_TXT[p.comprometimento]||''):'')+'</small>':''}</div></div>
       <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens||0} interações</div>
       <div class="prio-acoes">${nivel==='seguranca'?`<button class="pbtn cris" onclick="protocoloCrise(${p.id})">🆘 Protocolo</button>`:''}<button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
     </div>`).join('') : '<div class="prio-vazio">Nenhuma prioridade agora. A luz está atravessando. 🕊️</div>';
@@ -1261,10 +1261,16 @@ async function abrirMinhaClinica(boasVindas){
     '<div class="dp-half"><label>Nova senha (mín. 6 caracteres)</label><input id="mkPass1" type="password" autocomplete="new-password"/></div>'+
     '<div class="dp-half"><label>Repita a nova senha</label><input id="mkPass2" type="password" autocomplete="new-password"/></div>'+
     '</div>'+
-    '<div><button class="tbtn" onclick="salvarSenhaMentor()">Alterar senha</button> <span class="muted" id="mkPassStatus"></span></div>';
+    '<div><button class="tbtn" onclick="salvarSenhaMentor()">Alterar senha</button> <span class="muted" id="mkPassStatus"></span></div>'+
+    '<hr style="margin:22px 0 16px;border:none;border-top:1px solid var(--line)"/>'+
+    '<div class="section-title" style="font-size:14px">📲 Meu WhatsApp para alertas e relatórios</div>'+
+    '<p class="subc" style="margin:2px 0 8px">Você recebe aqui o <b>Relatório do dia</b> de cada paciente (com a pré-análise) e os <b>alertas fora do normal</b>. Dias normais ficam só no painel.</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="mkWhats" placeholder="(11) 9 9999-9999" inputmode="tel" style="flex:1;min-width:200px"/>'+
+    '<button class="tbtn" onclick="salvarWhatsMentor()">Salvar WhatsApp</button></div><span class="muted" id="mkWhatsStatus"></span>';
   modalAbrir('Minha clínica', html, {wide:true});
   $('mkNome').value=b.marca_nome||'';
   $('mkSub').value=b.marca_subtitulo||'';
+  api('/api/mentor/whatsapp').then(w=>{ if($('mkWhats')) $('mkWhats').value=(w&&w.phone)||''; }).catch(()=>{});
 }
 async function salvarMarca(){
   $('mkStatus').textContent='salvando…';
@@ -1279,6 +1285,12 @@ async function salvarMarca(){
     await recarregarMarca();
     modalFechar(); aviso('Marca da clínica atualizada.','ok');
   }catch(e){ $('mkStatus').textContent='erro: '+e.message; }
+}
+async function salvarWhatsMentor(){
+  $('mkWhatsStatus').textContent='salvando…';
+  try{ const d=await postAdmin('/api/mentor/whatsapp', { phone:$('mkWhats').value });
+    $('mkWhatsStatus').textContent = d.phone ? 'salvo ✓ — alertas e relatórios irão para este número' : 'removido';
+  }catch(e){ $('mkWhatsStatus').textContent='erro: '+e.message; }
 }
 async function salvarSenhaMentor(){
   const a=$('mkPass1').value, b=$('mkPass2').value;
@@ -1811,7 +1823,7 @@ async function salvarCadRapido(){
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['diario','📋 Relatório do dia'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ aviso('Erro: '+e.message,'erro'); return; }
   clienteAtual.id=id; nav('cliente');
@@ -1827,6 +1839,7 @@ function cliTab(t){
   document.querySelectorAll('#cliTabs .cli-tab').forEach(x=>x.classList.toggle('on', x.dataset.t===t));
   const body=$('cliTabBody');
   if(t==='visao') return renderCliVisao(body);
+  if(t==='diario') return renderCliDiario(body);
   if(t==='dados') return renderCliDados(body);
   if(t==='saude') return renderCliSaude(body);
   if(t==='medicamentos') return renderCliMeds(body);
@@ -1845,6 +1858,54 @@ function cliTab(t){
 let cliBodySeq=0;
 const esferaBar=(nome,v)=>{ const val=(v!=null&&!isNaN(v))?Number(v):null; const pct=val!=null?Math.max(5,Math.min(100,Math.round(val*10))):0;
   return '<div class="cli-esfrow"><span>'+nome+'</span><div class="cli-esfbar"><span style="width:'+pct+'%"></span></div><span class="cli-esfv">'+(val!=null?val.toFixed(1):'—')+'</span></div>'; };
+const COR_TXT = { verde:'🟢 VERDE', amarelo:'🟡 AMARELO', vermelho:'🔴 VERMELHO' };
+const COMP_TXT = { tanto_faz:'Nível "Tanto faz"', cansei:'Nível "Cansei"', insuportavel:'Nível "Insuportável" · pronto para mudar' };
+const COMP_DESC = {
+  tanto_faz:'acomodação: "não está tão ruim", tanto faz se terá resultado',
+  cansei:'sofre, descansa e volta ao mesmo problema no dia seguinte, sem decidir mudar',
+  insuportavel:'não suporta mais a vida que leva e está disposto(a) a enfrentar e mudar'
+};
+async function renderCliDiario(body){
+  const seq = cliBodySeq;
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let d; try{ d = await api('/api/admin/day-reports?id='+clienteAtual.id); }
+  catch(e){ body.innerHTML='<p class="muted">'+escHtml(e.message)+'</p>'; return; }
+  if(seq !== cliBodySeq) return;
+  const c = d.classificacao || {};
+  const cab = '<div id="dStats">'+
+    '<span class="stat"><b>'+(COR_TXT[c.classificacao]||'—')+'</b>classificação atual</span>'+
+    '<span class="stat"><b>'+(COMP_TXT[c.comprometimento]||'—')+'</b>comprometimento</span>'+
+    (c.classificacao_em?'<span class="stat"><b>'+new Date(c.classificacao_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</b>atualizado</span>':'')+
+    '</div>'+
+    (c.comprometimento?'<p class="subc" style="margin-top:8px">'+escHtml(COMP_DESC[c.comprometimento]||'')+(c.classificacao_motivo?' · '+escHtml(c.classificacao_motivo):'')+'</p>':'')+
+    '<p class="subc" style="margin-top:6px">🔒 Só você vê esta aba. O paciente vê apenas o que ele escreveu. A classificação é atualizada pela IA a cada conversa e a cada relatório.</p>';
+  const al = (d.alertas||[]);
+  const alertas = al.length ? '<div class="section-title" style="font-size:14px;margin-top:18px">🚨 Alertas fora do normal</div>'+
+    al.slice(0,8).map(a=>'<div class="cad-ok" style="margin:8px 0;border-color:var(--vermelho)"><b>'+(a.gravidade==='urgente'?'URGENTE':'Atenção')+'</b> · '+
+      new Date(a.criado_em).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+
+      ' · '+escHtml(({conversa:'na conversa',relatorio_dia:'no relatório do dia',deteccao_local:'palavras de risco'})[a.origem]||a.origem||'')+
+      '<br>'+escHtml(a.motivo||'')+(a.trecho?'<br><small style="color:var(--dim)">“'+escHtml(a.trecho)+'”</small>':'')+
+      '<br><small>WhatsApp para você: '+(a.whatsapp_terapeuta?'enviado ✓':'não enviado')+(a.whatsapp_contato?' · contato de confiança avisado ✓':'')+'</small></div>').join('') : '';
+  const rel = (d.relatorios||[]);
+  const lista = rel.length ? rel.map(r=>{
+    const a = r.analise || {};
+    const grav = r.gravidade==='urgente'?'🚨 urgente':r.gravidade==='atencao'?'⚠️ atenção':'normal';
+    return '<div class="card" style="margin:12px 0;padding:16px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b style="text-transform:capitalize">'+escHtml(r.quando||'')+'</b>'+
+      '<span class="muted">'+(COR_TXT[a.classificacao]||'')+(a.comprometimento?' · '+escHtml(COMP_TXT[a.comprometimento]||''):'')+' · '+grav+' · WhatsApp '+(r.whatsapp_enviado?'✓':'—')+'</span></div>'+
+      '<div style="margin:10px 0;padding:12px;border-left:3px solid var(--gold);background:var(--panel2);border-radius:8px;white-space:pre-wrap;line-height:1.55">'+escHtml(r.texto)+'</div>'+
+      (r.analise ? (
+        '<div style="line-height:1.6"><b>🔎 Pré-análise</b><br>'+escHtml(a.analise||'')+'</div>'+
+        '<div style="line-height:1.6;margin-top:8px"><b>🧭 Direcionamento</b><br>'+escHtml(a.direcionamento||'')+'</div>'+
+        (a.base_metodo?'<div style="margin-top:8px"><b>📘 Base do Método:</b> '+escHtml(a.base_metodo)+'</div>':'')+
+        (a.base_biblica?'<div style="margin-top:4px"><b>📖 Base bíblica:</b> '+escHtml(a.base_biblica)+'</div>':'')+
+        (Array.isArray(a.pontos_atencao)&&a.pontos_atencao.length?'<div style="margin-top:4px"><b>⚠️ Atenção:</b> '+escHtml(a.pontos_atencao.join('; '))+'</div>':'')+
+        '<p class="subc" style="margin-top:8px">Pré-análise gerada por IA para apoio — não é diagnóstico.</p>'
+      ) : '<p class="muted">pré-análise em processamento…</p>')+
+      '</div>';
+  }).join('') : '<p class="muted" style="margin-top:14px">Ainda não há relatórios do dia. No app, o paciente escreve na aba <b>Relatório → Relatório do meu dia</b>.</p>';
+  body.innerHTML = cab + alertas + '<div class="section-title" style="font-size:14px;margin-top:18px">📋 Relatórios do dia</div>' + lista;
+}
 async function renderCliVisao(body){
   const mySeq=cliBodySeq;   // cliTab já incrementou; capturo o valor atual
   body.innerHTML='<p class="muted">carregando…</p>';

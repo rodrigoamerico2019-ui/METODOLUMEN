@@ -462,6 +462,39 @@ export async function initDb() {
         (SELECT d.created_by FROM client_details d WHERE d.user_id=p.id),
         (SELECT u.id FROM users u WHERE u.org_id=p.org_id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1))
       WHERE p.role='paciente' AND p.terapeuta_id IS NULL;
+    -- CLASSIFICAÇÃO DO PACIENTE (só o terapeuta vê): cor do momento + postura/comprometimento
+    --   classificacao: verde | amarelo | vermelho
+    --   comprometimento: tanto_faz | cansei | insuportavel
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS classificacao TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS comprometimento TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS classificacao_motivo TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS classificacao_em TIMESTAMPTZ;
+    -- RELATÓRIO DO MEU DIA: o paciente relata o dia; a IA faz a pré-análise para o terapeuta
+    CREATE TABLE IF NOT EXISTS day_reports (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      org_id BIGINT,
+      texto TEXT NOT NULL,
+      analise JSONB,                 -- pré-análise estruturada (nunca mostrada ao paciente)
+      gravidade TEXT,                -- normal | atencao | urgente
+      whatsapp_enviado BOOLEAN DEFAULT false,
+      criado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_dayrep_user ON day_reports (user_id, criado_em DESC);
+    -- ALERTAS ao terapeuta (fora do normal): o que disparou, gravidade e se o WhatsApp saiu
+    CREATE TABLE IF NOT EXISTS risk_alerts (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      org_id BIGINT,
+      origem TEXT,                   -- conversa | relatorio_dia | deteccao_local
+      gravidade TEXT,                -- atencao | urgente
+      motivo TEXT,
+      trecho TEXT,
+      whatsapp_terapeuta BOOLEAN DEFAULT false,
+      whatsapp_contato BOOLEAN DEFAULT false,
+      criado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_alerts_user ON risk_alerts (user_id, criado_em DESC);
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -963,7 +996,10 @@ export async function listUsers(orgId = null, terapeutaId = null) {
              ORDER BY m2.id DESC LIMIT 1) AS ultimo_meta,
            EXISTS (SELECT 1 FROM messages m3 WHERE m3.user_id=u.id
              AND m3.meta->>'risco'='ALTO' AND m3.created_at > now() - interval '7 days') AS risco_recente,
-           (SELECT p.mapa_risco FROM profiles p WHERE p.user_id=u.id) AS mapa_risco
+           (SELECT p.mapa_risco FROM profiles p WHERE p.user_id=u.id) AS mapa_risco,
+           (SELECT p.classificacao FROM profiles p WHERE p.user_id=u.id) AS classificacao,
+           (SELECT p.comprometimento FROM profiles p WHERE p.user_id=u.id) AS comprometimento,
+           (SELECT max(r.criado_em) FROM day_reports r WHERE r.user_id=u.id) AS ultimo_relatorio
     FROM users u LEFT JOIN messages m ON m.user_id = u.id
     WHERE u.role='paciente' AND ($1::bigint IS NULL OR u.org_id=$1)
       AND ($2::int IS NULL OR u.terapeuta_id IS NULL OR u.terapeuta_id=$2)
@@ -2522,4 +2558,104 @@ export async function triadAverages(userId, days = 7) {
     WHERE user_id=$1 AND role='assistant' AND meta ? 'corpo'
       AND created_at > now() - ($2 || ' days')::interval`, [userId, days]);
   return r.rows[0] || null;
+}
+
+// =========================================================
+//  RELATÓRIO DO MEU DIA · CLASSIFICAÇÃO · ALERTAS · CONTATOS
+// =========================================================
+export async function saveDayReport(uid, texto) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const t = String(texto || '').trim();
+  if (t.length < 3) throw new Error('Escreva como foi o seu dia antes de enviar.');
+  const r = await pool.query(`INSERT INTO day_reports (user_id, org_id, texto)
+    VALUES ($1, (SELECT org_id FROM users WHERE id=$1), $2) RETURNING id, criado_em`, [uid, t.slice(0, 8000)]);
+  return r.rows[0];
+}
+export async function setDayReportAnalysis(id, analise, gravidade, whatsapp) {
+  if (!pool || !id) return;
+  await pool.query('UPDATE day_reports SET analise=$2, gravidade=$3, whatsapp_enviado=$4 WHERE id=$1',
+    [id, analise ? JSON.stringify(analise) : null, gravidade || null, !!whatsapp]);
+}
+// paciente: só o próprio texto e a hora (a pré-análise é do terapeuta)
+export async function myDayReports(uid, limit = 15) {
+  if (!pool || !uid) return [];
+  const r = await pool.query('SELECT id, texto, criado_em FROM day_reports WHERE user_id=$1 ORDER BY criado_em DESC LIMIT $2', [uid, limit]);
+  return r.rows;
+}
+// terapeuta: texto + pré-análise
+export async function dayReportsForTherapist(uid, limit = 30) {
+  if (!pool || !uid) return [];
+  const r = await pool.query('SELECT id, texto, analise, gravidade, whatsapp_enviado, criado_em FROM day_reports WHERE user_id=$1 ORDER BY criado_em DESC LIMIT $2', [uid, limit]);
+  return r.rows;
+}
+const CORES = ['verde', 'amarelo', 'vermelho'], COMPROM = ['tanto_faz', 'cansei', 'insuportavel'];
+export async function setClassificacao(uid, { classificacao, comprometimento, motivo } = {}) {
+  if (!pool || !uid) return;
+  const cor = CORES.includes(String(classificacao || '').toLowerCase()) ? String(classificacao).toLowerCase() : null;
+  const com = COMPROM.includes(String(comprometimento || '').toLowerCase()) ? String(comprometimento).toLowerCase() : null;
+  if (!cor && !com) return;
+  await pool.query(`INSERT INTO profiles (user_id, classificacao, comprometimento, classificacao_motivo, classificacao_em)
+    VALUES ($1,$2,$3,$4,now())
+    ON CONFLICT (user_id) DO UPDATE SET classificacao=COALESCE($2, profiles.classificacao),
+      comprometimento=COALESCE($3, profiles.comprometimento),
+      classificacao_motivo=COALESCE($4, profiles.classificacao_motivo), classificacao_em=now()`,
+    [uid, cor, com, motivo ? String(motivo).slice(0, 600) : null]);
+}
+export async function getClassificacao(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query('SELECT classificacao, comprometimento, classificacao_motivo, classificacao_em FROM profiles WHERE user_id=$1', [uid]);
+  return r.rows[0] || null;
+}
+// terapeuta responsável (ou o 1º terapeuta da clínica) + WhatsApp dele para alertas
+export async function terapeutaContato(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query(`
+    SELECT t.id, t.name, t.phone, COALESCE(o.marca_nome, o.nome) AS clinica FROM users p
+    LEFT JOIN organizations o ON o.id=p.org_id
+    LEFT JOIN LATERAL (
+      SELECT u.id, u.name, u.phone FROM users u
+      WHERE u.id=p.terapeuta_id OR (p.terapeuta_id IS NULL AND u.org_id=p.org_id AND u.role IN ('mentor','owner'))
+      ORDER BY (u.id=p.terapeuta_id) DESC, u.id LIMIT 1) t ON true
+    WHERE p.id=$1`, [uid]);
+  return r.rows[0] || null;
+}
+export async function salvarAlerta(uid, { origem, gravidade, motivo, trecho, whatsTerapeuta, whatsContato }) {
+  if (!pool || !uid) return null;
+  const r = await pool.query(`INSERT INTO risk_alerts (user_id, org_id, origem, gravidade, motivo, trecho, whatsapp_terapeuta, whatsapp_contato)
+    VALUES ($1,(SELECT org_id FROM users WHERE id=$1),$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [uid, origem || null, gravidade || null, motivo ? String(motivo).slice(0, 600) : null, trecho ? String(trecho).slice(0, 600) : null, !!whatsTerapeuta, !!whatsContato]);
+  return r.rows[0].id;
+}
+// houve alerta desta origem para este paciente nas últimas N horas? (evita disparar o mesmo alerta em série)
+export async function alertaRecente(uid, horas = 6) {
+  if (!pool || !uid) return false;
+  const r = await pool.query(`SELECT 1 FROM risk_alerts WHERE user_id=$1 AND whatsapp_terapeuta AND criado_em > now() - ($2 || ' hours')::interval LIMIT 1`, [uid, String(horas)]);
+  return !!r.rows[0];
+}
+export async function listAlertas(uid, limit = 20) {
+  if (!pool || !uid) return [];
+  const r = await pool.query('SELECT * FROM risk_alerts WHERE user_id=$1 ORDER BY criado_em DESC LIMIT $2', [uid, limit]);
+  return r.rows;
+}
+// telefone (WhatsApp) do próprio terapeuta — para receber alertas e relatórios
+export async function getTelefoneMentor(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query('SELECT phone FROM users WHERE id=$1', [uid]);
+  return r.rows[0] ? r.rows[0].phone : null;
+}
+export async function setTelefoneMentor(uid, phone) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const d = String(phone || '').replace(/\D/g, '');
+  if (d && d.length < 10) throw new Error('Informe o WhatsApp com DDD.');
+  await pool.query('UPDATE users SET phone=$2 WHERE id=$1', [uid, d || null]);
+  return { ok: true, phone: d || null };
+}
+// contato de emergência do PRÓPRIO paciente (quem ele escolheu para ser avisado)
+export async function setEmergencyContact(uid, { nome, telefone }) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const n = String(nome || '').trim(), d = String(telefone || '').replace(/\D/g, '');
+  if ((n && !d) || (!n && d)) throw new Error('Informe o nome e o WhatsApp (com DDD) do contato.');
+  if (d && d.length < 10) throw new Error('Informe o WhatsApp do contato com DDD.');
+  await pool.query('UPDATE users SET emergency_name=$2, emergency_phone=$3 WHERE id=$1', [uid, n || null, d || null]);
+  return { ok: true };
 }

@@ -162,6 +162,20 @@
   .voz-bar button.on { color:var(--gold-2); }
   .bub-ouvir { display:inline-block; margin-top:6px; background:none; border:none; color:var(--gold-2); font-size:11px; cursor:pointer; padding:0; font-family:inherit; opacity:.8; }
   .ag-consent.hide { display:none; }
+  /* relatório do meu dia */
+  .rd-quando { font-family:'Cinzel'; color:var(--gold-2); font-size:14px; letter-spacing:1px; margin:6px 0 10px; }
+  .rd-aviso { background:rgba(226,194,122,.10); border:1px solid var(--line); border-radius:12px; padding:11px 13px;
+    font-size:13px; line-height:1.55; color:var(--ink); margin-bottom:12px; }
+  #rdTexto { width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:12px; color:var(--ink);
+    font-family:'Montserrat'; font-size:14px; line-height:1.5; padding:12px 13px; resize:vertical; margin-bottom:10px; }
+  #rdTexto:focus { outline:none; border-color:var(--gold-soft); }
+  .rd-status { font-size:12.5px; color:var(--ink-dim); margin-top:8px; line-height:1.5; }
+  .rd-item { border-top:1px solid var(--line); padding:10px 0; }
+  .rd-item-q { font-size:11px; color:var(--gold-soft); letter-spacing:.5px; margin-bottom:4px; }
+  .rd-item-t { font-size:13px; color:var(--ink-dim); line-height:1.5; white-space:pre-wrap; max-height:4.6em; overflow:hidden; }
+  .emerg-btns { display:flex; flex-direction:column; gap:8px; margin:16px 0 4px; }
+  .emerg-btn { display:block; text-align:center; padding:12px; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel); color:var(--gold-2); text-decoration:none; font-size:13.5px; font-weight:500; }
   /* abertura (splash) */
   .splash { position:absolute; inset:0; z-index:300; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
     background: radial-gradient(700px 480px at 50% 42%, rgba(226,194,122,.16), transparent 65%), var(--bg); transition: opacity .6s ease; }
@@ -722,7 +736,7 @@
       <p>um lugar de novos começos</p>
     </div>
     <div class="spacer"></div>
-    <div class="status-dot off" id="devStatus"><i></i><span id="devStatusTxt">sem sensor</span></div>
+    <div class="status-dot off" id="devStatus" style="display:none"><i></i><span id="devStatusTxt">sem sensor</span></div>
   </div>
 
   <div class="views">
@@ -875,7 +889,7 @@
         </div>
       </div>
 
-      <div class="aura-wrap">
+      <div class="aura-wrap" style="display:none">
         <div class="aura" id="aura" style="--pulse:4s">
           <div class="ring"></div>
           <div class="ring2"></div>
@@ -885,11 +899,11 @@
           </div>
         </div>
       </div>
-      <button class="connect-btn" id="connectBtn">Conectar dispositivo</button>
+      <button class="connect-btn" id="connectBtn" style="display:none">Conectar dispositivo</button>
 
       <div class="cards">
-        <div class="card"><div class="k">Variabilidade (HRV)</div><div class="v" id="hrvVal">—<small> ms</small></div></div>
-        <div class="card"><div class="k">Estado emocional</div><div class="v" id="emoVal" style="font-size:16px">neutro</div></div>
+        <div class="card" style="display:none"><div class="k">Variabilidade (HRV)</div><div class="v" id="hrvVal">—<small> ms</small></div></div>
+        <div class="card wide"><div class="k">Estado emocional</div><div class="v" id="emoVal" style="font-size:16px">neutro</div></div>
         <div class="card wide">
           <div class="k">Emoção predominante · últimos 7 dias</div>
           <div class="emo-chart" id="emoChart"></div>
@@ -923,22 +937,26 @@
       <div class="report-card">
         <div class="report-row"><span class="rk">Pessoa</span><span class="rv" id="repName">—</span></div>
         <div class="report-row"><span class="rk">Estado predominante</span><span class="rv" id="repEmo">—</span></div>
-        <div class="report-row"><span class="rk">Nível de risco</span><span class="rv"><span class="pill" id="repRisk">nenhum</span></span></div>
+        <div class="report-row" style="display:none"><span class="rk">Nível de risco</span><span class="rv"><span class="pill" id="repRisk">nenhum</span></span></div>
         <div class="report-row"><span class="rk">Interações</span><span class="rv" id="repMsgs">0</span></div>
-        <div class="report-row"><span class="rk">Padrão observado</span><span class="rv" id="repPattern">—</span></div>
-        <div class="report-row"><span class="rk">Situação do atendimento</span>
+        <div class="report-row" style="display:none"><span class="rk">Padrão observado</span><span class="rv" id="repPattern">—</span></div>
+        <div class="report-row" style="display:none"><span class="rk">Situação do atendimento</span>
           <span class="status-badge amarelo" id="repStatus"><i></i>em andamento</span></div>
       </div>
 
+      <!-- RELATÓRIO DO MEU DIA: o paciente relata o dia; vai para o terapeuta (painel + WhatsApp) -->
       <div class="report-card">
-        <div class="eyebrow">Leitura do atendimento</div>
-        <div class="report-body" id="repBody">
-          Comece uma conversa com Lúmen para gerar a leitura do atendimento. Ela observa o que a pessoa traz,
-          identifica os padrões e devolve um cuidado direcionado.
-        </div>
+        <div class="eyebrow">Relatório do meu dia</div>
+        <div class="rd-quando" id="rdQuando"></div>
+        <div class="rd-aviso">Essa mensagem é muito importante. Seja o mais sincero possível para que sua jornada de transformação seja mais profunda. Não omita nada.</div>
+        <textarea id="rdTexto" rows="7" placeholder="Como foi o seu dia? O que aconteceu, o que você sentiu, o que pesou, o que deu certo, como estão seu corpo, suas emoções e sua fé…"></textarea>
+        <button class="save-btn" id="rdEnviar">Enviar meu relatório</button>
+        <div class="rd-status" id="rdStatus"></div>
+        <div class="rd-lista" id="rdLista"></div>
+        <div id="repBody" style="display:none"></div>
       </div>
 
-      <button class="end-btn" id="endBtn">Encerrar e enviar relatório por e-mail</button>
+      <button class="end-btn" id="endBtn" style="display:none">Encerrar</button>
     </div>
 
     <!-- ============ CUIDADO ============ -->
@@ -947,25 +965,29 @@
       <div class="section-title">Cuidado</div>
       <div class="section-sub">Quem Lúmen aciona quando você mais precisa.</div>
 
-      <div class="field">
-        <label>Nome do contato de confiança</label>
-        <input id="contactName" placeholder="Ex.: Pastor Rodrigo" value="Contato de emergência" />
+      <div class="info-box" style="margin-bottom:14px">
+        <b>Como funciona o cuidado.</b> Tudo o que você conversa e relata aqui chega ao seu terapeuta.
+        Se aparecer algo fora do normal, ele é avisado na hora pelo WhatsApp. Em sinais de risco de vida,
+        o contato de confiança que você cadastrar abaixo também é avisado.
       </div>
       <div class="field">
-        <label>WhatsApp de emergência (com DDD)</label>
-        <input id="contactPhone" placeholder="55 12 9 9999-9999" value="12 99653-1629" />
-        <div class="help">Ao detectar sinais de risco de vida — próprio ou contra outra pessoa/criança, mesmo nas
-          entrelinhas — Lúmen prepara imediatamente o alerta para este número, antes de seguir o atendimento.
-          Neste protótipo o envio é por um toque (link do WhatsApp); na versão final é automático via servidor.</div>
+        <label>Nome do seu contato de confiança</label>
+        <input id="contactName" placeholder="Ex.: Ana (esposa), Pastor João" value="" />
       </div>
       <div class="field">
-        <label>E-mail para receber os relatórios</label>
-        <input id="reportEmail" placeholder="voce@email.com" value="rodrigoamerico2019@gmail.com" />
-        <div class="help">Todo atendimento gera um relatório para este e-mail, mesmo que a pessoa encerre no meio.</div>
+        <label>WhatsApp dele(a), com DDD</label>
+        <input id="contactPhone" placeholder="(11) 9 9999-9999" value="" inputmode="tel" />
+        <div class="help">Escolha alguém próximo, que você autoriza a ser avisado se você estiver em perigo.</div>
       </div>
-      <button class="save-btn" id="saveContact">Salvar contato e e-mail</button>
+      <input id="reportEmail" type="hidden" value="" />
+      <button class="save-btn" id="saveContact">Salvar meu contato de confiança</button>
 
-      <div class="alert-log">
+      <div class="emerg-btns">
+        <a class="emerg-btn" href="tel:188">📞 CVV 188 · apoio emocional 24h</a>
+        <a class="emerg-btn" href="tel:192">🚑 SAMU 192 · emergência</a>
+      </div>
+
+      <div class="alert-log" style="display:none">
         <div class="eyebrow">Histórico de alertas</div>
         <div id="alertList"><div class="empty">Nenhum alerta registrado. Que continue assim.</div></div>
       </div>
@@ -1022,9 +1044,9 @@ const state = {
   msgCount: 0,
   history: [],
   week: [4,3,5,2,4,6,5],
-  contact: { name: 'Contato de emergência', phone: '12 99653-1629' },
-  reportEmail: 'rodrigoamerico2019@gmail.com',
-  guardianPhone: '12996531629',
+  contact: { name: '', phone: '' },
+  reportEmail: '',
+  guardianPhone: '',
   alerts: [],
   sessionStart: Date.now(),
   reportSent: false
@@ -1296,18 +1318,13 @@ function triggerAlert(userText, type){
   renderAlerts();
   renderReport();
 
-  // ENVIO AUTOMÁTICO pelo servidor (WhatsApp). Sem servidor, usa o link manual abaixo.
+  // o SERVIDOR avisa o terapeuta (e o contato de confiança, em risco de vida) pelo WhatsApp
   fetch(API_BASE + '/api/alert', {
-    method:'POST', headers: authHeaders(), // logado: o alerta vai ao contato de emergência do paciente
-    body: JSON.stringify({ type, name: state.name, phone, time })
-  }).then(r=>r.json()).then(d=>{
-    if(d && d.sent) toast('✓ Alerta enviado automaticamente pelo WhatsApp de emergência.');
+    method:'POST', headers: authHeaders(),
+    body: JSON.stringify({ type, trecho: String(userText || '').slice(0, 300) })
   }).catch(()=>{});
-
-  const url = `https://wa.me/${waNumber(phone)}?text=${encodeURIComponent(msg)}`;
-  const label = type === 'outros' ? 'RISCO A TERCEIROS detectado' : 'Sinal de risco de vida detectado';
-  toast(`⚠ <b>${label}.</b> Alerta pronto para o WhatsApp de emergência. Toque para enviar agora.`, url);
-  // Na versão com servidor, este disparo é automático (WhatsApp Cloud API), antes de qualquer resposta.
+  toast('💛 Você não está sozinho(a). Seu terapeuta foi avisado. Se estiver em perigo agora, ligue <b>CVV 188</b> ou <b>SAMU 192</b>.', 'tel:188');
+  const url = 'tel:188';
   return url;
 }
 
@@ -1846,11 +1863,57 @@ function renderReport(){
 /* =========================================================
    CUIDADO
 ========================================================= */
-document.getElementById('saveContact').onclick=()=>{
-  state.contact.name=document.getElementById('contactName').value.trim();
-  state.contact.phone=document.getElementById('contactPhone').value.trim();
-  state.reportEmail=document.getElementById('reportEmail').value.trim();
-  toast('Contato de emergência e e-mail salvos.');
+document.getElementById('saveContact').onclick=async()=>{
+  const nome=document.getElementById('contactName').value.trim();
+  const telefone=document.getElementById('contactPhone').value.trim();
+  try{
+    const r=await fetch(API_BASE + '/api/me/emergency', { method:'POST', headers: authHeaders(), body: JSON.stringify({ nome, telefone }) });
+    const d=await r.json(); if(d.error) throw new Error(d.error);
+    state.contact.name=nome; state.contact.phone=telefone;
+    toast('Contato de confiança salvo. 💛');
+  }catch(e){ toast(e.message || 'Não consegui salvar agora.'); }
+};
+function carregarContatoConfianca(){
+  fetch(API_BASE + '/api/me/emergency', { headers: authHeaders() }).then(r=>r.ok?r.json():null).then(d=>{
+    if(!d) return;
+    document.getElementById('contactName').value=d.nome||'';
+    document.getElementById('contactPhone').value=d.telefone||'';
+    state.contact.name=d.nome||''; state.contact.phone=d.telefone||'';
+  }).catch(()=>{});
+}
+
+/* ---- RELATÓRIO DO MEU DIA ---- */
+function quandoAgora(d){
+  const x = d ? new Date(d) : new Date();
+  const dia = x.toLocaleDateString('pt-BR', { weekday:'long' });
+  return dia.charAt(0).toUpperCase() + dia.slice(1) + ', ' +
+    x.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) + ' · ' +
+    x.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+function pintarQuandoRelatorio(){ const el=document.getElementById('rdQuando'); if(el) el.textContent = quandoAgora(); }
+setInterval(pintarQuandoRelatorio, 30 * 1000); pintarQuandoRelatorio();
+function escTxt(t){ return String(t||'').split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
+function carregarRelatoriosDia(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/day-reports', { headers: authHeaders() }).then(r=>r.ok?r.json():null).then(d=>{
+    const el=document.getElementById('rdLista'); if(!el || !d) return;
+    const l=d.relatorios||[];
+    el.innerHTML = l.length ? '<div class="eyebrow" style="margin-top:16px">Meus relatórios enviados</div>' +
+      l.map(r=>'<div class="rd-item"><div class="rd-item-q">'+escTxt(quandoAgora(r.criado_em))+' · enviado ao terapeuta ✓</div><div class="rd-item-t">'+escTxt(r.texto)+'</div></div>').join('') : '';
+  }).catch(()=>{});
+}
+document.getElementById('rdEnviar').onclick=async()=>{
+  const ta=document.getElementById('rdTexto'), st=document.getElementById('rdStatus'), btn=document.getElementById('rdEnviar');
+  const texto=ta.value.trim();
+  if(texto.length < 3){ st.textContent='Escreva como foi o seu dia antes de enviar.'; return; }
+  btn.disabled=true; st.textContent='enviando…';
+  try{
+    const r=await fetch(API_BASE + '/api/me/day-report', { method:'POST', headers: authHeaders(), body: JSON.stringify({ texto }) });
+    const d=await r.json(); if(d.error) throw new Error(d.error);
+    ta.value=''; st.textContent='✓ Enviado ao seu terapeuta — ' + quandoAgora(d.criado_em) + '. Obrigado pela sinceridade. 💛';
+    carregarRelatoriosDia();
+  }catch(e){ st.textContent = e.message || 'Não consegui enviar agora. Tente de novo.'; }
+  finally{ btn.disabled=false; }
 };
 
 /* ---- Relatório: montar texto e enviar por e-mail ---- */
@@ -1905,41 +1968,7 @@ function reportPayload(encerradoNoMeio){
     encerradoNoMeio: !!encerradoNoMeio
   };
 }
-function fallbackMailto(encerradoNoMeio){
-  const to = state.reportEmail || 'rodrigoamerico2019@gmail.com';
-  const subj = `Relatório Lúmen — ${state.name||'atendimento'} — ${statusLabel().split(' ')[0]}`;
-  const url = `mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(buildReportText(encerradoNoMeio))}`;
-  toast(`Relatório pronto (${statusLabel().split(' ')[0]}). Toque para enviar por e-mail.`, url);
-}
-function sendReportEmail(encerradoNoMeio){
-  state.reportSent = true;
-  fetch(API_BASE + '/api/report', {
-    method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify(reportPayload(encerradoNoMeio))
-  }).then(r=>r.json()).then(d=>{
-    if(d && d.sent) toast(`✓ Relatório de <b>${state.name||'atendimento'}</b> enviado para ${d.to}.`);
-    else fallbackMailto(encerradoNoMeio);
-  }).catch(()=>fallbackMailto(encerradoNoMeio));
-}
-
-document.getElementById('endBtn').onclick=()=>{
-  if(state.msgCount===0){ toast('Ainda não há atendimento para relatar.'); return; }
-  if(state.status==='andamento') state.status = state.risk==='ALTO' ? 'vermelho' : 'amarelo';
-  renderReport();
-  sendReportEmail(false);
-};
-
-// Pessoa sai no meio: o relatório é enviado assim mesmo (sendBeacon garante o envio ao sair)
-document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState==='hidden' && state.msgCount>0 && !state.reportSent){
-    if(state.status==='andamento') state.status = state.risk==='ALTO' ? 'vermelho' : 'amarelo';
-    state.reportSent = true;
-    try {
-      const blob = new Blob([JSON.stringify(reportPayload(true))], { type:'application/json' });
-      navigator.sendBeacon(API_BASE + '/api/report', blob);
-    } catch(_){}
-  }
-});
+function sendReportEmail(){ /* desativado: tudo fica no painel do terapeuta */ }
 function renderAlerts(){
   const el=document.getElementById('alertList');
   if(!state.alerts.length){ el.innerHTML='<div class="empty">Nenhum alerta registrado. Que continue assim.</div>'; return; }
@@ -2150,6 +2179,8 @@ function continuarAposMapa(){
   loadScales();           // escalas de acompanhamento (recorrência)
   loadPlan();             // plano de ação entregue pelo mentor
   loadShared();           // resumos e tarefas que o profissional compartilhou
+  carregarContatoConfianca(); // contato de confiança do próprio paciente (aba Cuidado)
+  carregarRelatoriosDia();    // relatórios do meu dia já enviados
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })
     .then(r => r.ok ? r.json() : {}).then(d => { if(d.needed) document.getElementById('fotoBtn').classList.remove('hide'); }).catch(()=>{});

@@ -49,6 +49,8 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
          orgAtiva, excluirOrganizacao, terapeutaDoPaciente, nomeDoPaciente,
+         saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
+         terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -2049,9 +2051,14 @@ PROTOCOLO DE RISCO A OUTRA PESSOA / CRIANÇA (prioridade máxima)
 STATUS DO ATENDIMENTO
 - "verde" = pessoa acolhida, mais calma, sem risco; "amarelo" = atenção especial, dor ativa; "vermelho" = risco identificado (nunca marque verde havendo qualquer risco).
 
+COMPROMETIMENTO (postura mental da pessoa diante do problema — avaliação silenciosa, só o terapeuta vê)
+- "tanto_faz" = acomodação: "não está tão ruim", tanto faz se terá resultado.
+- "cansei" = sofre, descansa e no dia seguinte volta ao mesmo problema sabendo que ele continua; desgaste sem decisão de mudar.
+- "insuportavel" = não suporta mais a vida que leva e está disposta a enfrentar e mudar.
+
 FORMATO DE RESPOSTA (obrigatório)
 Comece SEMPRE com uma linha de metadados e nada antes dela:
-##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho","corpo":0-10,"alma":0-10,"espirito":0-10}##
+##META{"risco":"NENHUM|MODERADO|ALTO","emocao":"uma palavra","intensidade":0-10,"padrao":"crise|vitimismo|neutro|avanco","alvo":"si|outro|nenhum","status":"verde|amarelo|vermelho","comprometimento":"tanto_faz|cansei|insuportavel","corpo":0-10,"alma":0-10,"espirito":0-10}##
 Sobre a tríade (avaliação silenciosa do Método, pelo que a conversa revela até aqui):
 - "corpo" = como o corpo dela parece estar (sono, cansaço, tensão, cuidado físico). 0 = muito mal, 10 = bem cuidado/vivo.
 - "alma" = o estado emocional/mental (regulação, feridas ativas, ruminação). 0 = alma em colapso, 10 = alma em paz.
@@ -2159,6 +2166,22 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       const lastUser = [...messages].reverse().find(m => m.role === 'user');
       if (lastUser) saveMessage(uid, 'user', String(lastUser.content || ''), null).catch(e => console.error('save user:', e.message));
       saveMessage(uid, 'assistant', text, parseMeta(text)).catch(e => console.error('save assistant:', e.message));
+      // classificação do momento (só o terapeuta vê) + alerta quando sai do normal
+      const meta = parseMeta(text);
+      if (meta) {
+        setClassificacao(uid, { classificacao: meta.status, comprometimento: meta.comprometimento }).catch(() => {});
+        const risco = String(meta.risco || '').toUpperCase();
+        if (risco === 'ALTO' || String(meta.status || '').toLowerCase() === 'vermelho') {
+          const lastU = [...messages].reverse().find(m => m.role === 'user');
+          const vida = risco === 'ALTO' && ['si', 'outro'].includes(String(meta.alvo || '').toLowerCase());
+          alertarTerapeuta(uid, {
+            origem: 'conversa', gravidade: vida ? 'urgente' : 'atencao',
+            motivo: vida ? 'Risco ALTO identificado na conversa' + (meta.alvo === 'outro' ? ' (a outra pessoa).' : ' (à própria vida).')
+                         : 'Conversa em estado VERMELHO (' + (meta.emocao || 'sofrimento intenso') + (meta.padrao ? ', padrão ' + meta.padrao : '') + ').',
+            trecho: lastU ? String(lastU.content || '') : '', avisarContato: vida
+          }).catch(e => console.error('alerta:', e.message));
+        }
+      }
     }
 
     res.json({ text });
@@ -2243,45 +2266,170 @@ function msgWhatsCentral({ primeiro, clinica, profissional, corpo }) {
 // ---------------------------------------------------------
 //  /api/alert  — alerta de emergência
 // ---------------------------------------------------------
-app.post('/api/alert', async (req, res) => {
-  try {
-    const { type = 'si', name = 'a pessoa em atendimento', phone, time } = req.body || {};
-    const when = time || new Date().toLocaleString('pt-BR');
+// =========================================================
+//  ALERTAS AO TERAPEUTA — só o que está FORA DO NORMAL vira WhatsApp.
+//  O dia normal fica registrado no painel. Risco de vida também avisa
+//  o contato de emergência que o próprio paciente cadastrou.
+// =========================================================
+const COR_EMOJI = { verde: '🟢 VERDE', amarelo: '🟡 AMARELO', vermelho: '🔴 VERMELHO' };
+const COMPROM_TXT = { tanto_faz: 'NÍVEL "TANTO FAZ"', cansei: 'NÍVEL "CANSEI"', insuportavel: 'NÍVEL "INSUPORTÁVEL" (pronto para mudar)' };
+function quandoSP(d = new Date()) {
+  const f = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(d));
+  const p = Object.fromEntries(f.map(x => [x.type, x.value]));
+  return `${p.weekday}, ${p.day}/${p.month} às ${p.hour}:${p.minute}`;
+}
 
-    // se o paciente está logado, o alerta vai para o CONTATO DE EMERGÊNCIA dele
-    let destino = phone, nomePaciente = name, guardiao = '';
-    try {
-      const h = req.headers.authorization || '';
-      if (h.startsWith('Bearer ')) {
-        const jwt = (await import('jsonwebtoken')).default;
-        const tok = jwt.verify(h.slice(7), process.env.JWT_SECRET || 'defina-JWT_SECRET-no-env');
-        const c = await emergencyContact(tok.uid);
-        if (c) {
-          nomePaciente = c.name || name;
-          if (c.emergency_phone) { destino = c.emergency_phone; guardiao = c.emergency_name || ''; }
-        }
-      }
-    } catch (_) { /* sem login válido: segue para o guardião padrão */ }
-
-    let msg;
-    if (type === 'outros') {
-      msg = `[LÚMEN · ALERTA GRAVE — RISCO A TERCEIROS]\n${when}\n\n` +
-        (guardiao ? `${guardiao}, ` : '') +
-        `durante um atendimento surgiram sinais de risco de dano a outra pessoa ou a uma criança, envolvendo ${nomePaciente}. ` +
-        `Isto exige contato imediato e, se necessário, acionamento das autoridades. Não ignore esta mensagem.`;
-    } else {
-      msg = `[LÚMEN · ALERTA DE CUIDADO — RISCO DE VIDA]\n${when}\n\n` +
-        (guardiao ? `${guardiao}, ` : '') +
-        `foram identificados sinais de risco emocional grave com ${nomePaciente}. Por favor, entre em contato o quanto antes. ` +
-        `Essa pessoa pode precisar de você agora.`;
-    }
-    const result = await sendWhatsApp(destino, msg);
-    res.json(result);
-  } catch (e) {
-    console.error('alert:', e);
-    res.status(500).json({ error: String(e.message || e) });
+async function alertarTerapeuta(uid, { origem, gravidade = 'urgente', motivo, trecho, avisarContato = false, dedupeHoras = 6 }) {
+  const [t, nomePac, contato] = await Promise.all([
+    terapeutaContato(uid).catch(() => null), nomeCadastro(uid).catch(() => ''), emergencyContact(uid).catch(() => null)
+  ]);
+  const primeiro = (nomePac || 'paciente').split(' ')[0];
+  let okT = false, okC = false;
+  const repetido = await alertaRecente(uid, dedupeHoras).catch(() => false);
+  if (t && t.phone && !repetido) {
+    const cab = gravidade === 'urgente' ? '🚨 *ALERTA URGENTE*' : '⚠️ *ATENÇÃO*';
+    const msg = `${cab} — ${nomePac || 'paciente'}\n${quandoSP()}\n\n` +
+      `${motivo || 'Sinal fora do normal identificado no app.'}` +
+      (trecho ? `\n\n💬 Trecho: "${String(trecho).slice(0, 300)}"` : '') +
+      `\n\nVeja a ficha completa no painel TRILUMEN.` +
+      (gravidade === 'urgente' ? `\nSe houver risco de vida, oriente CVV 188 / SAMU 192.` : '');
+    try { okT = !!(await sendWhatsApp(t.phone, msg)).sent; } catch (_) {}
   }
+  // risco de vida: o contato de emergência escolhido pelo PRÓPRIO paciente também é avisado
+  if (avisarContato && contato && contato.emergency_phone && !repetido) {
+    const msgC = `[ALERTA DE CUIDADO]\n${quandoSP()}\n\n${contato.emergency_name ? contato.emergency_name + ', ' : ''}` +
+      `${primeiro} cadastrou você como contato de confiança no app de acompanhamento${t && t.clinica ? ' da ' + t.clinica : ''}. ` +
+      `Identificamos agora sinais de sofrimento emocional grave. Por favor, entre em contato com ${primeiro} o quanto antes. ` +
+      `Em risco imediato: CVV 188 ou SAMU 192.`;
+    try { okC = !!(await sendWhatsApp(contato.emergency_phone, msgC)).sent; } catch (_) {}
+  }
+  await salvarAlerta(uid, { origem, gravidade, motivo, trecho, whatsTerapeuta: okT, whatsContato: okC }).catch(() => {});
+  return { terapeuta: okT, contato: okC, repetido };
+}
+
+// detecção local do app (palavras de risco) → terapeuta + contato de emergência
+app.post('/api/alert', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) return res.json({ sent: false });
+    const { type = 'si', trecho } = req.body || {};
+    const motivo = type === 'outros'
+      ? 'Sinais de risco de dano a OUTRA pessoa ou a uma criança apareceram na conversa. Exige contato imediato.'
+      : 'Sinais de RISCO DE VIDA (a própria pessoa) apareceram na conversa. Entre em contato o quanto antes.';
+    const r = await alertarTerapeuta(uid, { origem: 'deteccao_local', gravidade: 'urgente', motivo, trecho, avisarContato: true, dedupeHoras: 1 });
+    res.json({ sent: r.terapeuta || r.contato });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+
+// o relatório por e-mail saiu do app: tudo vai para o painel do terapeuta
+app.post('/api/report', (req, res) => res.status(410).json({ error: 'O relatório por e-mail foi desativado. Tudo fica no painel do terapeuta.' }));
+
+// ---- contatos ----
+app.get('/api/me/emergency', requireAuth, async (req, res) => {
+  try { const c = await emergencyContact(req.user.uid); res.json({ nome: c?.emergency_name || '', telefone: c?.emergency_phone || '' }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/emergency', requireAuth, async (req, res) => {
+  try { const b = req.body || {}; res.json(await setEmergencyContact(req.user.uid, { nome: b.nome, telefone: b.telefone })); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/mentor/whatsapp', requireAdmin, async (req, res) => {
+  if (!req.mentorUid) return res.json({ phone: null });
+  try { res.json({ phone: await getTelefoneMentor(req.mentorUid) }); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/mentor/whatsapp', requireAdmin, async (req, res) => {
+  if (!req.mentorUid) return res.status(400).json({ error: 'Apenas para a conta do terapeuta.' });
+  try { res.json(await setTelefoneMentor(req.mentorUid, (req.body || {}).phone)); } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// =========================================================
+//  RELATÓRIO DO MEU DIA — o paciente relata; a IA faz uma PRÉ-ANÁLISE
+//  terapêutica (base do Método + Bíblia) e envia ao terapeuta.
+// =========================================================
+app.post('/api/me/day-report', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const r = await saveDayReport(uid, (req.body || {}).texto);
+    res.json({ ok: true, id: r.id, criado_em: r.criado_em, quando: quandoSP(r.criado_em) });
+    analisarRelatorioDia(r.id, uid, String((req.body || {}).texto || '').trim(), r.criado_em)
+      .catch(e => console.error('relatório do dia:', e.message));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/me/day-reports', requireAuth, async (req, res) => {
+  try { res.json({ relatorios: (await myDayReports(req.user.uid)).map(r => ({ ...r, quando: quandoSP(r.criado_em) })) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/day-reports', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const id = Number(req.query.id);
+    const [relatorios, classif, alertas] = await Promise.all([dayReportsForTherapist(id), getClassificacao(id), listAlertas(id)]);
+    res.json({ relatorios: relatorios.map(r => ({ ...r, quando: quandoSP(r.criado_em) })), classificacao: classif, alertas });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+async function analisarRelatorioDia(id, uid, texto, criadoEm) {
+  const [nome, pront, retrato, bussola, anteriores, t] = await Promise.all([
+    nomeCadastro(uid), getProntuario(uid).catch(() => null), retratoPaciente(uid).catch(() => null),
+    getMapaBussola(uid).catch(() => null), myDayReports(uid, 4).catch(() => []), terapeutaContato(uid).catch(() => null)
+  ]);
+  const primeiro = (nome || 'paciente').split(' ')[0];
+  let analise = null;
+  if (process.env.ANTHROPIC_API_KEY) {
+    const ctx = `PACIENTE: ${nome}\nRELATÓRIO DO DIA (${quandoSP(criadoEm)}), nas palavras dela:\n"""${texto.slice(0, 6000)}"""` +
+      (anteriores.length > 1 ? `\n\nRELATÓRIOS ANTERIORES (mais recentes primeiro):\n` + anteriores.filter(r => r.id !== id).slice(0, 3).map(r => `- ${quandoSP(r.criado_em)}: ${String(r.texto).slice(0, 500)}`).join('\n') : '') +
+      (pront?.prontuario ? `\n\nPRONTUÁRIO EVOLUTIVO:\n${String(pront.prontuario).slice(0, 3000)}` : '') +
+      (retrato ? `\n\nSINAIS DO APP:\n${retrato}` : '') +
+      (bussola ? `\n\nMAPA INICIAL:\n${String(bussola).slice(0, 1200)}` : '');
+    const sys = [
+      { type: 'text', text: `Você é um supervisor clínico do Método Lúmen (inteligência emocional cristocêntrica: Corpo, Alma e Espírito). Você escreve uma PRÉ-ANÁLISE para o TERAPEUTA responsável, a partir do relatório do dia que o paciente escreveu. Use a base de estudo do Método abaixo e a Bíblia (NVI). NUNCA diagnostique transtornos; fale em indicadores, hipóteses e sinais. Seja concreto, direto e útil para a próxima ação do terapeuta.
+
+CLASSIFICAÇÃO (cor do momento):
+- verde: estável, avançando, sem sinais de alerta.
+- amarelo: sofrimento relevante, padrão repetitivo, precisa de atenção na próxima sessão.
+- vermelho: crise, desesperança, risco, ou piora importante — exige contato do terapeuta.
+COMPROMETIMENTO (postura mental diante do problema):
+- tanto_faz: "não está tão ruim"; acomodação; tanto faz se terá resultado.
+- cansei: sofre, descansa e volta ao mesmo problema no dia seguinte, sabendo que ele continua; desgaste sem decisão de mudar.
+- insuportavel: não suporta mais a vida que leva; está disposto a enfrentar e mudar.
+GRAVIDADE do envio: normal (dia comum) | atencao (fora do padrão, observar) | urgente (risco de vida, risco a terceiros, crise aguda).
+
+Responda SOMENTE um JSON válido:
+{"classificacao":"verde|amarelo|vermelho","comprometimento":"tanto_faz|cansei|insuportavel","gravidade":"normal|atencao|urgente","emocoes":["..."],"resumo":"2-3 frases do que o paciente relatou","analise":"Comece com 'Segue a análise de ${primeiro}:' e explique o que se percebe nas palavras e na linguagem (emoções, padrões, crenças, contradições), ligando ao histórico","direcionamento":"o que o terapeuta deve fazer e como atuar, baseado no histórico e no Método (técnicas, perguntas, tarefa sugerida)","base_metodo":"conceito do Método Lúmen que fundamenta a leitura","base_biblica":"Referência (NVI) — por que se aplica","pontos_atencao":["..."],"motivo_classificacao":"1 frase"}` },
+    ];
+    if (KNOWLEDGE) sys.push({ type: 'text', text: `BASE DE ESTUDO DO MÉTODO LÚMEN:\n${KNOWLEDGE}`, cache_control: { type: 'ephemeral' } });
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 1400, system: sys, messages: [{ role: 'user', content: ctx }] })
+      });
+      const d = await r.json();
+      const txt = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      const m = txt.match(/\{[\s\S]*\}/);
+      if (m) analise = JSON.parse(m[0]);
+    } catch (e) { console.error('pré-análise:', e.message); }
+  }
+  const grav = analise && ['normal', 'atencao', 'urgente'].includes(analise.gravidade) ? analise.gravidade : 'normal';
+  if (analise) await setClassificacao(uid, { classificacao: analise.classificacao, comprometimento: analise.comprometimento, motivo: analise.motivo_classificacao }).catch(() => {});
+
+  // envio ao terapeuta pelo WhatsApp (o relatório completo também fica no painel)
+  let enviado = false;
+  if (t && t.phone) {
+    const cab = grav === 'urgente' ? '🚨 *RELATÓRIO DO DIA — URGENTE*' : grav === 'atencao' ? '⚠️ *Relatório do dia — atenção*' : '📋 *Relatório do dia*';
+    const msg = `${cab}\n*${nome || 'Paciente'}* · ${quandoSP(criadoEm)}\n` +
+      (analise ? `${COR_EMOJI[analise.classificacao] || ''}${analise.comprometimento ? ' · ' + (COMPROM_TXT[analise.comprometimento] || '') : ''}\n` : '') +
+      `\n📝 *O que ela escreveu:*\n${analise?.resumo || texto.slice(0, 700)}\n` +
+      (analise ? `\n🔎 *Pré-análise:*\n${analise.analise || ''}\n\n🧭 *Direcionamento:*\n${analise.direcionamento || ''}\n` +
+        (analise.base_metodo ? `\n📘 *Base do Método:* ${analise.base_metodo}` : '') +
+        (analise.base_biblica ? `\n📖 *Base bíblica:* ${analise.base_biblica}` : '') +
+        (Array.isArray(analise.pontos_atencao) && analise.pontos_atencao.length ? `\n\n⚠️ *Atenção:* ${analise.pontos_atencao.join('; ')}` : '') : '') +
+      `\n\n_Pré-análise gerada por IA para apoio ao terapeuta — não é diagnóstico. Texto completo no painel TRILUMEN._`;
+    try { enviado = !!(await sendWhatsApp(t.phone, msg)).sent; } catch (_) {}
+  }
+  await setDayReportAnalysis(id, analise, grav, enviado);
+  if (grav === 'urgente') await salvarAlerta(uid, { origem: 'relatorio_dia', gravidade: 'urgente', motivo: analise?.motivo_classificacao || 'Relatório do dia com sinais graves.', trecho: texto.slice(0, 300), whatsTerapeuta: enviado }).catch(() => {});
+}
 
 // ---------------------------------------------------------
 //  E-mail — relatórios
@@ -2339,16 +2487,6 @@ async function handleReport(body, res) {
   if (res) res.json({ sent: true, to });
 }
 
-app.post('/api/report', async (req, res) => {
-  try {
-    // sendBeacon chega como texto puro; fetch normal chega como JSON
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    await handleReport(body, res);
-  } catch (e) {
-    console.error('report:', e);
-    if (!res.headersSent) res.status(500).json({ error: String(e.message || e) });
-  }
-});
 
 app.get('/api/health', (req, res) => res.json({
   ok: true,
