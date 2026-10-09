@@ -6,7 +6,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#F4EEE2" />
+<meta name="theme-color" content="#0A2C3A" />
 <link rel="icon" type="image/png" href="/icon-192.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,24 +17,24 @@
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap');
 
   :root {
-    /* App do paciente — versão CLARA/acolhedora (creme + dourado).
-       O painel do mentor (painel.html) permanece escuro/premium. */
-    --bg:        #F4EEE2;
-    --bg-2:      #FBF8F1;
-    --panel:     #FFFFFF;
-    --panel-2:   #F7F2E8;
-    --line:      #E7DECB;
-    --gold-1:    #B8912F;
-    --gold-2:    #C9A227;
-    --gold-soft: #B8912F;
-    --ink:       #1E1B16;
-    --ink-dim:   #6B6355;
-    --ink-faint: #A79E8D;
-    --danger:    #c0442f;
-    --danger-bg: #f7e6df;
-    --gold-grad: linear-gradient(135deg, #C9A227 0%, #E4C878 55%, #C9A227 100%);
-    --on-gold:   #2a2208;   /* texto escuro sobre botões dourados */
-    --sh:        0 6px 22px rgba(30,24,16,.08);
+    /* App do paciente — marca INSTITUTO AMÉRICO: azul profundo do logo,
+       bordas e destaques em dourado, texto marfim-dourado. */
+    --bg:        #0A2C3A;
+    --bg-2:      #0D3444;
+    --panel:     #103D4F;
+    --panel-2:   #0E3646;
+    --line:      rgba(212,175,55,.30);
+    --gold-1:    #C9A54A;
+    --gold-2:    #E2C27A;
+    --gold-soft: #D4B068;
+    --ink:       #F3E7C9;
+    --ink-dim:   #C9BC98;
+    --ink-faint: #8FA19C;
+    --danger:    #e0705a;
+    --danger-bg: #3a1f22;
+    --gold-grad: linear-gradient(135deg, #C9A227 0%, #E8CB82 55%, #C9A227 100%);
+    --on-gold:   #102530;   /* texto azul-escuro sobre botões dourados */
+    --sh:        0 6px 22px rgba(0,0,0,.28);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,7 +77,10 @@
     flex: 0 0 auto;
   }
   .brandmark span { font-family:'Cinzel'; font-weight:600; color:#100d08; font-size:16px; }
-  .brand-txt h1 { font-family:'Cinzel'; font-weight:500; font-size:16px; letter-spacing:3px; color:var(--ink); }
+  .brandmark.logo { width:40px; height:40px; background:none; box-shadow:0 0 14px rgba(226,194,122,.35); }
+  .brandmark.logo img { width:100%; height:100%; border-radius:50%; display:block; }
+  .brand-txt h1 { font-family:'Cinzel'; font-weight:500; font-size:14px; letter-spacing:1.5px; color:var(--gold-2); white-space:nowrap; }
+  .topbar .status-dot { white-space:nowrap; }
   .brand-txt p  { font-family:'Cormorant Garamond'; font-style:italic; font-size:13px; color:var(--gold-soft); margin-top:1px; }
   .topbar .spacer { flex:1; }
   .status-dot { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--ink-dim); letter-spacing:1px; text-transform:uppercase; }
@@ -279,7 +282,7 @@
 
   /* porta de entrada (login/cadastro) */
   .authgate { position:absolute; inset:0; z-index:120; text-align:center;
-    background: radial-gradient(900px 560px at 50% -4%, rgba(201,162,39,0.16), transparent 62%), #0B0A09;
+    background: radial-gradient(900px 560px at 50% -4%, rgba(201,162,39,0.16), transparent 62%), #0A2C3A;
     color:#EDE6D6;
     display:flex; flex-direction:column; align-items:center; justify-content:center; padding:34px 26px; animation:fade .4s ease;
     overflow-y:auto; }
@@ -525,7 +528,7 @@
 
   .ob-logo { display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:10px; }
   .ob-logo svg { width:58px; height:auto; }
-  .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:6px; font-size:22px; color:var(--ink); }
+  .ob-logo .ob-word { font-family:'Cinzel'; letter-spacing:3px; font-size:17px; color:var(--gold-2); text-align:center; }
   .ob-logo .ob-por { font-family:'Cormorant Garamond'; font-style:italic; font-size:13px; color:var(--gold-soft); margin-top:-4px; }
   .bubble.lumen, .report-card, .cards .card, .palavra, .gravador { box-shadow: var(--sh); }
   .checkin button, .ob-grid button, .send-btn, .ag-btn, .jor-btn.forte { box-shadow: 0 3px 12px rgba(201,162,39,.18); }
@@ -537,7 +540,7 @@
   .ob-tr label { display:block; font-size:12.5px; color:var(--ink); margin-bottom:5px; }
   .ob-tr label small { color:var(--ink-faint); font-size:10.5px; }
   .ob-tr { display:block; }
-  .ob-tr input[type=range] { width:calc(100% - 34px); accent-color:#d4a94a; vertical-align:middle; }
+  .ob-tr input[type=range] { width:calc(100% - 34px); accent-color:#E2C27A; vertical-align:middle; background:transparent; color-scheme:dark; }
   .ob-tr b { display:inline-block; width:26px; text-align:right; color:var(--gold-2); font-size:14px; vertical-align:middle; }
   .ob-foot em { display:block; margin-top:6px; font-style:italic; color:var(--gold-soft); font-size:11px; }
   .ob-close { position:absolute; top:14px; left:14px; background:none; border:none; color:var(--ink-dim); font-family:inherit; font-size:13px; cursor:pointer; padding:6px 8px; z-index:2; }
@@ -628,7 +631,7 @@
       <input type="tel" id="agRegEmgPhone" placeholder="WhatsApp dele(a) com DDD" required />
       <input type="text" id="agRegInvite" placeholder="Código de convite (ex.: LUMEN-XXXXXX)" style="text-transform:uppercase" required />
       <label class="ag-consent"><input type="checkbox" id="agRegConsent" />
-        Aceito que minhas conversas e meu acompanhamento fiquem guardados com segurança para a minha evolução no Método Lúmen, acessíveis ao meu mentor. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
+        Aceito que minhas conversas e meu acompanhamento fiquem guardados com segurança para a minha evolução no Instituto Américo, acessíveis ao meu terapeuta. Posso pedir a exclusão dos meus dados a qualquer momento.</label>
       <button type="submit" class="ag-btn" id="agRegBtn">Criar minha conta</button>
     </form>
 
@@ -670,14 +673,8 @@
   <div class="onboarding hide" id="onboarding">
     <button class="ob-close" id="obClose" onclick="document.getElementById('onboarding').classList.add('hide')" aria-label="voltar">← voltar</button>
     <div class="ob-logo">
-      <svg viewBox="0 0 100 210" xmlns="http://www.w3.org/2000/svg" aria-label="Método Lúmen">
-        <circle cx="50" cy="36" r="31" fill="#FBF6E9"/><circle cx="50" cy="36" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <circle cx="50" cy="105" r="31" fill="#FBF6E9"/><circle cx="50" cy="105" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <circle cx="50" cy="174" r="31" fill="#FBF6E9"/><circle cx="50" cy="174" r="31" fill="none" stroke="url(#obg)" stroke-width="2.6"/>
-        <line x1="50" y1="2" x2="50" y2="208" stroke="url(#obf)" stroke-width="2.4"/>
-        <circle cx="50" cy="5" r="2.4" fill="#E9C453"/><circle cx="50" cy="70" r="2.6" fill="#E9C453"/><circle cx="50" cy="140" r="2.6" fill="#E9C453"/><circle cx="50" cy="205" r="2.4" fill="#E9C453"/>
-      </svg>
-      <div class="ob-word">LÚMEN</div>
+      <img src="/logo-instituto.png" alt="Instituto Américo" style="width:120px;height:120px;border-radius:50%;box-shadow:0 0 26px rgba(226,194,122,.28)" />
+      <div class="ob-word">INSTITUTO AMÉRICO</div>
     </div>
     <div class="ob-name"><input id="obNameInput" type="text" placeholder="Como posso te chamar?" autocomplete="off" /></div>
     <div class="ob-q">Seu check-in de hoje.<br>Como você está?</div>
@@ -702,10 +699,10 @@
   </div>
 
   <div class="topbar">
-    <div class="brandmark"><span>L</span></div>
+    <div class="brandmark logo"><img src="/logo-instituto.png" alt="Instituto Américo" /></div>
     <div class="brand-txt">
-      <h1>LÚMEN</h1>
-      <p>a luz só atravessa o que está alinhado</p>
+      <h1>INSTITUTO AMÉRICO</h1>
+      <p>um lugar de novos começos</p>
     </div>
     <div class="spacer"></div>
     <div class="status-dot off" id="devStatus"><i></i><span id="devStatusTxt">sem sensor</span></div>
@@ -1847,7 +1844,7 @@ Leitura:
 ${document.getElementById('repBody').innerText || '—'}
 
 ──────────────────────────────
-Método Lúmen™ · relatório gerado automaticamente
+Instituto Américo · relatório gerado automaticamente
 (No protótipo o envio é por link de e-mail; na versão final o servidor envia sozinho.)`);
 }
 function reportPayload(encerradoNoMeio){
