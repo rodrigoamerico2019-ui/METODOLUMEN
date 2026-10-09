@@ -644,8 +644,8 @@ export async function provisionarManual({ nome, email, plano, limite, vencimento
   const ex = await pool.query(`SELECT u.role, COALESCE(o.marca_nome, o.nome) AS org FROM users u
     LEFT JOIN organizations o ON o.id=u.org_id WHERE u.email=$1`, [email]);
   if (ex.rows[0]) {
-    const papel = ex.rows[0].role === 'paciente' ? 'um PACIENTE' : 'o acesso de um cliente';
-    throw new Error(`Este e-mail já está em uso por ${papel}${ex.rows[0].org ? ' (' + ex.rows[0].org + ')' : ''}. Use outro e-mail para o novo cliente.`);
+    const papel = ex.rows[0].role === 'paciente' ? 'um paciente' : 'o acesso de outro cliente';
+    throw new Error(`Este e-mail já está em uso: pertence a ${papel}${ex.rows[0].org ? ' (' + ex.rows[0].org + ')' : ''}. Use outro e-mail para o novo cliente.`);
   }
   const venc = (vencimento && /^\d{4}-\d{2}-\d{2}$/.test(vencimento)) ? vencimento : null;
   const senhaTemp = crypto.randomBytes(6).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'acesso' + Date.now() % 10000;
