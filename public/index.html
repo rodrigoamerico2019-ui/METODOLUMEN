@@ -162,6 +162,13 @@
   .voz-bar button.on { color:var(--gold-2); }
   .bub-ouvir { display:inline-block; margin-top:6px; background:none; border:none; color:var(--gold-2); font-size:11px; cursor:pointer; padding:0; font-family:inherit; opacity:.8; }
   .ag-consent.hide { display:none; }
+  .lg-termo { white-space:pre-wrap; text-align:left; font-size:12.5px; line-height:1.6; color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-radius:12px; padding:14px; max-height:38vh; overflow-y:auto; }
+  .lg-nome { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:12px; color:var(--ink);
+    font-family:inherit; font-size:14px; padding:12px 13px; }
+  .lg-ass-lab { display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px; font-size:12px; color:var(--ink-dim); }
+  .lg-ass-lab button { background:none; border:none; color:var(--gold-2); font-family:inherit; font-size:12px; cursor:pointer; }
+  .lg-canvas { width:100%; height:160px; display:block; background:#FBF8F1; border:1px solid var(--gold-soft); border-radius:12px; touch-action:none; cursor:crosshair; }
   /* aba Cuidado */
   .sos-btn { width:100%; display:flex; flex-direction:column; gap:4px; align-items:center; text-align:center; cursor:pointer;
     background:var(--danger-bg); border:1px solid var(--danger); border-radius:16px; padding:18px 16px; margin:4px 0 16px; font-family:inherit; }
@@ -747,6 +754,23 @@
         <button type="submit" class="ag-btn" id="sgBtn">Salvar e continuar</button>
       </form>
       <div class="ag-err hide" id="sgErr" style="margin:14px auto 0"></div>
+    </div>
+  </div>
+
+  <!-- ============ TERMO LGPD: leitura + assinatura na tela (1º acesso) ============ -->
+  <div class="mapagate hide" id="lgpdGate" role="dialog" aria-label="Termo de consentimento">
+    <div class="mg-wrap" style="text-align:left">
+      <div class="mg-eyebrow" style="text-align:center">🔒 Sua privacidade</div>
+      <div class="mg-titulo" style="text-align:center">Termo de consentimento</div>
+      <div class="mg-intro" style="text-align:center">Antes de começar, leia como seus dados são cuidados e assine com o dedo no quadro.</div>
+      <div class="lg-termo" id="lgTermo" tabindex="0"></div>
+      <label class="ag-consent" style="margin:14px 0 10px"><input type="checkbox" id="lgAceite" />
+        Li e concordo com o termo, inclusive com o tratamento dos meus dados de saúde.</label>
+      <input class="lg-nome" id="lgNome" placeholder="Seu nome completo" autocomplete="name" />
+      <div class="lg-ass-lab"><span>Assine aqui</span><button type="button" id="lgLimpar">limpar</button></div>
+      <canvas id="lgCanvas" class="lg-canvas" aria-label="Quadro de assinatura"></canvas>
+      <button class="ag-btn" id="lgBtn" type="button" style="margin-top:14px">Assinar e continuar</button>
+      <div class="ag-err hide" id="lgErr" style="margin:12px auto 0"></div>
     </div>
   </div>
 
@@ -2596,9 +2620,9 @@ function afterLogin(){
         AUTH.name = me.name; state.name = me.name; pintarSaudacaoTopo();
         const inp = document.getElementById('obNameInput'); if(inp) inp.value = me.name;
       }
-      if(me && me.must_change) mostrarSenhaGate(!!me.precisa_consentimento); else seguirParaMapa();
+      if(me && me.must_change) mostrarSenhaGate(false); else seguirParaLGPD();
     })
-    .catch(() => seguirParaMapa());
+    .catch(() => seguirParaLGPD());
 }
 
 function mostrarSenhaGate(pedirConsentimento){
@@ -2621,9 +2645,60 @@ function mostrarSenhaGate(pedirConsentimento){
       if(d.error) throw new Error(d.error);
       document.getElementById('senhaGate').classList.add('hide');
       toast('🔑 Senha criada. Use-a nos próximos acessos.');
-      seguirParaMapa();
+      seguirParaLGPD();
     } catch(e){ fail(e.message || 'Não consegui salvar a senha.'); }
     finally { btn.disabled = false; }
+  };
+}
+
+/* ---- TERMO LGPD: assinatura na tela ---- */
+function seguirParaLGPD(){
+  fetch(API_BASE + '/api/me/lgpd', { headers: authHeaders() })
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if(d && d.precisa && d.texto) mostrarLGPD(d.texto); else seguirParaMapa(); })
+    .catch(() => seguirParaMapa());
+}
+function mostrarLGPD(texto){
+  document.getElementById('lgTermo').textContent = texto;
+  if(!document.getElementById('lgNome').value) document.getElementById('lgNome').value = (AUTH.name || '').trim();
+  document.getElementById('lgpdGate').classList.remove('hide');
+  const cv = document.getElementById('lgCanvas'), ctx = cv.getContext('2d');
+  let tracos = 0, desenhando = false, ult = null;
+  const prepara = () => {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, r.width, r.height);
+    ctx.strokeStyle = '#13303C'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    tracos = 0;
+  };
+  prepara();   // pronto na hora (a tela já está visível)
+  const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cv.onpointerdown = e => { desenhando = true; ult = pos(e); try { cv.setPointerCapture(e.pointerId); } catch(_){} e.preventDefault(); };
+  cv.onpointermove = e => {
+    if(!desenhando) return; const p = pos(e);
+    ctx.beginPath(); ctx.moveTo(ult.x, ult.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ult = p; tracos++; e.preventDefault();
+  };
+  cv.onpointerup = cv.onpointercancel = () => { desenhando = false; };
+  document.getElementById('lgLimpar').onclick = prepara;
+  document.getElementById('lgBtn').onclick = async () => {
+    const err = document.getElementById('lgErr'), btn = document.getElementById('lgBtn');
+    const fail = m => { err.textContent = m; err.classList.remove('hide'); };
+    err.classList.add('hide');
+    if(!document.getElementById('lgAceite').checked) return fail('Marque que você leu e concorda com o termo.');
+    const nome = document.getElementById('lgNome').value.trim();
+    if(nome.split(' ').filter(Boolean).length < 2) return fail('Digite seu nome completo.');
+    if(tracos < 15) return fail('Assine com o dedo no quadro antes de continuar.');
+    btn.disabled = true;
+    try{
+      const r = await fetch(API_BASE + '/api/me/lgpd', { method:'POST', headers: authHeaders(),
+        body: JSON.stringify({ aceite: true, nome, assinatura: cv.toDataURL('image/png') }) });
+      const d = await r.json(); if(d.error) throw new Error(d.error);
+      document.getElementById('lgpdGate').classList.add('hide');
+      toast('✍️ Termo assinado. Obrigado pela confiança.');
+      seguirParaMapa();
+    }catch(e){ fail(e.message || 'Não consegui registrar agora. Tente de novo.'); }
+    finally{ btn.disabled = false; }
   };
 }
 

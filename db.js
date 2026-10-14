@@ -534,6 +534,10 @@ export async function initDb() {
       criado_em TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_hope_user ON hope_items (user_id, criado_em DESC);
+    -- assinatura na tela do termo LGPD (imagem da assinatura + nome digitado + código de verificação)
+    ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS assinatura TEXT;
+    ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS nome_assinado TEXT;
+    ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS hash TEXT;
     -- traz o contato de emergência antigo (cadastro) para a rede, como "avisar em risco"
     INSERT INTO support_contacts (user_id, nome, relacao, telefone, nivel, ordem)
       SELECT u.id, u.emergency_name, 'contato de emergência', u.emergency_phone, 'risco', 0 FROM users u
@@ -635,7 +639,7 @@ export async function trocarSenhaPaciente(uid, { password, consent }) {
   if (senha.length < 6) throw new Error('A nova senha precisa de pelo menos 6 caracteres.');
   const st = await contaPaciente(uid);
   if (!st) throw new Error('Conta não encontrada.');
-  if (st.precisa_consentimento && !consent) throw new Error('É preciso aceitar o termo para usar o app.');
+  // o consentimento agora é o termo LGPD assinado na tela logo em seguida (não mais um checkbox aqui)
   const hash = await bcrypt.hash(senha, 10);
   await pool.query(`UPDATE users SET password_hash=$2, must_change_login=false,
       consent_at=COALESCE(consent_at, CASE WHEN $3 THEN now() END) WHERE id=$1`, [uid, hash, !!consent]);
@@ -2337,7 +2341,7 @@ export async function revogarAcessoCliente(clientId, orgId, uid) {
 export async function listConsents(clientId) {
   if (!pool || !clientId) return [];
   const r = await pool.query(`SELECT c.id, c.tipo, c.versao, c.texto, c.status, c.metodo, c.aceito_em, c.revogado_em,
-      c.motivo_revogacao, u.name AS registrado_por
+      c.motivo_revogacao, u.name AS registrado_por, c.assinatura, c.nome_assinado, c.hash, c.ip, c.dispositivo
     FROM client_consents c LEFT JOIN users u ON u.id=c.usuario_id
     WHERE c.client_user_id=$1 ORDER BY c.created_at DESC`, [clientId]);
   return r.rows;
@@ -2833,4 +2837,35 @@ export async function hopeTexto(uid) {
     vers.length ? 'Versículos que a sustentam: ' + vers.join('; ') : '',
     msg.length ? 'Mensagens e testemunhos guardados: ' + msg.join('; ') : '',
     mid.length ? 'Também guardou: ' + mid.join(', ') + ' (pode convidá-la a abrir a caixa na aba Cuidado).' : ''].filter(Boolean).join('\n');
+}
+
+// ---- TERMO LGPD ASSINADO NA TELA (app do paciente) ----
+const TIPO_LGPD = 'Termo LGPD do aplicativo (assinado na tela)';
+// já assinou ESTA versão do termo e não revogou?
+export async function lgpdAssinado(uid, versao) {
+  if (!pool || !uid) return true;
+  const r = await pool.query(`SELECT 1 FROM client_consents WHERE client_user_id=$1 AND tipo=$2 AND versao=$3 AND status='aceito' LIMIT 1`,
+    [uid, TIPO_LGPD, String(versao)]);
+  return !!r.rows[0];
+}
+export async function assinarLGPD(uid, { versao, texto, nome, assinatura, ip, dispositivo }) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const n = String(nome || '').trim().replace(/\s+/g, ' ');
+  if (n.length < 5 || !n.includes(' ')) throw new Error('Digite seu nome completo.');
+  const a = String(assinatura || '');
+  if (!/^data:image\/png;base64,/.test(a) || a.length < 1500) throw new Error('Assine no quadro antes de continuar.');
+  if (a.length > 400000) throw new Error('A assinatura ficou grande demais. Limpe e assine de novo.');
+  const u = await pool.query('SELECT org_id FROM users WHERE id=$1', [uid]);
+  const quando = new Date().toISOString();
+  // código de verificação: amarra o texto do termo, o nome, a assinatura e o momento
+  const hash = crypto.createHash('sha256').update([texto, n, a, quando, uid].join('|')).digest('hex');
+  const r = await pool.query(`INSERT INTO client_consents (org_id, client_user_id, tipo, versao, texto, status, metodo, usuario_id, ip, dispositivo,
+      aceito_em, assinatura, nome_assinado, hash)
+    VALUES ($1,$2,$3,$4,$5,'aceito','Assinatura digital na tela do app',$2,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [u.rows[0]?.org_id || null, uid, TIPO_LGPD, String(versao), texto, ip ? String(ip).slice(0, 80) : null, dispositivo ? String(dispositivo).slice(0, 300) : null,
+     quando, a, n.slice(0, 160), hash]);
+  await pool.query('UPDATE users SET consent_at=COALESCE(consent_at, now()) WHERE id=$1', [uid]);
+  await registrarAuditoria({ orgId: u.rows[0]?.org_id, userId: uid, clientId: uid, acao: 'lgpd_assinado', entidade: 'consent', entidadeId: r.rows[0].id,
+    dados: { versao, hash }, ip });
+  return { ok: true, id: r.rows[0].id, hash, quando };
 }

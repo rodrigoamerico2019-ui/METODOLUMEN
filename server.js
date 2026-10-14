@@ -52,7 +52,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
-         listHope, addHope, deleteHope, getHopeMedia, hopeTexto,
+         listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -63,6 +63,7 @@ import { buildReciboPdf } from './recibo.js';
 import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa } from './mapa.js';
+import { TERMO_LGPD_VERSAO, textoTermoLGPD } from './termo-lgpd.js';
 import webpush from 'web-push';
 import jwtLib from 'jsonwebtoken';
 
@@ -2448,6 +2449,27 @@ app.get('/api/admin/hope/media', requireAdmin, soMentor, async (req, res) => {
     if (!m) return res.status(404).end();
     res.set('Content-Type', m.mime || 'application/octet-stream'); res.set('Cache-Control', 'private, max-age=3600'); res.send(m.bytes);
   } catch (e) { res.status(500).end(); }
+});
+
+// ---- TERMO LGPD ASSINADO NA TELA (1º acesso; de novo quando a versão do termo mudar) ----
+async function termoDoPaciente(uid) {
+  const t = await terapeutaContato(uid).catch(() => null);
+  return textoTermoLGPD({ clinica: t && t.clinica, terapeuta: t && t.name });
+}
+app.get('/api/me/lgpd', requireAuth, async (req, res) => {
+  try {
+    const assinado = await lgpdAssinado(req.user.uid, TERMO_LGPD_VERSAO);
+    res.json({ precisa: !assinado, versao: TERMO_LGPD_VERSAO, texto: assinado ? null : await termoDoPaciente(req.user.uid) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/lgpd', requireAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.aceite) return res.status(400).json({ error: 'Marque que você leu e concorda com o termo.' });
+    const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+    res.json(await assinarLGPD(req.user.uid, { versao: TERMO_LGPD_VERSAO, texto: await termoDoPaciente(req.user.uid),
+      nome: b.nome, assinatura: b.assinatura, ip, dispositivo: req.headers['user-agent'] }));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
 // ---- contatos ----

@@ -2582,6 +2582,11 @@ async function renderCliConsentimentos(body){
     const quando=ativo?('aceito em '+new Date(c.aceito_em).toLocaleDateString('pt-BR')):('revogado em '+new Date(c.revogado_em).toLocaleDateString('pt-BR'));
     return '<div class="ag-item" style="align-items:flex-start"><div class="ag-info"><b>'+escHtml(c.tipo)+' <small style="color:var(--faint)">v'+escHtml(c.versao||'1.0')+'</small></b>'+
       '<small>'+[quando,c.metodo,c.registrado_por].filter(Boolean).join(' · ')+(c.motivo_revogacao?' · motivo: '+escHtml(c.motivo_revogacao):'')+'</small>'+
+      (c.assinatura?'<div style="margin-top:8px"><img src="'+escHtml(c.assinatura)+'" alt="assinatura" style="max-width:260px;width:100%;background:#fff;border:1px solid var(--line);border-radius:8px"/>'+
+        '<small style="display:block;margin-top:4px">Assinado por <b>'+escHtml(c.nome_assinado||'')+'</b> em '+new Date(c.aceito_em).toLocaleString('pt-BR')+
+        (c.ip?' · IP '+escHtml(c.ip):'')+'</small>'+
+        (c.dispositivo?'<small style="display:block;color:var(--faint)">Aparelho: '+escHtml(String(c.dispositivo).slice(0,120))+'</small>':'')+
+        (c.hash?'<small style="display:block;color:var(--faint);word-break:break-all">Código de verificação: '+escHtml(c.hash)+'</small>':'')+'</div>':'')+
       (c.texto?'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--gold-2)">ver termo</summary><p class="subc" style="white-space:pre-wrap;margin-top:6px">'+escHtml(c.texto)+'</p></details>':'')+'</div>'+
       '<span class="lic-st '+(ativo?'ativa':'inativa')+'">'+(ativo?'aceito':'revogado')+'</span>'+
       (ativo?'<div class="fin-act"><button onclick="revogarConsent('+c.id+')">revogar</button></div>':'')+'</div>';
