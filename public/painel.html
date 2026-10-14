@@ -2057,7 +2057,11 @@ async function renderCliDiario(body){
     '<div class="muted" style="font-size:12px">Por que está '+(COR_TXT[ultimaCor.analise.status]||'assim')+' · '+escHtml(ultimaCor.quando||'')+'</div>'+
     '<div style="margin:6px 0;font-size:15px;line-height:1.55">“'+escHtml(ultimaCor.texto)+'”</div>'+
     '<div class="subc">'+escHtml(ultimaCor.analise.motivo||'')+'</div></div>' : '';
-  body.innerHTML = cab + porque + alertas +
+  const pr = ev.prontuario;
+  const leitura = pr ? '<div class="section-title" style="font-size:14px;margin-top:18px">🧠 Leitura do paciente (corpo, alma, espírito e próximos passos)</div>'+
+    '<p class="subc" style="margin:2px 0 8px">Atualizada pela IA com o questionário, as escalas, as conversas e os relatórios'+(pr.atualizado?' · última atualização: '+escHtml(pr.atualizado):'')+'. A Lúmen usa esta leitura nas conversas.</p>'+
+    '<div class="card" style="padding:16px;white-space:pre-wrap;line-height:1.65;font-size:14px">'+escHtml(pr.texto)+'</div>' : '';
+  body.innerHTML = cab + porque + leitura + alertas +
     '<div class="section-title" style="font-size:14px;margin-top:18px">💬 O que a paciente respondeu nas conversas</div>'+
     '<p class="subc" style="margin:2px 0 8px">Cada fala com a classificação que gerou. Mais recentes primeiro.</p>'+
     '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="tbtn" id="evTodas" onclick="pintarFalas(false)">Todas</button><button class="tbtn" id="evAlerta" onclick="pintarFalas(true)">Só amarelo e vermelho</button></div>'+

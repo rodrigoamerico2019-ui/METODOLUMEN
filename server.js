@@ -2575,14 +2575,15 @@ app.get('/api/admin/evidencias', requireAdmin, soMentor, async (req, res) => {
   try {
     if (!(await guardPaciente(req, res))) return;
     const id = Number(req.query.id);
-    const [falas, mapa] = await Promise.all([falasAnalisadas(id, 80), getMapa(id).catch(() => null)]);
+    const [falas, mapa, pront] = await Promise.all([falasAnalisadas(id, 80), getMapa(id).catch(() => null), getProntuario(id).catch(() => null)]);
     const porPergunta = Object.fromEntries(MAPA.map(q => [q.pergunta, q]));
     const respostas = ((mapa && mapa.mapa) || []).map(r => {
       const q = porPergunta[r.pergunta];
       const op = q && q.opcoes[r.idx];
       return { tema: r.tema, pergunta: r.pergunta, resposta: r.resposta, sinal: r.sinal, risco: !!(op && op.risco) };
     });
-    res.json({ falas: falas.map(f => ({ id: f.id, texto: f.content, analise: f.analise, quando: quandoSP(f.created_at) })),
+    res.json({ prontuario: pront && pront.prontuario ? { texto: pront.prontuario, atualizado: pront.updated_at ? quandoSP(pront.updated_at) : null } : null,
+      falas: falas.map(f => ({ id: f.id, texto: f.content, analise: f.analise, quando: quandoSP(f.created_at) })),
       mapa: { respondido_em: mapa && mapa.mapa_em ? quandoSP(mapa.mapa_em) : null, risco: !!(mapa && mapa.mapa_risco), respostas } });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
