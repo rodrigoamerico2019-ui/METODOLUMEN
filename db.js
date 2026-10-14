@@ -537,6 +537,8 @@ export async function initDb() {
     -- assinatura na tela do termo LGPD (imagem da assinatura + nome digitado + código de verificação)
     -- e-mail de CONTATO do terapeuta (pode repetir entre clínicas); users.email segue único (login técnico)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_contato TEXT;
+    -- análise de cada FALA do paciente (cor, risco, emoção, comprometimento e o motivo) — só o terapeuta vê
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS analise JSONB;
     -- CADASTRO DO PROFISSIONAL da clínica (dados pessoais e área de atuação)
     ALTER TABLE org_members ADD COLUMN IF NOT EXISTS area TEXT;          -- terapeuta | psicologo | psicanalista | mentor | pastor | pastora
     ALTER TABLE org_members ADD COLUMN IF NOT EXISTS rg TEXT;
@@ -676,9 +678,21 @@ export async function requireAuth(req, res, next) {
 
 // --- grava mensagens (com o META da Lúmen) por paciente ---
 export async function saveMessage(userId, role, content, meta) {
-  if (!pool || !userId) return;
-  await pool.query('INSERT INTO messages (user_id,role,content,meta) VALUES ($1,$2,$3,$4)',
+  if (!pool || !userId) return null;
+  const r = await pool.query('INSERT INTO messages (user_id,role,content,meta) VALUES ($1,$2,$3,$4) RETURNING id',
     [userId, role, content, meta ? JSON.stringify(meta) : null]);
+  return r.rows[0] ? r.rows[0].id : null;
+}
+export async function setAnaliseMensagem(id, analise) {
+  if (!pool || !id) return;
+  await pool.query('UPDATE messages SET analise=$2 WHERE id=$1', [id, analise ? JSON.stringify(analise) : null]);
+}
+// falas do paciente com a análise de cada uma (o porquê de cada cor), mais recentes primeiro
+export async function falasAnalisadas(uid, limit = 60) {
+  if (!pool || !uid) return [];
+  const r = await pool.query(`SELECT id, content, analise, created_at FROM messages
+    WHERE user_id=$1 AND role='user' ORDER BY created_at DESC LIMIT $2`, [uid, limit]);
+  return r.rows;
 }
 
 // --- histórico recente (para continuar a conversa entre sessões) ---

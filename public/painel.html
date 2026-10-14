@@ -1056,7 +1056,7 @@ async function renderPrioridades(){
       <div class="prio-nome"><b>${escHtml(p.name)}</b>
         <div class="prio-motivo"><span class="selo ${nivel}">${nomes[nivel]}</span>${motivo}${p.classificacao||p.comprometimento?'<br><small>'+(COR_TXT[p.classificacao]||'')+(p.comprometimento?' · '+(COMP_TXT[p.comprometimento]||''):'')+'</small>':''}</div></div>
       <div class="prio-meta">última: ${fmtH(p.ultima_conversa)}<br>${p.mensagens||0} interações</div>
-      <div class="prio-acoes">${nivel==='seguranca'?`<button class="pbtn cris" onclick="protocoloCrise(${p.id})">🆘 Protocolo</button>`:''}<button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
+      <div class="prio-acoes">${nivel==='seguranca'?`<button class="pbtn cris" onclick="protocoloCrise(${p.id})">🆘 Protocolo</button>`:''}<button class="pbtn" onclick="abrirRespostas(${p.id})">Ver respostas</button><button class="pbtn forte" onclick="abrirCliente(${p.id})">Abrir ficha →</button></div>
     </div>`).join('') : '<div class="prio-vazio">Nenhuma prioridade agora. A luz está atravessando. 🕊️</div>';
 
   // pagamentos vencendo/atrasados
@@ -1895,7 +1895,8 @@ async function salvarCadRapido(){
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['diario','📋 Relatório do dia'],['plano','🛡️ Dias difíceis'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['diario','🚦 Alertas e respostas'],['plano','🛡️ Dias difíceis'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+async function abrirRespostas(id){ await abrirCliente(id); cliTab('diario'); }
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ aviso('Erro: '+e.message,'erro'); return; }
   clienteAtual.id=id; nav('cliente');
@@ -2012,10 +2013,11 @@ async function salvarPlanoCli(){
 async function renderCliDiario(body){
   const seq = cliBodySeq;
   body.innerHTML='<p class="muted">carregando…</p>';
-  let d; try{ d = await api('/api/admin/day-reports?id='+clienteAtual.id); }
+  let d, ev; try{ [d, ev] = await Promise.all([ api('/api/admin/day-reports?id='+clienteAtual.id), api('/api/admin/evidencias?id='+clienteAtual.id) ]); }
   catch(e){ body.innerHTML='<p class="muted">'+escHtml(e.message)+'</p>'; return; }
   if(seq !== cliBodySeq) return;
   const c = d.classificacao || {};
+  EVID = ev;
   const cab = '<div id="dStats">'+
     '<span class="stat"><b>'+(COR_TXT[c.classificacao]||'—')+'</b>classificação atual</span>'+
     '<span class="stat"><b>'+(COMP_TXT[c.comprometimento]||'—')+'</b>comprometimento</span>'+
@@ -2048,7 +2050,52 @@ async function renderCliDiario(body){
       ) : '<p class="muted">pré-análise em processamento…</p>')+
       '</div>';
   }).join('') : '<p class="muted" style="margin-top:14px">Ainda não há relatórios do dia. No app, o paciente escreve na aba <b>Relatório → Relatório do meu dia</b>.</p>';
-  body.innerHTML = cab + alertas + '<div class="section-title" style="font-size:14px;margin-top:18px">📋 Relatórios do dia</div>' + lista;
+  // o porquê da cor atual: a fala mais recente classificada com essa cor
+  const falas = (ev.falas||[]).filter(f => f.analise);
+  const ultimaCor = falas.find(f => f.analise.status === c.classificacao) || falas[0];
+  const porque = ultimaCor ? '<div class="card" style="margin:14px 0;padding:14px;border-left:4px solid '+corBorda(ultimaCor.analise.status)+';border-radius:0">'+
+    '<div class="muted" style="font-size:12px">Por que está '+(COR_TXT[ultimaCor.analise.status]||'assim')+' · '+escHtml(ultimaCor.quando||'')+'</div>'+
+    '<div style="margin:6px 0;font-size:15px;line-height:1.55">“'+escHtml(ultimaCor.texto)+'”</div>'+
+    '<div class="subc">'+escHtml(ultimaCor.analise.motivo||'')+'</div></div>' : '';
+  body.innerHTML = cab + porque + alertas +
+    '<div class="section-title" style="font-size:14px;margin-top:18px">💬 O que a paciente respondeu nas conversas</div>'+
+    '<p class="subc" style="margin:2px 0 8px">Cada fala com a classificação que gerou. Mais recentes primeiro.</p>'+
+    '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="tbtn" id="evTodas" onclick="pintarFalas(false)">Todas</button><button class="tbtn" id="evAlerta" onclick="pintarFalas(true)">Só amarelo e vermelho</button></div>'+
+    '<div id="evFalas"></div>'+
+    '<div class="section-title" style="font-size:14px;margin-top:22px">🧭 Respostas do questionário inicial</div>'+
+    '<div id="evMapa"></div>'+
+    '<div class="section-title" style="font-size:14px;margin-top:22px">📋 Relatórios do dia</div>' + lista;
+  pintarFalas(false); pintarMapaEv();
+}
+let EVID = null;
+function corBorda(cor){ return cor==='vermelho' ? 'var(--vermelho)' : cor==='amarelo' ? 'var(--amarelo)' : cor==='verde' ? 'var(--verde)' : 'var(--line)'; }
+function pintarFalas(soAlerta){
+  const el = $('evFalas'); if(!el || !EVID) return;
+  $('evTodas').classList.toggle('on', !soAlerta); $('evAlerta').classList.toggle('on', !!soAlerta);
+  let f = EVID.falas || [];
+  if(soAlerta) f = f.filter(x => x.analise && (x.analise.status==='amarelo' || x.analise.status==='vermelho' || x.analise.risco==='ALTO'));
+  if(!f.length){ el.innerHTML = '<p class="muted">'+(soAlerta?'Nenhuma fala em amarelo ou vermelho.':'Ainda não há conversas.')+'</p>'; return; }
+  el.innerHTML = '<div style="max-height:520px;overflow-y:auto;border:1px solid var(--line);border-radius:10px">'+ f.map(x => {
+    const a = x.analise;
+    const det = a ? [a.emocao, (a.risco && a.risco!=='NENHUM') ? 'risco '+a.risco.toLowerCase()+(a.alvo&&a.alvo!=='nenhum'?' ('+(a.alvo==='si'?'a si':'a outra pessoa')+')':'') : '',
+      a.comprometimento && a.comprometimento!=='indefinido' ? (COMP_TXT[a.comprometimento]||a.comprometimento) : '', a.sinal_do_plano ? 'sinal do plano: '+a.sinal_do_plano : ''].filter(Boolean).join(' · ') : '';
+    return '<div style="padding:10px 12px;border-bottom:1px solid var(--line);border-left:4px solid '+corBorda(a&&a.status)+'">'+
+      '<div class="muted" style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="text-transform:capitalize">'+escHtml(x.quando||'')+'</span><span>'+(a?(COR_TXT[a.status]||'—'):'sem classificação (conversa antiga)')+'</span></div>'+
+      '<div style="margin:4px 0;line-height:1.5">“'+escHtml(x.texto)+'”</div>'+
+      (a?'<div class="subc" style="font-size:12px">'+escHtml(det)+(a.motivo?'<br>'+escHtml(a.motivo):'')+'</div>':'')+'</div>';
+  }).join('') + '</div>';
+}
+function pintarMapaEv(){
+  const el = $('evMapa'); if(!el || !EVID) return;
+  const m = EVID.mapa || {}, r = m.respostas || [];
+  if(!r.length){ el.innerHTML = '<p class="muted">O paciente ainda não respondeu o questionário inicial.</p>'; return; }
+  const alerta = r.filter(x => x.risco);
+  el.innerHTML = '<p class="subc" style="margin:2px 0 8px">Respondido em '+escHtml(m.respondido_em||'—')+(alerta.length?' · <b style="color:var(--vermelho)">'+alerta.length+' resposta(s) de alerta</b>':' · sem respostas de alerta')+'</p>'+
+    '<div style="border:1px solid var(--line);border-radius:10px">'+ r.map(x =>
+      '<div style="padding:9px 12px;border-bottom:1px solid var(--line);'+(x.risco?'border-left:4px solid var(--vermelho);background:var(--danger-bg)':'')+'">'+
+      '<div class="muted" style="font-size:11.5px">'+escHtml(x.tema||'')+'</div>'+
+      '<div style="font-size:13px">'+escHtml(x.pergunta||'')+'</div>'+
+      '<div style="margin-top:2px"><b>'+(x.risco?'⚠️ ':'')+escHtml(x.resposta||'')+'</b> <span class="muted" style="font-size:12px">· '+escHtml(x.sinal||'')+'</span></div></div>').join('') + '</div>';
 }
 async function renderCliVisao(body){
   const mySeq=cliBodySeq;   // cliTab já incrementou; capturo o valor atual

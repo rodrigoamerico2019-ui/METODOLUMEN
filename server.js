@@ -53,7 +53,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
-         AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
+         setAnaliseMensagem, falasAnalisadas, AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -63,7 +63,7 @@ import { buildReportPdf } from './relatorio.js';
 import { buildReciboPdf } from './recibo.js';
 import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
-import { catalogoMapa, processarMapa } from './mapa.js';
+import { catalogoMapa, processarMapa, MAPA } from './mapa.js';
 import { TERMO_LGPD_VERSAO, textoTermoLGPD } from './termo-lgpd.js';
 import webpush from 'web-push';
 import jwtLib from 'jsonwebtoken';
@@ -2162,6 +2162,52 @@ function parseMeta(text) {
   try { return JSON.parse(m[1]); } catch { return null; }
 }
 
+// CLASSIFICAÇÃO DE CADA FALA DO PACIENTE — chamada própria, estruturada e confiável.
+// Guarda junto da mensagem dele (o porquê de cada cor), atualiza a classificação e dispara alertas.
+async function classificarFala(uid, msgId, fala, historico, metaIA) {
+  let a = null;
+  if (process.env.ANTHROPIC_API_KEY && String(fala || '').trim()) {
+    const ctx = (historico || []).slice(-7, -1).map(m => (m.role === 'user' ? 'PACIENTE: ' : 'LÚMEN: ') + String(m.content || '').replace(/##META\{[\s\S]*?\}##\s*/, '').slice(0, 400)).join('\n');
+    const plano = await planoDiasDificeisTexto(uid).catch(() => '');
+    try {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 400, temperature: 0,
+          system: `Você classifica, para o TERAPEUTA, a última fala de um paciente num app de acompanhamento emocional cristão. Não é diagnóstico: são sinais.
+COR: verde = estável, acolhido, sem sinais de alerta · amarelo = sofrimento relevante, dor ativa, padrão repetitivo · vermelho = crise, desesperança, piora importante ou qualquer risco (nunca verde se houver risco).
+RISCO: NENHUM | MODERADO (sofrimento intenso, ideias vagas de "sumir" sem plano) | ALTO (ideação suicida, autolesão, plano, risco a outra pessoa ou criança). ALVO: si | outro | nenhum.
+COMPROMETIMENTO: tanto_faz (acomodação, "não está tão ruim") | cansei (sofre, descansa e volta ao mesmo problema sem decidir mudar) | insuportavel (não aguenta mais e quer mudar) | indefinido (a fala não mostra).
+Responda SOMENTE um JSON: {"status":"verde|amarelo|vermelho","risco":"NENHUM|MODERADO|ALTO","alvo":"si|outro|nenhum","emocao":"uma palavra","intensidade":0-10,"comprometimento":"tanto_faz|cansei|insuportavel|indefinido","sinal_do_plano":"qual sinal do plano de dias difíceis apareceu, ou null","motivo":"1 frase objetiva para o terapeuta explicando a cor com base nas palavras do paciente"}`,
+          messages: [{ role: 'user', content: (ctx ? 'CONTEXTO RECENTE:\n' + ctx + '\n\n' : '') + (plano ? 'PLANO DE DIAS DIFÍCEIS DO PACIENTE:\n' + plano + '\n\n' : '') + 'FALA A CLASSIFICAR:\n"""' + String(fala).slice(0, 3000) + '"""' }]
+        })
+      });
+      const d = await r.json();
+      const txt = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      const m = txt.match(/\{[\s\S]*\}/);
+      if (m) a = JSON.parse(m[0]);
+    } catch (e) { console.error('classificador:', e.message); }
+  }
+  if (!a && metaIA) a = { status: metaIA.status, risco: metaIA.risco, alvo: metaIA.alvo, emocao: metaIA.emocao, intensidade: metaIA.intensidade,
+    comprometimento: metaIA.comprometimento, motivo: 'Marcação feita pela própria resposta da Lúmen.' };
+  if (!a) return null;
+  a.status = ['verde', 'amarelo', 'vermelho'].includes(String(a.status).toLowerCase()) ? String(a.status).toLowerCase() : null;
+  a.risco = String(a.risco || 'NENHUM').toUpperCase();
+  a.em = new Date().toISOString();
+  if (msgId) await setAnaliseMensagem(msgId, a).catch(() => {});
+  await setClassificacao(uid, { classificacao: a.status, comprometimento: a.comprometimento, motivo: a.motivo }).catch(() => {});
+  if (a.risco === 'ALTO' || a.status === 'vermelho') {
+    const vida = a.risco === 'ALTO' && ['si', 'outro'].includes(String(a.alvo || '').toLowerCase());
+    await alertarTerapeuta(uid, {
+      origem: 'conversa', gravidade: vida ? 'urgente' : 'atencao',
+      motivo: (vida ? 'Risco ALTO na conversa' + (a.alvo === 'outro' ? ' (a outra pessoa). ' : ' (à própria vida). ') : 'Conversa em VERMELHO. ') + (a.motivo || ''),
+      trecho: fala, avisarContato: vida
+    }).catch(e => console.error('alerta:', e.message));
+  }
+  return a;
+}
+
 app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
   try {
     const { messages = [], name = '' } = req.body || {};
@@ -2204,24 +2250,13 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     const uid = req.user && req.user.uid;
     if (uid) {
       const lastUser = [...messages].reverse().find(m => m.role === 'user');
-      if (lastUser) saveMessage(uid, 'user', String(lastUser.content || ''), null).catch(e => console.error('save user:', e.message));
-      saveMessage(uid, 'assistant', text, parseMeta(text)).catch(e => console.error('save assistant:', e.message));
-      // classificação do momento (só o terapeuta vê) + alerta quando sai do normal
-      const meta = parseMeta(text);
-      if (meta) {
-        setClassificacao(uid, { classificacao: meta.status, comprometimento: meta.comprometimento }).catch(() => {});
-        const risco = String(meta.risco || '').toUpperCase();
-        if (risco === 'ALTO' || String(meta.status || '').toLowerCase() === 'vermelho') {
-          const lastU = [...messages].reverse().find(m => m.role === 'user');
-          const vida = risco === 'ALTO' && ['si', 'outro'].includes(String(meta.alvo || '').toLowerCase());
-          alertarTerapeuta(uid, {
-            origem: 'conversa', gravidade: vida ? 'urgente' : 'atencao',
-            motivo: vida ? 'Risco ALTO identificado na conversa' + (meta.alvo === 'outro' ? ' (a outra pessoa).' : ' (à própria vida).')
-                         : 'Conversa em estado VERMELHO (' + (meta.emocao || 'sofrimento intenso') + (meta.padrao ? ', padrão ' + meta.padrao : '') + ').',
-            trecho: lastU ? String(lastU.content || '') : '', avisarContato: vida
-          }).catch(e => console.error('alerta:', e.message));
-        }
-      }
+      const metaIA = parseMeta(text);
+      // grava a troca e classifica a FALA da pessoa (em segundo plano, sem atrasar a resposta)
+      (async () => {
+        const userMsgId = lastUser ? await saveMessage(uid, 'user', String(lastUser.content || ''), null).catch(() => null) : null;
+        await saveMessage(uid, 'assistant', text, metaIA).catch(e => console.error('save assistant:', e.message));
+        if (lastUser) await classificarFala(uid, userMsgId, String(lastUser.content || ''), messages, metaIA);
+      })().catch(e => console.error('classificar fala:', e.message));
     }
 
     res.json({ text });
@@ -2535,6 +2570,21 @@ app.post('/api/me/day-report', requireAuth, async (req, res) => {
 app.get('/api/me/day-reports', requireAuth, async (req, res) => {
   try { res.json({ relatorios: (await myDayReports(req.user.uid)).map(r => ({ ...r, quando: quandoSP(r.criado_em) })) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/evidencias', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const id = Number(req.query.id);
+    const [falas, mapa] = await Promise.all([falasAnalisadas(id, 80), getMapa(id).catch(() => null)]);
+    const porPergunta = Object.fromEntries(MAPA.map(q => [q.pergunta, q]));
+    const respostas = ((mapa && mapa.mapa) || []).map(r => {
+      const q = porPergunta[r.pergunta];
+      const op = q && q.opcoes[r.idx];
+      return { tema: r.tema, pergunta: r.pergunta, resposta: r.resposta, sinal: r.sinal, risco: !!(op && op.risco) };
+    });
+    res.json({ falas: falas.map(f => ({ id: f.id, texto: f.content, analise: f.analise, quando: quandoSP(f.created_at) })),
+      mapa: { respondido_em: mapa && mapa.mapa_em ? quandoSP(mapa.mapa_em) : null, risco: !!(mapa && mapa.mapa_risco), respostas } });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 app.get('/api/admin/day-reports', requireAdmin, soMentor, async (req, res) => {
   try {
