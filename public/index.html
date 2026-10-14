@@ -162,6 +162,44 @@
   .voz-bar button.on { color:var(--gold-2); }
   .bub-ouvir { display:inline-block; margin-top:6px; background:none; border:none; color:var(--gold-2); font-size:11px; cursor:pointer; padding:0; font-family:inherit; opacity:.8; }
   .ag-consent.hide { display:none; }
+  /* aba Cuidado */
+  .sos-btn { width:100%; display:flex; flex-direction:column; gap:4px; align-items:center; text-align:center; cursor:pointer;
+    background:var(--danger-bg); border:1px solid var(--danger); border-radius:16px; padding:18px 16px; margin:4px 0 16px; font-family:inherit; }
+  .sos-btn .sos-t { font-family:'Cinzel'; font-size:18px; letter-spacing:1px; color:var(--danger); }
+  .sos-btn .sos-s { font-size:12.5px; color:var(--ink); line-height:1.45; }
+  .cuid-bloco { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
+  .cuid-sub { font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin:2px 0 10px; }
+  .rede-item { border-top:1px solid var(--line); padding:10px 0; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .rede-item input, .rede-item select { width:100%; min-width:0; background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    color:var(--ink); font-family:inherit; font-size:13px; padding:9px 10px; }
+  .rede-item select { grid-column:1 / -1; }
+  .rede-item .rede-rem { grid-column:1 / -1; justify-self:end; background:none; border:none; color:var(--ink-faint); font-size:12px; cursor:pointer; font-family:inherit; }
+  .rede-add { background:none; border:1px dashed var(--line); color:var(--gold-2); border-radius:10px; padding:9px; width:100%; cursor:pointer; font-family:inherit; font-size:13px; }
+  .ajuda-lista { display:flex; flex-direction:column; }
+  .ajuda-row { display:flex; gap:12px; align-items:center; padding:10px 2px; border-top:1px solid var(--line); text-decoration:none; color:var(--ink); }
+  .ajuda-row:first-child { border-top:none; }
+  .ajuda-row b { font-family:'Cinzel'; font-size:18px; color:var(--gold-2); min-width:44px; }
+  .ajuda-row span { font-size:13px; color:var(--ink-dim); }
+  /* roteiro "Estou mal agora" */
+  .sos-topo { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .sos-fechar { background:none; border:none; color:var(--ink-faint); font-family:inherit; font-size:13px; cursor:pointer; }
+  .sos-titulo { font-family:'Cormorant Garamond'; font-size:26px; color:var(--ink); line-height:1.25; margin-bottom:10px; }
+  .sos-texto { font-size:14.5px; color:var(--ink-dim); line-height:1.65; margin-bottom:18px; }
+  .sos-acoes { display:flex; flex-direction:column; gap:10px; }
+  .sos-op { text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; font-size:14.5px;
+    color:var(--ink); cursor:pointer; font-family:inherit; text-decoration:none; display:block; }
+  .sos-op.forte { background:var(--gold-grad); color:var(--on-gold); border:none; font-weight:600; text-align:center; }
+  .sos-op small { display:block; color:var(--ink-dim); font-size:12px; margin-top:2px; }
+  .sos-resp { width:190px; height:190px; border-radius:50%; margin:6px auto 18px; display:grid; place-items:center; text-align:center;
+    border:2px solid var(--gold-2); background:radial-gradient(circle, rgba(226,194,122,.22), transparent 70%); transition: transform 4s ease-in-out; }
+  .sos-resp.inspira { transform:scale(1.15); }
+  .sos-resp.solta { transform:scale(.82); transition-duration:6s; }
+  .sos-resp .r-fase { font-size:15px; color:var(--ink); padding:0 18px; line-height:1.4; }
+  .sos-resp .r-seg { font-size:11px; color:var(--ink-faint); margin-top:6px; }
+  .sos-verso { font-family:'Cormorant Garamond'; font-style:italic; font-size:19px; color:var(--gold-2); line-height:1.45; margin:4px 0 6px; }
+  .sos-rodape { margin-top:22px; font-size:12px; color:var(--ink-faint); text-align:center; }
+  .sos-rodape a { color:var(--gold-2); }
+  @media (prefers-reduced-motion: reduce) { .sos-resp, .sos-resp.solta { transition:none; } }
   /* relatório do meu dia */
   .rd-quando { font-family:'Cinzel'; color:var(--gold-2); font-size:14px; letter-spacing:1px; margin:6px 0 10px; }
   .rd-aviso { background:rgba(226,194,122,.10); border:1px solid var(--line); border-radius:12px; padding:11px 13px;
@@ -688,6 +726,15 @@
     </div>
   </div>
 
+  <!-- ============ ESTOU MAL AGORA: roteiro guiado de acolhimento ============ -->
+  <div class="mapagate hide" id="sosGate" role="dialog" aria-label="Estou mal agora">
+    <div class="mg-wrap">
+      <div class="sos-topo"><span class="mg-eyebrow" id="sosPasso"></span><button class="sos-fechar" id="sosFechar" type="button">fechar</button></div>
+      <div id="sosArea"></div>
+      <div class="sos-rodape">Em perigo agora? <a href="tel:188">CVV 188</a> · <a href="tel:192">SAMU 192</a></div>
+    </div>
+  </div>
+
   <!-- ============ MAPA INICIAL (questionário obrigatório do 1º acesso) ============ -->
   <div class="mapagate hide" id="mapaGate">
     <div class="mg-wrap">
@@ -963,29 +1010,41 @@
     <div class="view" id="view-cuidado">
       <div class="eyebrow">Rede de cuidado</div>
       <div class="section-title">Cuidado</div>
-      <div class="section-sub">Quem Lúmen aciona quando você mais precisa.</div>
+      <div class="section-sub">Seu plano para os dias difíceis.</div>
 
-      <div class="info-box" style="margin-bottom:14px">
-        <b>Como funciona o cuidado.</b> Tudo o que você conversa e relata aqui chega ao seu terapeuta.
-        Se aparecer algo fora do normal, ele é avisado na hora pelo WhatsApp. Em sinais de risco de vida,
-        o contato de confiança que você cadastrar abaixo também é avisado.
-      </div>
-      <div class="field">
-        <label>Nome do seu contato de confiança</label>
-        <input id="contactName" placeholder="Ex.: Ana (esposa), Pastor João" value="" />
-      </div>
-      <div class="field">
-        <label>WhatsApp dele(a), com DDD</label>
-        <input id="contactPhone" placeholder="(11) 9 9999-9999" value="" inputmode="tel" />
-        <div class="help">Escolha alguém próximo, que você autoriza a ser avisado se você estiver em perigo.</div>
-      </div>
-      <input id="reportEmail" type="hidden" value="" />
-      <button class="save-btn" id="saveContact">Salvar meu contato de confiança</button>
+      <button class="sos-btn" id="sosBtn" type="button">
+        <span class="sos-t">Estou mal agora</span>
+        <span class="sos-s">Vamos respirar, acalmar e pedir ajuda juntos, um passo de cada vez</span>
+      </button>
 
-      <div class="emerg-btns">
-        <a class="emerg-btn" href="tel:188">📞 CVV 188 · apoio emocional 24h</a>
-        <a class="emerg-btn" href="tel:192">🚑 SAMU 192 · emergência</a>
+      <div class="cuid-bloco">
+        <div class="eyebrow">Minha rede de apoio</div>
+        <div class="cuid-sub">Até 3 pessoas de confiança. Você escolhe o que cada uma pode receber.</div>
+        <div id="redeLista"></div>
+        <button class="rede-add" id="redeAdd" type="button">+ Adicionar pessoa</button>
+        <div class="cuid-sub" style="margin-top:10px">Quem estiver em <b>“Avisar em risco de vida”</b> recebe uma mensagem no WhatsApp se o app perceber risco de vida ou se você pedir ajuda. Você pode mudar isso quando quiser.</div>
+        <button class="save-btn" id="redeSalvar" type="button">Salvar minha rede</button>
+        <div class="rd-status" id="redeStatus"></div>
       </div>
+
+      <div class="cuid-bloco">
+        <div class="eyebrow">Ajuda 24 horas</div>
+        <div class="ajuda-lista">
+          <a class="ajuda-row" href="tel:188"><b>188</b><span>CVV · apoio emocional, ligação gratuita</span></a>
+          <a class="ajuda-row" href="tel:192"><b>192</b><span>SAMU · emergência médica</span></a>
+          <a class="ajuda-row" href="tel:190"><b>190</b><span>Polícia Militar · perigo imediato</span></a>
+          <a class="ajuda-row" href="tel:180"><b>180</b><span>Central de Atendimento à Mulher</span></a>
+          <a class="ajuda-row" href="tel:100"><b>100</b><span>Direitos Humanos · crianças, idosos e pessoas vulneráveis</span></a>
+        </div>
+      </div>
+
+      <div class="info-box" style="margin-top:14px">
+        <b>Quem fica sabendo.</b> Tudo o que você conversa e relata chega ao seu terapeuta. Se aparecer algo fora do normal,
+        ele é avisado na hora. Em risco de vida, as pessoas da sua rede marcadas para isso também são avisadas.
+      </div>
+
+      <!-- campos antigos (compatibilidade) -->
+      <div style="display:none"><input id="contactName" /><input id="contactPhone" /><input id="reportEmail" type="hidden" /><button id="saveContact" type="button"></button></div>
 
       <div class="alert-log" style="display:none">
         <div class="eyebrow">Histórico de alertas</div>
@@ -1882,6 +1941,166 @@ function carregarContatoConfianca(){
   }).catch(()=>{});
 }
 
+/* ---- REDE DE APOIO (até 3 pessoas) ---- */
+let redeAtual = [];
+function pintarRede(){
+  const el = document.getElementById('redeLista'); if(!el) return;
+  el.innerHTML = '';
+  redeAtual.forEach((c, i) => {
+    const d = document.createElement('div'); d.className = 'rede-item';
+    d.innerHTML = '<input placeholder="Nome" />' +
+      '<input placeholder="Quem é (esposa, pastor, amiga)" />' +
+      '<input placeholder="WhatsApp com DDD" inputmode="tel" style="grid-column:1 / -1" />' +
+      '<select><option value="ligar">Posso ligar quando precisar</option><option value="risco">Avisar em risco de vida</option></select>' +
+      '<button class="rede-rem" type="button">remover</button>';
+    const [nome, rel, tel] = d.querySelectorAll('input'); const sel = d.querySelector('select');
+    nome.value = c.nome || ''; rel.value = c.relacao || ''; tel.value = c.telefone || ''; sel.value = c.nivel === 'risco' ? 'risco' : 'ligar';
+    nome.oninput = () => { c.nome = nome.value; }; rel.oninput = () => { c.relacao = rel.value; };
+    tel.oninput = () => { c.telefone = tel.value; }; sel.onchange = () => { c.nivel = sel.value; };
+    d.querySelector('.rede-rem').onclick = () => { redeAtual.splice(i, 1); pintarRede(); };
+    el.appendChild(d);
+  });
+  if(!redeAtual.length) el.innerHTML = '<div class="cuid-sub" style="margin:0 0 10px">Ninguém cadastrado ainda. Adicione alguém em quem você confia.</div>';
+  const add = document.getElementById('redeAdd'); if(add) add.style.display = redeAtual.length >= 3 ? 'none' : '';
+}
+function carregarRede(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/support-contacts', { headers: authHeaders() }).then(r => r.ok ? r.json() : null).then(d => {
+    redeAtual = (d && d.contatos) ? d.contatos.map(c => ({ ...c })) : []; pintarRede();
+  }).catch(() => {});
+}
+document.getElementById('redeAdd').onclick = () => { if(redeAtual.length < 3){ redeAtual.push({ nome:'', relacao:'', telefone:'', nivel:'ligar' }); pintarRede(); } };
+document.getElementById('redeSalvar').onclick = async () => {
+  const st = document.getElementById('redeStatus'); st.textContent = 'salvando…';
+  try{
+    const r = await fetch(API_BASE + '/api/me/support-contacts', { method:'POST', headers: authHeaders(), body: JSON.stringify({ contatos: redeAtual }) });
+    const d = await r.json(); if(d.error) throw new Error(d.error);
+    redeAtual = d.contatos.map(c => ({ ...c })); pintarRede(); st.textContent = '✓ Sua rede foi salva.';
+  }catch(e){ st.textContent = e.message || 'Não consegui salvar agora.'; }
+};
+
+/* ---- ESTOU MAL AGORA: roteiro guiado (respirar → aterrar → orar → pedir ajuda) ---- */
+const sosEl = () => document.getElementById('sosArea');
+let sosTimer = null;
+function sosLimpa(){ if(sosTimer){ clearInterval(sosTimer); clearTimeout(sosTimer); sosTimer = null; } }
+function sosPost(acao){
+  return fetch(API_BASE + '/api/me/sos', { method:'POST', headers: authHeaders(), body: JSON.stringify({ acao }) })
+    .then(r => r.json()).catch(() => ({}));
+}
+function sosPasso(t){ document.getElementById('sosPasso').textContent = t; }
+function abrirSOS(){
+  if('speechSynthesis' in window) speechSynthesis.cancel();
+  document.getElementById('sosGate').classList.remove('hide');
+  sosPost('abriu');
+  sosInicio();
+}
+function fecharSOS(){ sosLimpa(); document.getElementById('sosGate').classList.add('hide'); }
+function sosInicio(){
+  sosLimpa(); sosPasso('Estou aqui com você');
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Você não está sozinho(a).</div>' +
+    '<div class="sos-texto">Vamos fazer isso juntos, um passo de cada vez. Primeiro, o corpo. Depois, a mente. Depois, o coração. Leva poucos minutos.</div>' +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosRespirar()">Começar</button>' +
+    '<button class="sos-op" onclick="sosAjuda()">Preciso de ajuda agora<small>pular direto para pedir ajuda</small></button></div>';
+}
+function sosRespirar(){
+  sosLimpa(); sosPasso('1 de 4 · O corpo');
+  const frases = ['pode soltar', 'isso passou', 'estou seguro(a) agora'];
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Respire comigo.</div>' +
+    '<div class="sos-texto">Leve o ar para onde está a tensão no seu corpo. Ao soltar, repita por dentro a frase do círculo.</div>' +
+    '<div class="sos-resp" id="sosResp"><div><div class="r-fase" id="sosFase">Inspire devagar…</div><div class="r-seg" id="sosSeg">60 s</div></div></div>' +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosAterrar()">Continuar</button></div>';
+  const circ = document.getElementById('sosResp'), fase = document.getElementById('sosFase'), seg = document.getElementById('sosSeg');
+  let resta = 60, ciclo = 0, inspirando = true;
+  const troca = () => {
+    if(!document.getElementById('sosResp')) return;
+    if(inspirando){ circ.className = 'sos-resp inspira'; fase.textContent = 'Inspire devagar…'; }
+    else { circ.className = 'sos-resp solta'; fase.textContent = 'Solte o ar… “' + frases[ciclo % frases.length] + '”'; ciclo++; }
+  };
+  troca();
+  let fasePassou = 0;
+  sosTimer = setInterval(() => {
+    resta--; fasePassou++;
+    if(seg) seg.textContent = resta > 0 ? resta + ' s' : 'muito bem';
+    if((inspirando && fasePassou >= 4) || (!inspirando && fasePassou >= 6)){ inspirando = !inspirando; fasePassou = 0; troca(); }
+    if(resta <= 0){ sosLimpa(); fase.textContent = 'Muito bem. Seu corpo agradece.'; circ.className = 'sos-resp'; }
+  }, 1000);
+}
+const SOS_TERRA = [
+  ['5', 'coisas que você consegue VER agora. Diga o nome de cada uma, devagar.'],
+  ['4', 'coisas que você pode TOCAR. Sinta a textura, o peso, a temperatura.'],
+  ['3', 'sons que você OUVE agora, perto ou longe.'],
+  ['2', 'cheiros que você percebe (ou dois cheiros de que você gosta).'],
+  ['1', 'motivo de gratidão a Deus, mesmo pequeno, neste momento.']
+];
+function sosAterrar(i){
+  sosLimpa(); i = i || 0; sosPasso('2 de 4 · A mente');
+  const [num, txt] = SOS_TERRA[i];
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Volte para o agora.</div>' +
+    '<div class="sos-resp" style="width:120px;height:120px"><div class="r-fase" style="font-family:Cinzel;font-size:40px;color:var(--gold-2)">' + num + '</div></div>' +
+    '<div class="sos-texto" style="text-align:center">' + txt + '</div>' +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="' + (i < SOS_TERRA.length - 1 ? 'sosAterrar(' + (i + 1) + ')' : 'sosOrar()') + '">Próximo</button></div>';
+}
+function sosOrar(){
+  sosLimpa(); sosPasso('3 de 4 · O coração');
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Entregue isso a Deus.</div>' +
+    '<div class="sos-verso">“O Senhor está perto dos que têm o coração quebrantado e salva os de espírito abatido.”</div>' +
+    '<div class="sos-texto" style="margin-bottom:12px">Salmos 34:18</div>' +
+    '<div class="sos-texto">Se quiser, ore assim: <i>Senhor, eu estou cansado(a) e com medo. Fica comigo agora. Acalma meu corpo, minha mente e meu coração. Eu não estou sozinho(a). Amém.</i></div>' +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosCheck()">Amém</button></div>';
+}
+function sosCheck(){
+  sosLimpa(); sosPasso('4 de 4 · Como você está');
+  sosEl().innerHTML =
+    '<div class="sos-titulo">E agora, como você está?</div>' +
+    '<div class="sos-acoes">' +
+    '<button class="sos-op" onclick="sosMelhorou()">Estou um pouco melhor<small>o exercício ajudou</small></button>' +
+    '<button class="sos-op" onclick="sosAjuda()">Ainda estou mal<small>quero pedir ajuda</small></button></div>';
+}
+function sosMelhorou(){
+  sosPost('melhorou'); sosPasso('');
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Que bom. Você atravessou esse momento.</div>' +
+    '<div class="sos-texto">Se quiser, conte para a Lúmen o que aconteceu. Falar ajuda a entender o que disparou isso.</div>' +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosConversar()">Conversar com a Lúmen</button>' +
+    '<button class="sos-op" onclick="fecharSOS()">Fechar</button></div>';
+}
+function sosConversar(){
+  fecharSOS();
+  const b = document.querySelector('.nav-btn[data-v=conversa]'); if(b) b.click();
+  const inp = document.getElementById('input'); if(inp && !inp.value) { inp.value = 'Eu estava muito mal agora há pouco. '; inp.focus(); }
+}
+function sosAjuda(){
+  sosLimpa(); sosPasso('Pedir ajuda');
+  const temRisco = redeAtual.some(c => c.nivel === 'risco' && c.telefone);
+  const ligar = redeAtual.filter(c => c.telefone).map(c =>
+    '<a class="sos-op" href="tel:' + String(c.telefone).replace(/[^0-9]/g, '') + '">Ligar para ' + escTxt(c.nome || 'minha rede') + '<small>' + escTxt(c.relacao || '') + ' · ' + escTxt(c.telefone) + '</small></a>').join('');
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Pedir ajuda é coragem.</div>' +
+    '<div class="sos-texto">Escolha o que fizer mais sentido agora. Você pode escolher mais de uma opção.</div>' +
+    '<div class="sos-acoes">' +
+    '<button class="sos-op forte" onclick="sosConversar()">Conversar com a Lúmen agora</button>' +
+    '<button class="sos-op" id="sosTer" onclick="sosAvisar(&quot;terapeuta&quot;)">Avisar meu terapeuta<small>ele recebe uma mensagem agora</small></button>' +
+    (temRisco ? '<button class="sos-op" id="sosRede" onclick="sosAvisar(&quot;rede&quot;)">Avisar minha rede<small>quem você marcou para risco de vida</small></button>' : '') +
+    ligar +
+    '<a class="sos-op" href="tel:188">Ligar para o CVV · 188<small>apoio emocional 24h, gratuito</small></a>' +
+    '<a class="sos-op" href="tel:192">Ligar para o SAMU · 192<small>emergência médica</small></a>' +
+    '</div><div class="rd-status" id="sosStatus"></div>';
+}
+async function sosAvisar(quem){
+  const st = document.getElementById('sosStatus'); st.textContent = 'avisando…';
+  const d = await sosPost(quem);
+  const ok = quem === 'rede' ? (d.rede || d.terapeuta) : d.terapeuta;
+  st.innerHTML = ok
+    ? '✓ ' + (quem === 'rede' ? 'Sua rede e seu terapeuta foram avisados.' : 'Seu terapeuta foi avisado.') + ' Enquanto isso, fique num lugar seguro.'
+    : 'Não consegui enviar a mensagem agora. O pedido ficou registrado, mas <b>ligue para alguém da sua rede ou para o CVV 188</b>.';
+}
+document.getElementById('sosBtn').onclick = abrirSOS;
+document.getElementById('sosFechar').onclick = fecharSOS;
+
 /* ---- RELATÓRIO DO MEU DIA ---- */
 function quandoAgora(d){
   const x = d ? new Date(d) : new Date();
@@ -2179,7 +2398,7 @@ function continuarAposMapa(){
   loadScales();           // escalas de acompanhamento (recorrência)
   loadPlan();             // plano de ação entregue pelo mentor
   loadShared();           // resumos e tarefas que o profissional compartilhou
-  carregarContatoConfianca(); // contato de confiança do próprio paciente (aba Cuidado)
+  carregarRede();              // rede de apoio do próprio paciente (aba Cuidado)
   carregarRelatoriosDia();    // relatórios do meu dia já enviados
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })

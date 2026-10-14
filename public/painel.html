@@ -1880,10 +1880,10 @@ async function renderCliDiario(body){
     (c.comprometimento?'<p class="subc" style="margin-top:8px">'+escHtml(COMP_DESC[c.comprometimento]||'')+(c.classificacao_motivo?' · '+escHtml(c.classificacao_motivo):'')+'</p>':'')+
     '<p class="subc" style="margin-top:6px">🔒 Só você vê esta aba. O paciente vê apenas o que ele escreveu. A classificação é atualizada pela IA a cada conversa e a cada relatório.</p>';
   const al = (d.alertas||[]);
-  const alertas = al.length ? '<div class="section-title" style="font-size:14px;margin-top:18px">🚨 Alertas fora do normal</div>'+
-    al.slice(0,8).map(a=>'<div class="cad-ok" style="margin:8px 0;border-color:var(--vermelho)"><b>'+(a.gravidade==='urgente'?'URGENTE':'Atenção')+'</b> · '+
+  const alertas = al.length ? '<div class="section-title" style="font-size:14px;margin-top:18px">🚨 Alertas e pedidos de ajuda</div>'+
+    al.slice(0,8).map(a=>'<div class="cad-ok" style="margin:8px 0;border-color:var(--vermelho)"><b>'+(a.gravidade==='urgente'?'URGENTE':a.gravidade==='registro'?'Registro':'Atenção')+'</b> · '+
       new Date(a.criado_em).toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+
-      ' · '+escHtml(({conversa:'na conversa',relatorio_dia:'no relatório do dia',deteccao_local:'palavras de risco'})[a.origem]||a.origem||'')+
+      ' · '+escHtml(({conversa:'na conversa',relatorio_dia:'no relatório do dia',deteccao_local:'palavras de risco',botao_sos:'botão “Estou mal agora”'})[a.origem]||a.origem||'')+
       '<br>'+escHtml(a.motivo||'')+(a.trecho?'<br><small style="color:var(--dim)">“'+escHtml(a.trecho)+'”</small>':'')+
       '<br><small>WhatsApp para você: '+(a.whatsapp_terapeuta?'enviado ✓':'não enviado')+(a.whatsapp_contato?' · contato de confiança avisado ✓':'')+'</small></div>').join('') : '';
   const rel = (d.relatorios||[]);

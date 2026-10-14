@@ -51,6 +51,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          orgAtiva, excluirOrganizacao, terapeutaDoPaciente, nomeDoPaciente,
          saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
+         listSupportContacts, saveSupportContacts, contatosDeRisco,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -2279,9 +2280,9 @@ function quandoSP(d = new Date()) {
   return `${p.weekday}, ${p.day}/${p.month} às ${p.hour}:${p.minute}`;
 }
 
-async function alertarTerapeuta(uid, { origem, gravidade = 'urgente', motivo, trecho, avisarContato = false, dedupeHoras = 6 }) {
-  const [t, nomePac, contato] = await Promise.all([
-    terapeutaContato(uid).catch(() => null), nomeCadastro(uid).catch(() => ''), emergencyContact(uid).catch(() => null)
+async function alertarTerapeuta(uid, { origem, gravidade = 'urgente', motivo, trecho, avisarContato = false, dedupeHoras = 6, pedidoDireto = false }) {
+  const [t, nomePac, rede] = await Promise.all([
+    terapeutaContato(uid).catch(() => null), nomeCadastro(uid).catch(() => ''), contatosDeRisco(uid).catch(() => [])
   ]);
   const primeiro = (nomePac || 'paciente').split(' ')[0];
   let okT = false, okC = false;
@@ -2296,12 +2297,14 @@ async function alertarTerapeuta(uid, { origem, gravidade = 'urgente', motivo, tr
     try { okT = !!(await sendWhatsApp(t.phone, msg)).sent; } catch (_) {}
   }
   // risco de vida: o contato de emergência escolhido pelo PRÓPRIO paciente também é avisado
-  if (avisarContato && contato && contato.emergency_phone && !repetido) {
-    const msgC = `[ALERTA DE CUIDADO]\n${quandoSP()}\n\n${contato.emergency_name ? contato.emergency_name + ', ' : ''}` +
-      `${primeiro} cadastrou você como contato de confiança no app de acompanhamento${t && t.clinica ? ' da ' + t.clinica : ''}. ` +
-      `Identificamos agora sinais de sofrimento emocional grave. Por favor, entre em contato com ${primeiro} o quanto antes. ` +
-      `Em risco imediato: CVV 188 ou SAMU 192.`;
-    try { okC = !!(await sendWhatsApp(contato.emergency_phone, msgC)).sent; } catch (_) {}
+  if (avisarContato && !repetido) {
+    for (const c of rede) {
+      const msgC = `[ALERTA DE CUIDADO]\n${quandoSP()}\n\n${c.nome ? String(c.nome).split(' ')[0] + ', ' : ''}` +
+        `${primeiro} escolheu você como pessoa de confiança no app de acompanhamento${t && t.clinica ? ' da ' + t.clinica : ''}. ` +
+        (pedidoDireto ? `${primeiro} pediu ajuda agora pelo app. ` : `Identificamos agora sinais de sofrimento emocional grave. `) +
+        `Por favor, entre em contato com ${primeiro} o quanto antes. Em risco imediato: CVV 188 ou SAMU 192.`;
+      try { if ((await sendWhatsApp(c.telefone, msgC)).sent) okC = true; } catch (_) {}
+    }
   }
   await salvarAlerta(uid, { origem, gravidade, motivo, trecho, whatsTerapeuta: okT, whatsContato: okC }).catch(() => {});
   return { terapeuta: okT, contato: okC, repetido };
@@ -2323,6 +2326,44 @@ app.post('/api/alert', requireAuth, async (req, res) => {
 
 // o relatório por e-mail saiu do app: tudo vai para o painel do terapeuta
 app.post('/api/report', (req, res) => res.status(410).json({ error: 'O relatório por e-mail foi desativado. Tudo fica no painel do terapeuta.' }));
+
+// ---- rede de apoio (até 3 pessoas, com o nível que o paciente autorizou) ----
+app.get('/api/me/support-contacts', requireAuth, async (req, res) => {
+  try { res.json({ contatos: await listSupportContacts(req.user.uid) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/support-contacts', requireAuth, async (req, res) => {
+  try { res.json(await saveSupportContacts(req.user.uid, (req.body || {}).contatos)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---- BOTÃO "ESTOU MAL AGORA" ----
+//   abriu      → o terapeuta fica sabendo (atenção), sem expor a pessoa a mais ninguém
+//   melhorou   → registrado no painel (o exercício ajudou)
+//   terapeuta  → a pessoa PEDIU para avisar o terapeuta (urgente)
+//   rede       → a pessoa PEDIU para avisar a rede autorizada + terapeuta (urgente)
+app.post('/api/me/sos', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user.uid, acao = String((req.body || {}).acao || '');
+    if (acao === 'abriu') {
+      const r = await alertarTerapeuta(uid, { origem: 'botao_sos', gravidade: 'atencao', dedupeHoras: 1,
+        motivo: 'A pessoa tocou em "Estou mal agora" no app e está fazendo o roteiro de acolhimento (respiração, aterramento, oração).' });
+      return res.json({ ok: true, avisado: r.terapeuta });
+    }
+    if (acao === 'melhorou') {
+      await salvarAlerta(uid, { origem: 'botao_sos', gravidade: 'registro', motivo: 'Fez o roteiro do "Estou mal agora" e disse que ficou melhor.' }).catch(() => {});
+      return res.json({ ok: true });
+    }
+    if (acao === 'terapeuta' || acao === 'rede') {
+      const r = await alertarTerapeuta(uid, { origem: 'botao_sos', gravidade: 'urgente', dedupeHoras: 0, pedidoDireto: true,
+        avisarContato: acao === 'rede',
+        motivo: acao === 'rede' ? 'A pessoa PEDIU AJUDA pelo app e pediu para avisar a rede de apoio dela. Entre em contato agora.'
+                                : 'A pessoa PEDIU AJUDA pelo app e pediu para avisar você. Entre em contato agora.' });
+      return res.json({ ok: true, terapeuta: r.terapeuta, rede: r.contato });
+    }
+    res.status(400).json({ error: 'ação desconhecida' });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 
 // ---- contatos ----
 app.get('/api/me/emergency', requireAuth, async (req, res) => {

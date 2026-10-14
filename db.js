@@ -495,6 +495,24 @@ export async function initDb() {
       criado_em TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_alerts_user ON risk_alerts (user_id, criado_em DESC);
+    -- REDE DE APOIO do paciente (até 3 pessoas), cada uma com o nível que ELE autorizou:
+    --   ligar = só aparece para ele ligar quando quiser · risco = é avisada em risco de vida
+    CREATE TABLE IF NOT EXISTS support_contacts (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL,
+      relacao TEXT,
+      telefone TEXT NOT NULL,
+      nivel TEXT NOT NULL DEFAULT 'ligar',
+      ordem INT DEFAULT 0,
+      criado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_user ON support_contacts (user_id, ordem);
+    -- traz o contato de emergência antigo (cadastro) para a rede, como "avisar em risco"
+    INSERT INTO support_contacts (user_id, nome, relacao, telefone, nivel, ordem)
+      SELECT u.id, u.emergency_name, 'contato de emergência', u.emergency_phone, 'risco', 0 FROM users u
+      WHERE u.emergency_name IS NOT NULL AND u.emergency_phone IS NOT NULL AND u.emergency_phone <> ''
+        AND NOT EXISTS (SELECT 1 FROM support_contacts s WHERE s.user_id=u.id);
   `);
   console.log('  Banco: tabelas prontas (users, invite_codes, messages, profiles, checkins).');
 }
@@ -2658,4 +2676,49 @@ export async function setEmergencyContact(uid, { nome, telefone }) {
   if (d && d.length < 10) throw new Error('Informe o WhatsApp do contato com DDD.');
   await pool.query('UPDATE users SET emergency_name=$2, emergency_phone=$3 WHERE id=$1', [uid, n || null, d || null]);
   return { ok: true };
+}
+
+// ---- REDE DE APOIO (até 3 pessoas, com o nível que o próprio paciente autorizou) ----
+const NIVEIS_REDE = ['ligar', 'risco'];
+export async function listSupportContacts(uid) {
+  if (!pool || !uid) return [];
+  const r = await pool.query('SELECT id, nome, relacao, telefone, nivel FROM support_contacts WHERE user_id=$1 ORDER BY ordem, id', [uid]);
+  return r.rows;
+}
+export async function saveSupportContacts(uid, lista) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const itens = (Array.isArray(lista) ? lista : []).map(c => ({
+    nome: String(c.nome || '').trim().slice(0, 80), relacao: String(c.relacao || '').trim().slice(0, 60),
+    telefone: String(c.telefone || '').replace(/\D/g, ''), nivel: NIVEIS_REDE.includes(c.nivel) ? c.nivel : 'ligar'
+  })).filter(c => c.nome || c.telefone);
+  if (itens.length > 3) throw new Error('Sua rede pode ter até 3 pessoas.');
+  for (const c of itens) {
+    if (!c.nome) throw new Error('Informe o nome de cada pessoa da sua rede.');
+    if (c.telefone.length < 10) throw new Error(`Informe o WhatsApp de ${c.nome} com DDD.`);
+  }
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    await cx.query('DELETE FROM support_contacts WHERE user_id=$1', [uid]);
+    for (let i = 0; i < itens.length; i++) {
+      const c = itens[i];
+      await cx.query('INSERT INTO support_contacts (user_id, nome, relacao, telefone, nivel, ordem) VALUES ($1,$2,$3,$4,$5,$6)',
+        [uid, c.nome, c.relacao || null, c.telefone, c.nivel, i]);
+    }
+    // mantém o "contato de emergência" do cadastro igual ao 1º autorizado para risco
+    const r = itens.find(c => c.nivel === 'risco');
+    await cx.query('UPDATE users SET emergency_name=$2, emergency_phone=$3 WHERE id=$1', [uid, r ? r.nome : null, r ? r.telefone : null]);
+    await cx.query('COMMIT');
+  } catch (e) { await cx.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { cx.release(); }
+  return { ok: true, contatos: await listSupportContacts(uid) };
+}
+// quem pode ser avisado em risco de vida (rede autorizada; cai no contato antigo se a rede estiver vazia)
+export async function contatosDeRisco(uid) {
+  if (!pool || !uid) return [];
+  const r = await pool.query("SELECT nome, telefone FROM support_contacts WHERE user_id=$1 AND nivel='risco' ORDER BY ordem, id", [uid]);
+  if (r.rows.length) return r.rows;
+  const u = await pool.query('SELECT emergency_name, emergency_phone FROM users WHERE id=$1', [uid]);
+  const x = u.rows[0];
+  return x && x.emergency_phone ? [{ nome: x.emergency_name || '', telefone: x.emergency_phone }] : [];
 }
