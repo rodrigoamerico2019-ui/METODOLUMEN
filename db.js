@@ -535,6 +535,10 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_hope_user ON hope_items (user_id, criado_em DESC);
     -- assinatura na tela do termo LGPD (imagem da assinatura + nome digitado + código de verificação)
+    -- e-mail de CONTATO do terapeuta (pode repetir entre clínicas); users.email segue único (login técnico)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_contato TEXT;
+    UPDATE users SET email_contato=email WHERE role IN ('mentor','owner') AND email_contato IS NULL AND email NOT LIKE '%@sem-email.%';
+    CREATE INDEX IF NOT EXISTS idx_users_email_contato ON users (lower(email_contato)) WHERE email_contato IS NOT NULL;
     ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS assinatura TEXT;
     ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS nome_assinado TEXT;
     ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS hash TEXT;
@@ -732,13 +736,9 @@ export async function provisionarManual({ nome, email, plano, limite, vencimento
   const p = PLANOS[String(plano || '').toLowerCase()] || PLANOS.essencial;
   const lim = Math.max(1, Math.min(2000, Number(limite) || p.limite));
   const nomeOrg = String(nome || email.split('@')[0]).trim();
-  // o e-mail é único no sistema todo (pacientes e terapeutas): diz ONDE ele já está em uso
-  const ex = await pool.query(`SELECT u.role, COALESCE(o.marca_nome, o.nome) AS org FROM users u
-    LEFT JOIN organizations o ON o.id=u.org_id WHERE u.email=$1`, [email]);
-  if (ex.rows[0]) {
-    const papel = ex.rows[0].role === 'paciente' ? 'um paciente' : 'o acesso de outro cliente';
-    throw new Error(`Este e-mail já está em uso: pertence a ${papel}${ex.rows[0].org ? ' (' + ex.rows[0].org + ')' : ''}. Use outro e-mail para o novo cliente.`);
-  }
+  // o mesmo e-mail pode servir a várias clínicas: se já existir, ele fica como e-mail de CONTATO
+  // e o login técnico recebe um endereço interno único (o terapeuta entra pelo usuário).
+  const emailRepetido = !!(await pool.query('SELECT 1 FROM users WHERE email=$1', [email])).rows[0];
   const venc = (vencimento && /^\d{4}-\d{2}-\d{2}$/.test(vencimento)) ? vencimento : null;
   const senhaTemp = crypto.randomBytes(6).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'acesso' + Date.now() % 10000;
   const hash = await bcrypt.hash(senhaTemp, 10);
@@ -753,13 +753,14 @@ export async function provisionarManual({ nome, email, plano, limite, vencimento
     const orgId = org.rows[0].id;
     let username = slugUser(email);
     for (let i = 0; i < 20 && (await cx.query('SELECT 1 FROM users WHERE lower(username)=$1', [username])).rows[0]; i++) username = slugUser(email);
+    const emailLogin = emailRepetido ? `clinica${orgId}.${crypto.randomBytes(3).toString('hex')}@sem-email.trilumen` : email;
     const u = await cx.query(
-      `INSERT INTO users (email, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
-       VALUES ($1,$2,$3,'mentor',$4,$5,true,now(),now()) RETURNING id`,
-      [email, nomeOrg, hash, orgId, username]);
+      `INSERT INTO users (email, email_contato, name, password_hash, role, org_id, username, must_change_login, consent_at, last_seen_at)
+       VALUES ($1,$2,$3,$4,'mentor',$5,$6,true,now(),now()) RETURNING id`,
+      [emailLogin, email, nomeOrg, hash, orgId, username]);
     await cx.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1,$2,'owner') ON CONFLICT (org_id, user_id) DO NOTHING`, [orgId, u.rows[0].id]);
     await cx.query('COMMIT');
-    return { org_id: orgId, nome: nomeOrg, email, username, senha_temp: senhaTemp,
+    return { org_id: orgId, nome: nomeOrg, email, username, senha_temp: senhaTemp, email_repetido: emailRepetido,
              plano: String(plano || 'essencial').toLowerCase(), plano_nome: p.nome, limite: lim };
   } catch (e) {
     await cx.query('ROLLBACK').catch(() => {});
@@ -879,10 +880,12 @@ export async function markOrgPagamento(subscription, proximoVencimento) {
 export async function mentorLogin({ login, password }) {
   if (!pool) throw new Error('banco não configurado');
   const l = norm(login);
-  const u = await pool.query(
-    `SELECT * FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(username)=$1)`, [l]);
-  if (!u.rows[0] || !(await bcrypt.compare(String(password || ''), u.rows[0].password_hash)))
-    throw new Error('Usuário ou senha incorretos.');
+  const cand = await pool.query(
+    `SELECT * FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(email_contato)=$1 OR lower(username)=$1) ORDER BY id`, [l]);
+  let achou = null;
+  for (const row of cand.rows) { if (await bcrypt.compare(String(password || ''), row.password_hash || '')) { achou = row; break; } }
+  if (!achou) throw new Error('Usuário ou senha incorretos.');
+  const u = { rows: [achou] };
   if (!(await orgAtiva(u.rows[0].org_id))) throw new Error('A assinatura desta conta está pausada. Fale com a TRILUMEN para liberar o acesso.');
   await pool.query('UPDATE users SET last_seen_at=now() WHERE id=$1', [u.rows[0].id]);
   const token = jwt.sign({ uid: u.rows[0].id, org_id: u.rows[0].org_id, role: u.rows[0].role, mentor: true },
@@ -908,13 +911,18 @@ export async function criarResetSenhaMentor(login) {
   const l = norm(login);
   if (!l) return null;
   const u = await pool.query(
-    `SELECT id, name, email FROM users WHERE role IN ('mentor','owner') AND (email=$1 OR lower(username)=$1)`, [l]);
-  const user = u.rows[0];
-  if (!user || !user.email) return null;               // sem conta ou sem e-mail → nada a enviar
-  await pool.query('UPDATE mentor_reset_tokens SET expira_em=now() WHERE user_id=$1 AND usado_em IS NULL', [user.id]);
-  const token = crypto.randomBytes(24).toString('hex');
-  await pool.query(`INSERT INTO mentor_reset_tokens (token, user_id, expira_em) VALUES ($1,$2, now() + interval '1 hour')`, [token, user.id]);
-  return { token, email: user.email, name: user.name };
+    `SELECT u.id, u.name, u.username, COALESCE(u.email_contato, u.email) AS email, COALESCE(o.marca_nome, o.nome) AS clinica
+     FROM users u LEFT JOIN organizations o ON o.id=u.org_id
+     WHERE u.role IN ('mentor','owner') AND (u.email=$1 OR lower(u.email_contato)=$1 OR lower(u.username)=$1) ORDER BY u.id`, [l]);
+  const lista = [];
+  for (const user of u.rows) {
+    if (!user.email || user.email.includes('@sem-email.')) continue;   // sem e-mail real → nada a enviar
+    await pool.query('UPDATE mentor_reset_tokens SET expira_em=now() WHERE user_id=$1 AND usado_em IS NULL', [user.id]);
+    const token = crypto.randomBytes(24).toString('hex');
+    await pool.query(`INSERT INTO mentor_reset_tokens (token, user_id, expira_em) VALUES ($1,$2, now() + interval '1 hour')`, [token, user.id]);
+    lista.push({ token, email: user.email, name: user.name, username: user.username, clinica: user.clinica });
+  }
+  return lista;
 }
 export async function checarResetTokenMentor(token) {
   if (!pool) return null;
@@ -995,7 +1003,7 @@ export async function listOrganizations() {
            o.asaas_subscription, o.asaas_customer, o.created_at,
            o.proximo_vencimento, o.ultimo_pagamento, COALESCE(o.origem,'asaas') AS origem,
            (SELECT count(*)::int FROM users u WHERE u.org_id=o.id AND u.role='paciente') AS pessoas,
-           (SELECT u.email    FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_email,
+           (SELECT COALESCE(u.email_contato, u.email) FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_email,
            (SELECT u.username FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner') ORDER BY u.id LIMIT 1) AS mentor_username,
            (SELECT bool_or(u.must_change_login) FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner')) AS primeiro_acesso_pendente,
            (SELECT max(u.last_seen_at) FROM users u WHERE u.org_id=o.id AND u.role IN ('mentor','owner')) AS mentor_ultimo_acesso

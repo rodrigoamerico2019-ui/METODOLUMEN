@@ -1391,7 +1391,7 @@ async function criarCliente(){
     $('ccResult').innerHTML=`<div class="cc-ok">✅ Cliente <b>${a.nome}</b> criado!<br>
       Usuário: <b>${a.username}</b> &nbsp;·&nbsp; Senha temporária: <b>${a.senha_temp}</b><br>
       Plano: ${a.plano_nome} · limite de <b>${a.limite}</b> pacientes<br>
-      <small>Envie esses dados ao cliente. Ele troca usuário e senha no 1º acesso.</small></div>`;
+      <small>Envie esses dados ao cliente. Ele troca usuário e senha no 1º acesso.</small>${a.email_repetido?`<br><small style="color:var(--gold2)">ℹ️ O e-mail ${a.email} já era usado em outra conta: ele ficou como e-mail de contato desta clínica. Oriente o cliente a entrar pelo <b>usuário ${a.username}</b>.</small>`:''}</div>`;
     carregarLicencas();
   }catch(e){ $('ccResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }

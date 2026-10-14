@@ -1258,14 +1258,14 @@ const mascaraEmail = e => {
 };
 app.post('/api/mentor/reset/request', authLimiter, async (req, res) => {
   try {
-    const info = await criarResetSenhaMentor((req.body || {}).login);
-    if (info) {
+    const lista = await criarResetSenhaMentor((req.body || {}).login);
+    for (const info of (lista || [])) {
       const link = baseUrl(req) + '/recuperar.html?t=' + info.token;
       const primeiro = String(info.name || '').trim().split(/\s+/)[0] || 'você';
       const corpo =
 `Olá, ${primeiro}.
 
-Recebemos um pedido para redefinir a senha do seu acesso ao TriLumen.
+Recebemos um pedido para redefinir a senha do seu acesso ao TriLumen${info.clinica ? ' — clínica ' + info.clinica : ''}${info.username ? ' (usuário: ' + info.username + ')' : ''}.
 Crie uma nova senha por aqui (o link vale por 1 hora e só pode ser usado uma vez):
 
 ${link}
