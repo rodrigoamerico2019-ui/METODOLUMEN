@@ -176,6 +176,15 @@
   .rede-item .rede-rem { grid-column:1 / -1; justify-self:end; background:none; border:none; color:var(--ink-faint); font-size:12px; cursor:pointer; font-family:inherit; }
   .rede-add { background:none; border:1px dashed var(--line); color:var(--gold-2); border-radius:10px; padding:9px; width:100%; cursor:pointer; font-family:inherit; font-size:13px; }
   .ajuda-lista { display:flex; flex-direction:column; }
+  .pl-sec { padding:8px 0; border-top:1px solid var(--line); }
+  .pl-sec:first-child { border-top:none; }
+  .pl-tit { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--gold-soft); margin-bottom:4px; }
+  .pl-sec ul { margin:0; padding-left:18px; font-size:13.5px; color:var(--ink); line-height:1.6; }
+  .pl-porque { font-family:'Cormorant Garamond'; font-style:italic; font-size:17px; color:var(--gold-2); line-height:1.45; }
+  .pl-lab { display:block; font-size:12px; color:var(--ink-dim); margin:10px 0 4px; }
+  .pl-lab small { color:var(--ink-faint); }
+  #planoEditar textarea { width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; color:var(--ink);
+    font-family:inherit; font-size:13px; line-height:1.5; padding:9px 10px; resize:vertical; }
   .ajuda-row { display:flex; gap:12px; align-items:center; padding:10px 2px; border-top:1px solid var(--line); text-decoration:none; color:var(--ink); }
   .ajuda-row:first-child { border-top:none; }
   .ajuda-row b { font-family:'Cinzel'; font-size:18px; color:var(--gold-2); min-width:44px; }
@@ -1016,6 +1025,27 @@
         <span class="sos-t">Estou mal agora</span>
         <span class="sos-s">Vamos respirar, acalmar e pedir ajuda juntos, um passo de cada vez</span>
       </button>
+
+      <div class="cuid-bloco" id="planoBloco">
+        <div class="eyebrow">Meu plano para dias difíceis</div>
+        <div class="cuid-sub">Montado com o seu terapeuta na sessão. Você também pode completar.</div>
+        <div id="planoVer"></div>
+        <div id="planoEditar" style="display:none">
+          <label class="pl-lab" for="plSinais">Sinais de que estou piorando <small>(um por linha)</small></label>
+          <textarea id="plSinais" rows="3" placeholder="Paro de comer direito&#10;Durmo de tarde e não quero sair da cama&#10;Me isolo de todo mundo"></textarea>
+          <label class="pl-lab" for="plAcalma">O que me acalma sozinho(a)</label>
+          <textarea id="plAcalma" rows="3" placeholder="Caminhar 20 minutos&#10;Ouvir louvor&#10;Tomar um banho demorado"></textarea>
+          <label class="pl-lab" for="plDistrai">Pessoas e lugares que me distraem</label>
+          <textarea id="plDistrai" rows="2" placeholder="Casa da minha irmã&#10;A praça perto de casa"></textarea>
+          <label class="pl-lab" for="plPorque">Meu porquê para seguir</label>
+          <textarea id="plPorque" rows="2" placeholder="Meus filhos. O sonho de ver minha família restaurada."></textarea>
+          <label class="pl-lab" for="plAmbiente">Como deixar meu ambiente seguro</label>
+          <textarea id="plAmbiente" rows="2" placeholder="Combinado com seu terapeuta na sessão"></textarea>
+          <button class="save-btn" id="planoSalvar" type="button">Salvar meu plano</button>
+        </div>
+        <button class="rede-add" id="planoToggle" type="button" style="margin-top:10px">Completar meu plano</button>
+        <div class="rd-status" id="planoStatus"></div>
+      </div>
 
       <div class="cuid-bloco">
         <div class="eyebrow">Minha rede de apoio</div>
@@ -1979,6 +2009,59 @@ document.getElementById('redeSalvar').onclick = async () => {
   }catch(e){ st.textContent = e.message || 'Não consegui salvar agora.'; }
 };
 
+/* ---- PLANO PARA DIAS DIFÍCEIS ---- */
+let planoAtual = null;
+function planoVazio(p){ return !p || (!(p.sinais||[]).length && !(p.acalma||[]).length && !(p.distrai||[]).length && !p.porque && !p.ambiente); }
+function pintarPlano(){
+  const v = document.getElementById('planoVer'); if(!v) return;
+  const p = planoAtual;
+  if(planoVazio(p)){
+    v.innerHTML = '<div class="cuid-sub" style="margin:0">Seu plano ainda está em branco. Na próxima sessão, monte com o seu terapeuta: ele ajuda você a reconhecer os sinais e as saídas para os dias difíceis.</div>';
+    return;
+  }
+  const ul = a => '<ul>' + a.map(x => '<li>' + escTxt(x) + '</li>').join('') + '</ul>';
+  v.innerHTML =
+    (p.porque ? '<div class="pl-sec"><div class="pl-tit">Meu porquê</div><div class="pl-porque">' + escTxt(p.porque) + '</div></div>' : '') +
+    ((p.sinais||[]).length ? '<div class="pl-sec"><div class="pl-tit">Sinais de que estou piorando</div>' + ul(p.sinais) + '</div>' : '') +
+    ((p.acalma||[]).length ? '<div class="pl-sec"><div class="pl-tit">O que me acalma</div>' + ul(p.acalma) + '</div>' : '') +
+    ((p.distrai||[]).length ? '<div class="pl-sec"><div class="pl-tit">Pessoas e lugares que me distraem</div>' + ul(p.distrai) + '</div>' : '') +
+    (p.ambiente ? '<div class="pl-sec"><div class="pl-tit">Meu ambiente seguro</div><div style="font-size:13.5px">' + escTxt(p.ambiente) + '</div></div>' : '');
+}
+function preencherFormPlano(){
+  const p = planoAtual || {};
+  document.getElementById('plSinais').value = (p.sinais||[]).join(String.fromCharCode(10));
+  document.getElementById('plAcalma').value = (p.acalma||[]).join(String.fromCharCode(10));
+  document.getElementById('plDistrai').value = (p.distrai||[]).join(String.fromCharCode(10));
+  document.getElementById('plPorque').value = p.porque || '';
+  document.getElementById('plAmbiente').value = p.ambiente || '';
+}
+function carregarPlano(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/safety-plan', { headers: authHeaders() }).then(r => r.ok ? r.json() : null)
+    .then(d => { planoAtual = d && d.plano; pintarPlano(); }).catch(() => {});
+}
+document.getElementById('planoToggle').onclick = () => {
+  const ed = document.getElementById('planoEditar'), bt = document.getElementById('planoToggle');
+  const abrir = ed.style.display === 'none';
+  if(abrir) preencherFormPlano();
+  ed.style.display = abrir ? '' : 'none';
+  bt.textContent = abrir ? 'Cancelar' : 'Completar meu plano';
+};
+document.getElementById('planoSalvar').onclick = async () => {
+  const st = document.getElementById('planoStatus'); st.textContent = 'salvando…';
+  try{
+    const body = { sinais: document.getElementById('plSinais').value, acalma: document.getElementById('plAcalma').value,
+      distrai: document.getElementById('plDistrai').value, porque: document.getElementById('plPorque').value,
+      ambiente: document.getElementById('plAmbiente').value };
+    const r = await fetch(API_BASE + '/api/me/safety-plan', { method:'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    const d = await r.json(); if(d.error) throw new Error(d.error);
+    planoAtual = d.plano; pintarPlano();
+    document.getElementById('planoEditar').style.display = 'none';
+    document.getElementById('planoToggle').textContent = 'Completar meu plano';
+    st.textContent = '✓ Seu plano foi salvo. Seu terapeuta também vê.';
+  }catch(e){ st.textContent = e.message || 'Não consegui salvar agora.'; }
+};
+
 /* ---- ESTOU MAL AGORA: roteiro guiado (respirar → aterrar → orar → pedir ajuda) ---- */
 const sosEl = () => document.getElementById('sosArea');
 let sosTimer = null;
@@ -2050,7 +2133,18 @@ function sosOrar(){
     '<div class="sos-verso">“O Senhor está perto dos que têm o coração quebrantado e salva os de espírito abatido.”</div>' +
     '<div class="sos-texto" style="margin-bottom:12px">Salmos 34:18</div>' +
     '<div class="sos-texto">Se quiser, ore assim: <i>Senhor, eu estou cansado(a) e com medo. Fica comigo agora. Acalma meu corpo, minha mente e meu coração. Eu não estou sozinho(a). Amém.</i></div>' +
-    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosCheck()">Amém</button></div>';
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="planoVazio(planoAtual) ? sosCheck() : sosPlano()">Amém</button></div>';
+}
+function sosPlano(){
+  sosLimpa(); sosPasso('Seu plano');
+  const p = planoAtual || {};
+  const ac = (p.acalma||[]).slice(0, 3), di = (p.distrai||[]).slice(0, 2);
+  sosEl().innerHTML =
+    '<div class="sos-titulo">Lembre do que você já sabe sobre você.</div>' +
+    (p.porque ? '<div class="sos-verso">' + escTxt(p.porque) + '</div><div class="sos-texto" style="margin-bottom:12px">Esse é o seu porquê.</div>' : '') +
+    (ac.length ? '<div class="sos-texto"><b>O que costuma te acalmar:</b><br>' + ac.map(escTxt).join('<br>') + '</div>' : '') +
+    (di.length ? '<div class="sos-texto"><b>Pessoas e lugares que te ajudam:</b><br>' + di.map(escTxt).join('<br>') + '</div>' : '') +
+    '<div class="sos-acoes"><button class="sos-op forte" onclick="sosCheck()">Continuar</button></div>';
 }
 function sosCheck(){
   sosLimpa(); sosPasso('4 de 4 · Como você está');
@@ -2399,6 +2493,7 @@ function continuarAposMapa(){
   loadPlan();             // plano de ação entregue pelo mentor
   loadShared();           // resumos e tarefas que o profissional compartilhou
   carregarRede();              // rede de apoio do próprio paciente (aba Cuidado)
+  carregarPlano();             // plano para dias difíceis (aba Cuidado)
   carregarRelatoriosDia();    // relatórios do meu dia já enviados
   // foto no primeiro acesso (para quem ainda não tem)
   fetch(API_BASE + '/api/me/photo/needed', { headers: authHeaders() })

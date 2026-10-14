@@ -1823,7 +1823,7 @@ async function salvarCadRapido(){
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['diario','📋 Relatório do dia'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['diario','📋 Relatório do dia'],['plano','🛡️ Dias difíceis'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ aviso('Erro: '+e.message,'erro'); return; }
   clienteAtual.id=id; nav('cliente');
@@ -1840,6 +1840,7 @@ function cliTab(t){
   const body=$('cliTabBody');
   if(t==='visao') return renderCliVisao(body);
   if(t==='diario') return renderCliDiario(body);
+  if(t==='plano') return renderCliPlano(body);
   if(t==='dados') return renderCliDados(body);
   if(t==='saude') return renderCliSaude(body);
   if(t==='medicamentos') return renderCliMeds(body);
@@ -1865,6 +1866,43 @@ const COMP_DESC = {
   cansei:'sofre, descansa e volta ao mesmo problema no dia seguinte, sem decidir mudar',
   insuportavel:'não suporta mais a vida que leva e está disposto(a) a enfrentar e mudar'
 };
+async function renderCliPlano(body){
+  const seq = cliBodySeq;
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let d; try{ d = await api('/api/admin/safety-plan?id='+clienteAtual.id); }
+  catch(e){ body.innerHTML='<p class="muted">'+escHtml(e.message)+'</p>'; return; }
+  if(seq !== cliBodySeq) return;
+  const p = d.plano || {};
+  const L = a => escHtml((a||[]).join(String.fromCharCode(10)));
+  const quem = p.atualizado_em ? '<p class="subc">Última atualização: '+new Date(p.atualizado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+
+    (p.atualizado_por_papel==='paciente'?' · <b>pelo paciente</b>, no app':' · por você')+'</p>' : '';
+  body.innerHTML =
+    '<p class="subc" style="margin-top:0">Plano de segurança para os dias difíceis (modelo Stanley-Brown, adaptado ao Método). Monte <b>junto com o paciente</b>, nas palavras dele. Ele vê o plano na aba <b>Cuidado</b> do app, ele aparece no botão <b>“Estou mal agora”</b> e a IA usa os sinais para perceber quando ele está piorando.</p>'+
+    '<details style="margin:8px 0 14px"><summary class="muted" style="cursor:pointer">Como conduzir na sessão (6 passos)</summary>'+
+    '<ol style="line-height:1.7;margin:8px 0 0 18px"><li><b>Sinais:</b> “Como você percebe que um dia difícil está chegando? O que muda no seu corpo, no sono, na fome, nos pensamentos?”</li>'+
+    '<li><b>O que acalma sozinho:</b> “O que você já fez que ajudou, mesmo um pouco?” (corpo, alma e espírito)</li>'+
+    '<li><b>Pessoas e lugares que distraem:</b> onde e com quem ele se sente melhor, sem precisar falar do problema.</li>'+
+    '<li><b>Rede de apoio:</b> quem pode ser chamado. Ele cadastra no app e escolhe quem é avisado em risco.</li>'+
+    '<li><b>Ambiente seguro:</b> combinar o que afastar de perto em dias de crise (por exemplo, medicamentos guardados por outra pessoa).</li>'+
+    '<li><b>Porquê:</b> o motivo dele para seguir, nas palavras dele. É o que aparece em destaque no app.</li></ol></details>'+
+    quem+
+    '<div class="dp-grid">'+
+    '<div class="dp-full"><label>Sinais de que está piorando <small>(um por linha)</small></label><textarea id="spSinais" rows="4">'+L(p.sinais)+'</textarea></div>'+
+    '<div class="dp-half"><label>O que acalma sozinho(a)</label><textarea id="spAcalma" rows="4">'+L(p.acalma)+'</textarea></div>'+
+    '<div class="dp-half"><label>Pessoas e lugares que distraem</label><textarea id="spDistrai" rows="4">'+L(p.distrai)+'</textarea></div>'+
+    '<div class="dp-full"><label>Porquê para seguir</label><textarea id="spPorque" rows="2">'+escHtml(p.porque||'')+'</textarea></div>'+
+    '<div class="dp-full"><label>Como deixar o ambiente seguro</label><textarea id="spAmbiente" rows="2">'+escHtml(p.ambiente||'')+'</textarea></div>'+
+    '</div>'+
+    '<button class="btn" style="padding:10px 24px;margin-top:10px" onclick="salvarPlanoCli()">Salvar plano</button> <span class="muted" id="spStatus"></span>';
+}
+async function salvarPlanoCli(){
+  $('spStatus').textContent='salvando…';
+  try{
+    await postAdmin('/api/admin/safety-plan?id='+clienteAtual.id, { sinais:$('spSinais').value, acalma:$('spAcalma').value,
+      distrai:$('spDistrai').value, porque:$('spPorque').value, ambiente:$('spAmbiente').value });
+    $('spStatus').textContent='salvo ✓ — já aparece no app do paciente';
+  }catch(e){ $('spStatus').textContent='erro: '+e.message; }
+}
 async function renderCliDiario(body){
   const seq = cliBodySeq;
   body.innerHTML='<p class="muted">carregando…</p>';

@@ -51,7 +51,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          orgAtiva, excluirOrganizacao, terapeutaDoPaciente, nomeDoPaciente,
          saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
-         listSupportContacts, saveSupportContacts, contatosDeRisco,
+         listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -989,6 +989,8 @@ async function gerarToqueDoDia(uid, nome) {
   } else ctx += '\nEla ainda não conversou com você no app.';
   if (comp) ctx += `\n\nCOMPROMISSOS DA JORNADA DELA:\n${comp}`;
   if (retrato) ctx += `\n\nSINAIS RECENTES DO APP DELA:\n${retrato}`;
+  const planoTxt = await planoDiasDificeisTexto(uid).catch(() => '');
+  if (planoTxt) ctx += `\n\nPLANO PARA DIAS DIFÍCEIS DELA (use com delicadeza, sem citar que é um plano):\n${planoTxt}`;
   if (pront?.prontuario) ctx += `\n\nMEMÓRIA DA CAMINHADA (desafios, lutas, vitórias e testemunhos — só para você entender; NÃO cite nem resuma):\n${String(pront.prontuario).slice(0, 2000)}`;
   else if (bussola) ctx += `\n\nPONTO DE PARTIDA (questionário inicial — só para entender):\n${String(bussola).slice(0, 900)}`;
 
@@ -2070,7 +2072,7 @@ Depois, pule uma linha e escreva sua resposta à pessoa (sem repetir os metadado
 // Monta o "system" como blocos. O bloco grande e estável (voz + base do Método) vai
 // com cache_control para o prompt caching baratear cada conversa. Nome e prontuário
 // mudam por pessoa e ficam fora do cache.
-function buildSystem(name, prontuario, bussola, ultimo, retrato) {
+function buildSystem(name, prontuario, bussola, ultimo, retrato, plano) {
   const nome = name ? name : 'a pessoa (nome não informado; peça com delicadeza se fizer sentido)';
   const conhecimento = KNOWLEDGE
     ? `\n\n=========================================================\nSEU SABER INTERIOR (Método Lúmen — não recite, deixe brotar):\n=========================================================\n${KNOWLEDGE}`
@@ -2097,6 +2099,11 @@ Como usar: isto é só intuição pastoral sobre o que tende a ajudar as pessoas
 ${retrato}
 
 Como usar: raciocine em profundidade. Cruze o que ela conta com estes sinais e com a memória da caminhada: perceba padrões (o que melhora, o que piora, o que ela adia, o que se repete), ligue causas e efeitos entre corpo, alma e espírito, e note contradições entre o que ela diz e o que os dados mostram — e traga isso com delicadeza, como quem enxerga a pessoa inteira. NUNCA recite números, notas ou nomes de escalas; transforme em percepção humana (ex.: "tenho sentido você mais cansada nesses dias").` });
+  if (plano) blocos.push({ type: 'text', text:
+`PLANO PARA DIAS DIFÍCEIS DESTA PESSOA (montado com o terapeuta na sessão):
+${plano}
+
+Como usar: se ela trouxer algo que corresponde a um dos SINAIS que ela mesma definiu, perceba e nomeie com delicadeza ("isso que você contou é um dos sinais que você conhece em você"). Antes de sugerir algo novo, lembre das estratégias DELA (o que a acalma, as pessoas e os lugares dela). Em desânimo profundo, traga o PORQUÊ dela com carinho, com as palavras dela. Em risco, siga o protocolo de risco e lembre que ela tem a rede de apoio e o botão "Estou mal agora" na aba Cuidado.` });
   blocos.push({ type: 'text', text: 'COM QUEM VOCÊ FALA: sempre com a PRÓPRIA pessoa dona deste app, em segunda pessoa ("você"). Você nunca fala com terapeuta, mentor ou familiar aqui; nunca a chame de cliente ou paciente e nunca fale dela em terceira pessoa.' });
   if (prontuario) blocos.push({ type: 'text', text:
 `PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
@@ -2133,11 +2140,12 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
     // com login, o nome oficial vem da conta (não do que o front mandar)
     const nome = (req.user && req.user.uid) ? await nomeCadastro(req.user.uid, req.user.name) : name;
     // memória viva: o prontuário evolutivo + a bússola do mapa inicial entram no sistema desta conversa
-    let prontuario = null, bussola = null, ultimo = null, retrato = null;
+    let prontuario = null, bussola = null, ultimo = null, retrato = null, plano = null;
     if (req.user && req.user.uid) {
       prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
       bussola = await getMapaBussola(req.user.uid).catch(() => null);
       retrato = await retratoPaciente(req.user.uid).catch(() => null);
+      plano = await planoDiasDificeisTexto(req.user.uid).catch(() => null);
       // primeira mensagem de uma conversa nova → resgata o assunto real do último encontro
       if (messages.filter(m => m.role === 'user').length <= 1) {
         ultimo = await ultimoEncontro(req.user.uid).catch(() => null);
@@ -2153,7 +2161,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       body: JSON.stringify({
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
-        system: buildSystem(nome, prontuario, bussola, ultimo, retrato),
+        system: buildSystem(nome, prontuario, bussola, ultimo, retrato, plano),
         messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });
@@ -2365,6 +2373,29 @@ app.post('/api/me/sos', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// ---- PLANO PARA DIAS DIFÍCEIS (paciente vê e completa; terapeuta monta na sessão) ----
+app.get('/api/me/safety-plan', requireAuth, async (req, res) => {
+  try { res.json({ plano: await getSafetyPlan(req.user.uid) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/safety-plan', requireAuth, async (req, res) => {
+  try { res.json({ ok: true, plano: await saveSafetyPlan(req.user.uid, req.body || {}, req.user.uid, 'paciente') }); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/safety-plan', requireAdmin, soMentor, async (req, res) => {
+  try { if (!(await guardPaciente(req, res))) return; res.json({ plano: await getSafetyPlan(Number(req.query.id)) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/safety-plan', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const id = Number(req.query.id);
+    const plano = await saveSafetyPlan(id, req.body || {}, req.mentorUid, 'terapeuta');
+    await registrarAuditoria({ orgId: req.orgId, userId: req.mentorUid, clientId: id, acao: 'plano_dias_dificeis_salvo', entidade: 'safety_plan', entidadeId: id }).catch(() => {});
+    res.json({ ok: true, plano });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
 // ---- contatos ----
 app.get('/api/me/emergency', requireAuth, async (req, res) => {
   try { const c = await emergencyContact(req.user.uid); res.json({ nome: c?.emergency_name || '', telefone: c?.emergency_phone || '' }); }
@@ -2410,9 +2441,10 @@ app.get('/api/admin/day-reports', requireAdmin, soMentor, async (req, res) => {
 });
 
 async function analisarRelatorioDia(id, uid, texto, criadoEm) {
-  const [nome, pront, retrato, bussola, anteriores, t] = await Promise.all([
+  const [nome, pront, retrato, bussola, anteriores, t, plano] = await Promise.all([
     nomeCadastro(uid), getProntuario(uid).catch(() => null), retratoPaciente(uid).catch(() => null),
-    getMapaBussola(uid).catch(() => null), myDayReports(uid, 4).catch(() => []), terapeutaContato(uid).catch(() => null)
+    getMapaBussola(uid).catch(() => null), myDayReports(uid, 4).catch(() => []), terapeutaContato(uid).catch(() => null),
+    planoDiasDificeisTexto(uid).catch(() => '')
   ]);
   const primeiro = (nome || 'paciente').split(' ')[0];
   let analise = null;
@@ -2421,7 +2453,8 @@ async function analisarRelatorioDia(id, uid, texto, criadoEm) {
       (anteriores.length > 1 ? `\n\nRELATÓRIOS ANTERIORES (mais recentes primeiro):\n` + anteriores.filter(r => r.id !== id).slice(0, 3).map(r => `- ${quandoSP(r.criado_em)}: ${String(r.texto).slice(0, 500)}`).join('\n') : '') +
       (pront?.prontuario ? `\n\nPRONTUÁRIO EVOLUTIVO:\n${String(pront.prontuario).slice(0, 3000)}` : '') +
       (retrato ? `\n\nSINAIS DO APP:\n${retrato}` : '') +
-      (bussola ? `\n\nMAPA INICIAL:\n${String(bussola).slice(0, 1200)}` : '');
+      (bussola ? `\n\nMAPA INICIAL:\n${String(bussola).slice(0, 1200)}` : '') +
+      (plano ? `\n\nPLANO PARA DIAS DIFÍCEIS (se o relato bater com os SINAIS definidos, aponte isso em pontos_atencao e considere subir a gravidade):\n${plano}` : '');
     const sys = [
       { type: 'text', text: `Você é um supervisor clínico do Método Lúmen (inteligência emocional cristocêntrica: Corpo, Alma e Espírito). Você escreve uma PRÉ-ANÁLISE para o TERAPEUTA responsável, a partir do relatório do dia que o paciente escreveu. Use a base de estudo do Método abaixo e a Bíblia (NVI). NUNCA diagnostique transtornos; fale em indicadores, hipóteses e sinais. Seja concreto, direto e útil para a próxima ação do terapeuta.
 

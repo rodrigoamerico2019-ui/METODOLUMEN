@@ -508,6 +508,18 @@ export async function initDb() {
       criado_em TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_support_user ON support_contacts (user_id, ordem);
+    -- PLANO PARA DIAS DIFÍCEIS (modelo Stanley-Brown, adaptado ao Método): montado na sessão
+    CREATE TABLE IF NOT EXISTS safety_plans (
+      user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      sinais JSONB DEFAULT '[]',        -- sinais de que estou piorando
+      acalma JSONB DEFAULT '[]',        -- o que me acalma sozinho(a)
+      distrai JSONB DEFAULT '[]',       -- pessoas e lugares que me distraem
+      porque TEXT,                      -- meu porquê para seguir
+      ambiente TEXT,                    -- como deixar meu ambiente seguro
+      atualizado_por INT,
+      atualizado_por_papel TEXT,        -- terapeuta | paciente
+      atualizado_em TIMESTAMPTZ DEFAULT now()
+    );
     -- traz o contato de emergência antigo (cadastro) para a rede, como "avisar em risco"
     INSERT INTO support_contacts (user_id, nome, relacao, telefone, nivel, ordem)
       SELECT u.id, u.emergency_name, 'contato de emergência', u.emergency_phone, 'risco', 0 FROM users u
@@ -2721,4 +2733,36 @@ export async function contatosDeRisco(uid) {
   const u = await pool.query('SELECT emergency_name, emergency_phone FROM users WHERE id=$1', [uid]);
   const x = u.rows[0];
   return x && x.emergency_phone ? [{ nome: x.emergency_name || '', telefone: x.emergency_phone }] : [];
+}
+
+// ---- PLANO PARA DIAS DIFÍCEIS ----
+const lista = v => (Array.isArray(v) ? v : String(v || '').split('\n'))
+  .map(x => String(x || '').trim()).filter(Boolean).slice(0, 8).map(x => x.slice(0, 200));
+export async function getSafetyPlan(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query('SELECT sinais, acalma, distrai, porque, ambiente, atualizado_por_papel, atualizado_em FROM safety_plans WHERE user_id=$1', [uid]);
+  return r.rows[0] || null;
+}
+export async function saveSafetyPlan(uid, d = {}, porUid, papel) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const v = { sinais: lista(d.sinais), acalma: lista(d.acalma), distrai: lista(d.distrai),
+    porque: String(d.porque || '').trim().slice(0, 600) || null, ambiente: String(d.ambiente || '').trim().slice(0, 600) || null };
+  await pool.query(`INSERT INTO safety_plans (user_id, sinais, acalma, distrai, porque, ambiente, atualizado_por, atualizado_por_papel, atualizado_em)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+    ON CONFLICT (user_id) DO UPDATE SET sinais=$2, acalma=$3, distrai=$4, porque=$5, ambiente=$6,
+      atualizado_por=$7, atualizado_por_papel=$8, atualizado_em=now()`,
+    [uid, JSON.stringify(v.sinais), JSON.stringify(v.acalma), JSON.stringify(v.distrai), v.porque, v.ambiente, porUid || null, papel || null]);
+  return getSafetyPlan(uid);
+}
+// texto do plano para a IA (vazio se não houver plano)
+export async function planoDiasDificeisTexto(uid) {
+  const p = await getSafetyPlan(uid).catch(() => null);
+  if (!p) return '';
+  const l = [];
+  if (p.sinais?.length) l.push('SINAIS DE QUE ESTÁ PIORANDO (definidos por ela): ' + p.sinais.join('; '));
+  if (p.acalma?.length) l.push('O QUE A ACALMA SOZINHA: ' + p.acalma.join('; '));
+  if (p.distrai?.length) l.push('PESSOAS E LUGARES QUE A DISTRAEM: ' + p.distrai.join('; '));
+  if (p.porque) l.push('O PORQUÊ DELA PARA SEGUIR: ' + p.porque);
+  if (p.ambiente) l.push('COMO DEIXAR O AMBIENTE SEGURO: ' + p.ambiente);
+  return l.join('\n');
 }
