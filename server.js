@@ -53,6 +53,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
+         AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -538,6 +539,34 @@ app.get('/api/admin/clients', requireAdmin, soMentor, carregaPapel, permite(...S
   try { res.json({ clientes: await listClients(req.orgId, { q: req.query.q, status: req.query.status }) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+// ---- PROFISSIONAIS DA CLÍNICA (só dono/administrador da clínica gerencia; todos da equipe veem a lista) ----
+const gerenciaEquipe = [requireAdmin, soMentor, carregaPapel, permite('owner', 'admin')];
+app.get('/api/admin/team', requireAdmin, soMentor, carregaPapel, async (req, res) => {
+  try { res.json({ areas: AREAS_PROF, profissionais: await listProfissionais(req.orgId), pode_gerenciar: ['owner', 'admin'].includes(req.memberRole) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/team', ...gerenciaEquipe, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await addProfissional(req.orgId, b, req.mentorUid);
+    let acesso = null;
+    if (b.acesso) { const mid = r.id; acesso = await acessoProfissional(req.orgId, mid, req.mentorUid); }
+    res.json({ ...r, acesso });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/team/update', ...gerenciaEquipe, async (req, res) => {
+  try { res.json(await updateProfissional(req.orgId, Number(req.query.mid), req.body || {}, req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/team/access', ...gerenciaEquipe, async (req, res) => {
+  try { res.json(await acessoProfissional(req.orgId, Number(req.query.mid), req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/team/remove', ...gerenciaEquipe, async (req, res) => {
+  try { res.json(await removerProfissional(req.orgId, Number(req.query.mid), req.mentorUid)); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
 app.get('/api/admin/clients/members', requireAdmin, soMentor, carregaPapel, async (req, res) => {
   try { res.json({ membros: await listOrgMembers(req.orgId) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }

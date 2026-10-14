@@ -537,6 +537,11 @@ export async function initDb() {
     -- assinatura na tela do termo LGPD (imagem da assinatura + nome digitado + código de verificação)
     -- e-mail de CONTATO do terapeuta (pode repetir entre clínicas); users.email segue único (login técnico)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_contato TEXT;
+    -- CADASTRO DO PROFISSIONAL da clínica (dados pessoais e área de atuação)
+    ALTER TABLE org_members ADD COLUMN IF NOT EXISTS area TEXT;          -- terapeuta | psicologo | psicanalista | mentor | pastor | pastora
+    ALTER TABLE org_members ADD COLUMN IF NOT EXISTS rg TEXT;
+    ALTER TABLE org_members ADD COLUMN IF NOT EXISTS nascimento DATE;
+    ALTER TABLE org_members ADD COLUMN IF NOT EXISTS telefone TEXT;
     UPDATE users SET email_contato=email WHERE role IN ('mentor','owner') AND email_contato IS NULL AND email NOT LIKE '%@sem-email.%';
     CREATE INDEX IF NOT EXISTS idx_users_email_contato ON users (lower(email_contato)) WHERE email_contato IS NOT NULL;
     ALTER TABLE client_consents ADD COLUMN IF NOT EXISTS assinatura TEXT;
@@ -2876,4 +2881,99 @@ export async function assinarLGPD(uid, { versao, texto, nome, assinatura, ip, di
   await registrarAuditoria({ orgId: u.rows[0]?.org_id, userId: uid, clientId: uid, acao: 'lgpd_assinado', entidade: 'consent', entidadeId: r.rows[0].id,
     dados: { versao, hash }, ip });
   return { ok: true, id: r.rows[0].id, hash, quando };
+}
+
+
+// =========================================================
+//  PROFISSIONAIS DA CLÍNICA (cadastro + acesso opcional ao painel)
+// =========================================================
+export const AREAS_PROF = { terapeuta: 'Terapeuta', psicologo: 'Psicólogo(a)', psicanalista: 'Psicanalista', mentor: 'Mentor(a)', pastor: 'Pastor', pastora: 'Pastora' };
+function dadosProf(d = {}) {
+  const nome = String(d.nome || '').trim().replace(/\s+/g, ' ');
+  if (nome.length < 3 || !nome.includes(' ')) throw new Error('Informe o nome completo do profissional.');
+  const area = String(d.area || '').toLowerCase();
+  if (!AREAS_PROF[area]) throw new Error('Escolha a área de atuação.');
+  const nasc = String(d.nascimento || '').trim();
+  if (nasc && !/^\d{4}-\d{2}-\d{2}$/.test(nasc)) throw new Error('Data de nascimento inválida.');
+  if (!String(d.rg || '').trim()) throw new Error('Informe o RG do profissional.');
+  if (!nasc) throw new Error('Informe a data de nascimento do profissional.');
+  const email = String(d.email || '').trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
+  const tel = String(d.telefone || '').replace(/\D/g, '');
+  if (tel && tel.length < 10) throw new Error('Informe o WhatsApp com DDD.');
+  return { nome, area, nasc: nasc || null, rg: String(d.rg || '').trim().slice(0, 30) || null,
+    registro: String(d.registro || '').trim().slice(0, 60) || null, email: email || null, tel: tel || null };
+}
+export async function listProfissionais(orgId) {
+  if (!pool || !orgId) return [];
+  const r = await pool.query(`SELECT om.id, om.role, om.area, om.rg, om.nascimento::text AS nascimento, om.telefone,
+      om.registro_profissional AS registro, om.ativo, om.created_at, u.id AS user_id, u.name AS nome, u.username,
+      COALESCE(u.email_contato, CASE WHEN u.email LIKE '%@sem-email.%' THEN NULL ELSE u.email END) AS email,
+      (u.password_hash <> '') AS tem_acesso, u.last_seen_at,
+      (SELECT count(*)::int FROM users p WHERE p.role='paciente' AND p.terapeuta_id=u.id) AS pacientes
+    FROM org_members om JOIN users u ON u.id=om.user_id
+    WHERE om.org_id=$1 AND om.ativo=true ORDER BY (om.role='owner') DESC, u.name`, [orgId]);
+  return r.rows;
+}
+export async function addProfissional(orgId, d, porUid) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const v = dadosProf(d);
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    const emailLogin = `prof${orgId}.${crypto.randomBytes(4).toString('hex')}@sem-email.trilumen`;
+    const u = await cx.query(`INSERT INTO users (email, email_contato, name, password_hash, role, org_id, phone, birth_date, consent_at)
+      VALUES ($1,$2,$3,'','mentor',$4,$5,$6,now()) RETURNING id`, [emailLogin, v.email, v.nome, orgId, v.tel, v.nasc]);
+    const m = await cx.query(`INSERT INTO org_members (org_id, user_id, role, area, rg, nascimento, telefone, registro_profissional)
+      VALUES ($1,$2,'professional',$3,$4,$5,$6,$7) RETURNING id`, [orgId, u.rows[0].id, v.area, v.rg, v.nasc, v.tel, v.registro]);
+    await cx.query('COMMIT');
+    await registrarAuditoria({ orgId, userId: porUid, acao: 'profissional_cadastrado', entidade: 'org_member', entidadeId: m.rows[0].id, dados: { nome: v.nome, area: v.area } });
+    return { ok: true, id: m.rows[0].id, user_id: u.rows[0].id };
+  } catch (e) { await cx.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { cx.release(); }
+}
+async function membroDaOrg(orgId, mid) {
+  const r = await pool.query('SELECT om.id, om.role, om.user_id, u.name FROM org_members om JOIN users u ON u.id=om.user_id WHERE om.id=$1 AND om.org_id=$2', [mid, orgId]);
+  if (!r.rows[0]) throw new Error('Profissional não encontrado nesta clínica.');
+  return r.rows[0];
+}
+export async function updateProfissional(orgId, mid, d, porUid) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const m = await membroDaOrg(orgId, mid);
+  const v = dadosProf(d);
+  await pool.query('UPDATE users SET name=$2, email_contato=$3, phone=$4, birth_date=$5 WHERE id=$1', [m.user_id, v.nome, v.email, v.tel, v.nasc]);
+  await pool.query('UPDATE org_members SET area=$2, rg=$3, nascimento=$4, telefone=$5, registro_profissional=$6, updated_at=now() WHERE id=$1',
+    [mid, v.area, v.rg, v.nasc, v.tel, v.registro]);
+  await registrarAuditoria({ orgId, userId: porUid, acao: 'profissional_alterado', entidade: 'org_member', entidadeId: mid });
+  return { ok: true };
+}
+// gera (ou refaz) usuário + senha provisória para o profissional entrar no painel
+export async function acessoProfissional(orgId, mid, porUid) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const m = await membroDaOrg(orgId, mid);
+  const u = await pool.query('SELECT username FROM users WHERE id=$1', [m.user_id]);
+  let username = u.rows[0].username;
+  if (!username) {
+    const p = String(m.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(x => x.length > 2);
+    const base = (p.length > 1 ? p[0] + '.' + p[p.length - 1] : (p[0] || 'profissional')).slice(0, 24);
+    for (let i = 1; i < 500; i++) {
+      const c = i === 1 ? base : base + i;
+      if (!(await pool.query('SELECT 1 FROM users WHERE lower(username)=$1 OR email=$1', [c])).rows[0]) { username = c; break; }
+    }
+  }
+  const senha = Array.from({ length: 8 }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[crypto.randomInt(31)]).join('');
+  await pool.query('UPDATE users SET username=$2, password_hash=$3, must_change_login=true WHERE id=$1', [m.user_id, username, await bcrypt.hash(senha, 10)]);
+  await registrarAuditoria({ orgId, userId: porUid, acao: 'profissional_acesso_gerado', entidade: 'org_member', entidadeId: mid });
+  return { ok: true, usuario: username, senha };
+}
+// desativa (não apaga: prontuários e sessões dele continuam na clínica)
+export async function removerProfissional(orgId, mid, porUid) {
+  if (!pool || !orgId) throw new Error('banco não configurado');
+  const m = await membroDaOrg(orgId, mid);
+  if (m.role === 'owner') throw new Error('O responsável pela clínica não pode ser removido.');
+  if (porUid && Number(m.user_id) === Number(porUid)) throw new Error('Você não pode remover o seu próprio cadastro.');
+  await pool.query('UPDATE org_members SET ativo=false, updated_at=now() WHERE id=$1', [mid]);
+  await pool.query("UPDATE users SET password_hash='' WHERE id=$1", [m.user_id]);   // perde o acesso ao painel
+  await registrarAuditoria({ orgId, userId: porUid, acao: 'profissional_removido', entidade: 'org_member', entidadeId: mid });
+  return { ok: true };
 }

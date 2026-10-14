@@ -1231,6 +1231,74 @@ function esc0(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g
 function appBaseUrl(){ const h=location.host; if(h.indexOf('painel.')===0) return location.protocol+'//'+h.replace(/^painel\./,'app.'); return location.origin; }
 function copiarLink(){ const el=$('mkLink'); if(!el) return; el.select();
   try{ navigator.clipboard.writeText(el.value); aviso('Link copiado.','ok'); }catch(_){ try{ document.execCommand('copy'); aviso('Link copiado.','ok'); }catch(e){ aviso('Selecione e copie o link.'); } } }
+/* ===== PROFISSIONAIS DA CLÍNICA ===== */
+let EQUIPE = { areas:{}, profissionais:[], pode_gerenciar:false };
+const fmtData = d => d ? String(d).slice(0,10).split('-').reverse().join('/') : '—';
+async function abrirProfissionais(){
+  modalAbrir('Profissionais da clínica', '<p class="muted">carregando…</p>', {wide:true});
+  try{ EQUIPE = await api('/api/admin/team'); }catch(e){ $('modalBody').innerHTML='<p class="muted">Erro: '+escHtml(e.message)+'</p>'; return; }
+  pintarProfissionais();
+}
+function pintarProfissionais(msg){
+  const a = EQUIPE.areas || {}, l = EQUIPE.profissionais || [];
+  const linhas = l.map(p =>
+    '<tr><td><b>'+escHtml(p.nome)+'</b>'+(p.role==='owner'?' <small class="muted">· responsável</small>':'')+(p.email?'<br><small class="muted">'+escHtml(p.email)+'</small>':'')+'</td>'+
+    '<td>'+escHtml(a[p.area]||'—')+(p.registro?'<br><small class="muted">'+escHtml(p.registro)+'</small>':'')+'</td>'+
+    '<td>'+escHtml(p.rg||'—')+'</td><td>'+fmtData(p.nascimento)+'</td>'+
+    '<td>'+(p.tem_acesso?'<span class="lic-st ativa">'+escHtml(p.username||'acesso')+'</span>':'<span class="muted">sem acesso</span>')+'</td>'+
+    '<td class="num">'+(p.pacientes||0)+'</td>'+
+    '<td class="fin-act">'+(EQUIPE.pode_gerenciar?
+      '<button onclick="formProfissional('+p.id+')">editar</button>'+
+      (p.role!=='owner'?'<button onclick="acessoProf('+p.id+')">'+(p.tem_acesso?'nova senha':'dar acesso')+'</button><button onclick="removerProf('+p.id+')">remover</button>':''):'')+'</td></tr>').join('');
+  $('modalBody').innerHTML = (msg||'') +
+    (EQUIPE.pode_gerenciar?'<button class="btn" style="padding:10px 22px;margin-bottom:14px" onclick="formProfissional()">+ Cadastrar profissional</button>':'<p class="subc">Só o responsável ou o administrador da clínica cadastra profissionais.</p>')+
+    '<div style="overflow-x:auto"><table class="fin-tab" style="width:100%;min-width:640px"><thead><tr><th>Nome</th><th>Área</th><th>RG</th><th>Nascimento</th><th>Painel</th><th>Pacientes</th><th></th></tr></thead><tbody>'+
+    (linhas||'<tr><td colspan="7" class="muted">Nenhum profissional cadastrado ainda.</td></tr>')+'</tbody></table></div>';
+}
+function formProfissional(mid){
+  const p = (EQUIPE.profissionais||[]).find(x => x.id == mid) || {};
+  const opts = Object.entries(EQUIPE.areas||{}).map(([k,v]) => '<option value="'+k+'"'+(p.area===k?' selected':'')+'>'+escHtml(v)+'</option>').join('');
+  $('modalBody').innerHTML =
+    '<div class="dp-grid">'+
+    '<div class="dp-full"><label>Nome completo *</label><input id="pfNome" value="'+escHtml(p.nome||'')+'"/></div>'+
+    '<div class="dp-half"><label>RG *</label><input id="pfRg" value="'+escHtml(p.rg||'')+'"/></div>'+
+    '<div class="dp-half"><label>Data de nascimento *</label><input id="pfNasc" type="date" value="'+escHtml(p.nascimento||'')+'"/></div>'+
+    '<div class="dp-half"><label>Área de atuação *</label><select id="pfArea"><option value="">Escolha…</option>'+opts+'</select></div>'+
+    '<div class="dp-half"><label>Registro profissional (CRP, etc.)</label><input id="pfReg" value="'+escHtml(p.registro||'')+'" placeholder="opcional"/></div>'+
+    '<div class="dp-half"><label>WhatsApp</label><input id="pfTel" value="'+escHtml(p.telefone||'')+'" placeholder="opcional"/></div>'+
+    '<div class="dp-half"><label>E-mail</label><input id="pfEmail" type="email" value="'+escHtml(p.email||'')+'" placeholder="opcional"/></div>'+
+    '</div>'+
+    (mid?'':'<label class="fin-chk" style="margin:12px 0"><input type="checkbox" id="pfAcesso"/> Criar acesso ao painel (usuário e senha provisória)</label>')+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="padding:10px 22px" onclick="salvarProfissional('+(mid||'')+')">'+(mid?'Salvar alterações':'Cadastrar')+'</button>'+
+    '<button class="btn ghost" style="padding:10px 22px" onclick="pintarProfissionais()">Voltar</button></div><span class="muted" id="pfStatus"></span>';
+}
+async function salvarProfissional(mid){
+  const body = { nome:$('pfNome').value, rg:$('pfRg').value, nascimento:$('pfNasc').value, area:$('pfArea').value,
+    registro:$('pfReg').value, telefone:$('pfTel').value, email:$('pfEmail').value, acesso: !!($('pfAcesso')&&$('pfAcesso').checked) };
+  $('pfStatus').textContent=' salvando…';
+  try{
+    const d = await postAdmin(mid ? '/api/admin/team/update?mid='+mid : '/api/admin/team', body);
+    EQUIPE = await api('/api/admin/team');
+    pintarProfissionais(d.acesso ? credProf(body.nome, d.acesso) : '<div class="cad-ok" style="margin-bottom:12px">✅ '+(mid?'Alterações salvas.':'Profissional cadastrado.')+'</div>');
+  }catch(e){ $('pfStatus').textContent=' erro: '+e.message; }
+}
+function credProf(nome, a){
+  return '<div class="cad-ok" style="margin-bottom:12px">✅ Acesso de <b>'+escHtml(nome)+'</b> ao painel:<br>Usuário: <b>'+escHtml(a.usuario)+'</b> · Senha provisória: <b>'+escHtml(a.senha)+'</b>'+
+    '<br><small>Endereço: painel.trilumen.com.br. No primeiro acesso ele troca a senha. A senha não fica salva para consulta.</small></div>';
+}
+async function acessoProf(mid){
+  const p = (EQUIPE.profissionais||[]).find(x => x.id == mid) || {};
+  if(p.tem_acesso && !await modalConfirm('Gerar uma NOVA senha provisória para '+(p.nome||'o profissional')+'? A senha atual deixa de valer.')) { abrirProfissionais(); return; }
+  try{ const a = await postAdmin('/api/admin/team/access?mid='+mid, {}); EQUIPE = await api('/api/admin/team');
+    modalAbrir('Profissionais da clínica', '', {wide:true}); pintarProfissionais(credProf(p.nome, a)); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); }
+}
+async function removerProf(mid){
+  const p = (EQUIPE.profissionais||[]).find(x => x.id == mid) || {};
+  if(!await modalConfirm('Remover '+(p.nome||'o profissional')+' da clínica? Ele perde o acesso ao painel. Sessões e registros feitos por ele continuam guardados.')) { abrirProfissionais(); return; }
+  try{ await postAdmin('/api/admin/team/remove?mid='+mid, {}); abrirProfissionais(); }
+  catch(e){ aviso('Erro: '+e.message,'erro'); abrirProfissionais(); }
+}
 async function abrirMinhaClinica(boasVindas){
   let b={}; try{ b=await api('/api/admin/branding'); }catch(e){}
   MENTOR_ORG=Object.assign(MENTOR_ORG||{}, b);
@@ -1249,6 +1317,10 @@ async function abrirMinhaClinica(boasVindas){
     '<p class="subc" style="margin:2px 0 8px">💡 Para ficar bem alinhada: PNG com fundo transparente, formato <b>horizontal</b> (cerca de <b>360×90&nbsp;px</b>) ou uma logo quadrada de até <b>200&nbsp;px</b>. Máx. 2&nbsp;MB.</p>'+
     '<input type="file" id="mkLogo" accept="image/png,image/jpeg,image/webp" style="margin-bottom:12px"/>'+
     '<div><button class="btn" style="padding:10px 24px" onclick="salvarMarca()">Salvar</button> <span class="muted" id="mkStatus"></span></div>'+
+    '<hr style="margin:22px 0 16px;border:none;border-top:1px solid var(--line)"/>'+
+    '<div class="section-title" style="font-size:14px">👥 Profissionais da clínica</div>'+
+    '<p class="subc" style="margin:2px 0 8px">Cadastre terapeutas, psicólogos, psicanalistas, mentores e pastores da sua equipe e, se quiser, dê acesso ao painel.</p>'+
+    '<button class="tbtn" onclick="abrirProfissionais()">Abrir cadastro de profissionais</button>'+
     '<hr style="margin:22px 0 16px;border:none;border-top:1px solid var(--line)"/>'+
     '<div class="section-title" style="font-size:14px">📲 Link do app para seus pacientes</div>'+
     '<p class="subc" style="margin:2px 0 8px">Compartilhe este link com seus pacientes — ao abrir, o app já mostra a <b>sua marca</b> na tela de entrada. (Para instalar, o nome continua TriLumen.)</p>'+
