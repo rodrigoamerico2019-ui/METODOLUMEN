@@ -520,6 +520,20 @@ export async function initDb() {
       atualizado_por_papel TEXT,        -- terapeuta | paciente
       atualizado_em TIMESTAMPTZ DEFAULT now()
     );
+    -- CAIXA DE ESPERANÇA: o que sustenta a pessoa nos dias difíceis
+    CREATE TABLE IF NOT EXISTS hope_items (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL,               -- versiculo | mensagem | foto | audio
+      titulo TEXT,                      -- ex.: "Voz da minha mãe", "Testemunho de 2023"
+      texto TEXT,                       -- versículo, mensagem ou legenda
+      referencia TEXT,                  -- ex.: "Salmos 34:18"
+      mime TEXT,
+      bytes BYTEA,                      -- foto/áudio (nunca enviados em listagens)
+      criado_por_papel TEXT,            -- paciente | terapeuta
+      criado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_hope_user ON hope_items (user_id, criado_em DESC);
     -- traz o contato de emergência antigo (cadastro) para a rede, como "avisar em risco"
     INSERT INTO support_contacts (user_id, nome, relacao, telefone, nivel, ordem)
       SELECT u.id, u.emergency_name, 'contato de emergência', u.emergency_phone, 'risco', 0 FROM users u
@@ -2765,4 +2779,58 @@ export async function planoDiasDificeisTexto(uid) {
   if (p.porque) l.push('O PORQUÊ DELA PARA SEGUIR: ' + p.porque);
   if (p.ambiente) l.push('COMO DEIXAR O AMBIENTE SEGURO: ' + p.ambiente);
   return l.join('\n');
+}
+
+// ---- CAIXA DE ESPERANÇA ----
+const TIPOS_HOPE = ['versiculo', 'mensagem', 'foto', 'audio'];
+export async function listHope(uid) {
+  if (!pool || !uid) return [];
+  const r = await pool.query(`SELECT id, tipo, titulo, texto, referencia, mime, criado_por_papel, criado_em,
+      (bytes IS NOT NULL) AS tem_midia FROM hope_items WHERE user_id=$1 ORDER BY criado_em DESC`, [uid]);
+  return r.rows;
+}
+export async function addHope(uid, d = {}, papel) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  const tipo = String(d.tipo || '');
+  if (!TIPOS_HOPE.includes(tipo)) throw new Error('Tipo inválido.');
+  const n = await pool.query('SELECT count(*)::int AS n FROM hope_items WHERE user_id=$1', [uid]);
+  if (n.rows[0].n >= 40) throw new Error('Sua caixa já tem 40 itens. Remova algum para guardar outro.');
+  let bytes = null, mime = null;
+  if (tipo === 'foto') {
+    const m = String(d.foto || '').match(/^data:(image\/(png|jpe?g|webp));base64,(.+)$/);
+    if (!m) throw new Error('Escolha uma foto.');
+    bytes = Buffer.from(m[3], 'base64'); mime = m[1];
+    if (bytes.length > 700 * 1024) throw new Error('A foto ficou grande demais.');
+  } else if (tipo === 'audio') {
+    if (!d.bytes || !d.bytes.length) throw new Error('Escolha ou grave um áudio.');
+    if (d.bytes.length > 5 * 1024 * 1024) throw new Error('O áudio passa de 5 MB. Use um áudio mais curto.');
+    bytes = d.bytes; mime = String(d.mime || 'audio/webm').slice(0, 60);
+  } else if (!String(d.texto || '').trim()) throw new Error(tipo === 'versiculo' ? 'Escreva o versículo.' : 'Escreva a mensagem.');
+  const r = await pool.query(`INSERT INTO hope_items (user_id, tipo, titulo, texto, referencia, mime, bytes, criado_por_papel)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [uid, tipo, String(d.titulo || '').trim().slice(0, 120) || null, String(d.texto || '').trim().slice(0, 1500) || null,
+     String(d.referencia || '').trim().slice(0, 80) || null, mime, bytes, papel || null]);
+  return { ok: true, id: r.rows[0].id };
+}
+export async function deleteHope(uid, id) {
+  if (!pool || !uid) throw new Error('banco não configurado');
+  await pool.query('DELETE FROM hope_items WHERE id=$1 AND user_id=$2', [id, uid]);
+  return { ok: true };
+}
+export async function getHopeMedia(uid, id) {
+  if (!pool || !uid) return null;
+  const r = await pool.query('SELECT mime, bytes FROM hope_items WHERE id=$1 AND user_id=$2 AND bytes IS NOT NULL', [id, uid]);
+  return r.rows[0] || null;
+}
+// texto da caixa para a IA (só o que é texto; foto/áudio entram como "existe")
+export async function hopeTexto(uid) {
+  const l = await listHope(uid).catch(() => []);
+  if (!l.length) return '';
+  const vers = l.filter(i => i.tipo === 'versiculo').slice(0, 5).map(i => `"${i.texto}"${i.referencia ? ' (' + i.referencia + ')' : ''}`);
+  const msg = l.filter(i => i.tipo === 'mensagem').slice(0, 4).map(i => (i.titulo ? i.titulo + ': ' : '') + String(i.texto).slice(0, 200));
+  const mid = l.filter(i => i.tipo === 'foto' || i.tipo === 'audio').map(i => (i.tipo === 'foto' ? 'foto' : 'áudio') + (i.titulo ? ' "' + i.titulo + '"' : ''));
+  return ['CAIXA DE ESPERANÇA DELA:',
+    vers.length ? 'Versículos que a sustentam: ' + vers.join('; ') : '',
+    msg.length ? 'Mensagens e testemunhos guardados: ' + msg.join('; ') : '',
+    mid.length ? 'Também guardou: ' + mid.join(', ') + ' (pode convidá-la a abrir a caixa na aba Cuidado).' : ''].filter(Boolean).join('\n');
 }

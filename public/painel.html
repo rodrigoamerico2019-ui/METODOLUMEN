@@ -1893,7 +1893,41 @@ async function renderCliPlano(body){
     '<div class="dp-full"><label>Porquê para seguir</label><textarea id="spPorque" rows="2">'+escHtml(p.porque||'')+'</textarea></div>'+
     '<div class="dp-full"><label>Como deixar o ambiente seguro</label><textarea id="spAmbiente" rows="2">'+escHtml(p.ambiente||'')+'</textarea></div>'+
     '</div>'+
-    '<button class="btn" style="padding:10px 24px;margin-top:10px" onclick="salvarPlanoCli()">Salvar plano</button> <span class="muted" id="spStatus"></span>';
+    '<button class="btn" style="padding:10px 24px;margin-top:10px" onclick="salvarPlanoCli()">Salvar plano</button> <span class="muted" id="spStatus"></span>'+
+    '<hr style="margin:24px 0 16px;border:none;border-top:1px solid var(--line)"/>'+
+    '<div class="section-title" style="font-size:14px">📦 Caixa de esperança</div>'+
+    '<p class="subc" style="margin:2px 0 10px">O que sustenta o paciente: versículos, mensagens, fotos e vozes que ele guardou, e as vitórias da caminhada. Abre no botão “Estou mal agora”. Você pode guardar versículos e mensagens para ele.</p>'+
+    '<div id="cxPainel"><p class="muted">carregando…</p></div>'+
+    '<div class="dp-grid" style="margin-top:12px">'+
+    '<div class="dp-half"><label>Tipo</label><select id="cxTipo"><option value="versiculo">Versículo</option><option value="mensagem">Mensagem</option></select></div>'+
+    '<div class="dp-half"><label>Referência ou título</label><input id="cxRefP" placeholder="Ex.: Isaías 41:10"/></div>'+
+    '<div class="dp-full"><label>Texto</label><textarea id="cxTextoP" rows="3"></textarea></div></div>'+
+    '<button class="tbtn" style="margin-top:8px" onclick="guardarCaixaCli()">Guardar na caixa do paciente</button> <span class="muted" id="cxStatusP"></span>';
+  carregarCaixaCli(seq);
+}
+async function carregarCaixaCli(seq){
+  let d; try{ d = await api('/api/admin/hope?id='+clienteAtual.id); }catch(e){ if($('cxPainel')) $('cxPainel').innerHTML='<p class="muted">'+escHtml(e.message)+'</p>'; return; }
+  if(seq != null && seq !== cliBodySeq) return;
+  const box = $('cxPainel'); if(!box) return;
+  const it = d.itens || [], vit = d.vitorias || [];
+  if(!it.length && !vit.length){ box.innerHTML='<p class="muted">A caixa ainda está vazia.</p>'; return; }
+  const media = i => '/api/admin/hope/media?id='+clienteAtual.id+'&item='+i.id+'&'+mediaQS();
+  box.innerHTML = it.map(i=>'<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+
+      (i.tipo==='versiculo' ? '<i>“'+escHtml(i.texto)+'”</i>'+(i.referencia?' <span class="muted">— '+escHtml(i.referencia)+'</span>':'') :
+       i.tipo==='mensagem' ? (i.titulo?'<b>'+escHtml(i.titulo)+'</b><br>':'')+escHtml(i.texto) :
+       i.tipo==='foto' ? (i.titulo?'<b>'+escHtml(i.titulo)+'</b><br>':'')+'<img src="'+media(i)+'" alt="" style="max-width:220px;max-height:160px;border-radius:8px;margin-top:4px"/>' :
+       '<b>'+escHtml(i.titulo||'Áudio')+'</b><br><audio controls preload="none" src="'+media(i)+'" style="margin-top:4px"></audio>')+
+      '<div class="muted" style="font-size:11.5px;margin-top:4px">'+(i.criado_por_papel==='terapeuta'?'guardado por você':'guardado pelo paciente')+' · '+new Date(i.criado_em).toLocaleDateString('pt-BR')+'</div></div>').join('')+
+    (vit.length?'<div style="padding:10px 0"><b>Vitórias da caminhada</b><br>'+vit.slice(0,6).map(v=>escHtml((v.data?v.data+' · ':'')+v.texto)).join('<br>')+'</div>':'');
+}
+async function guardarCaixaCli(){
+  const tipo=$('cxTipo').value, ref=$('cxRefP').value.trim(), texto=$('cxTextoP').value.trim();
+  $('cxStatusP').textContent='guardando…';
+  try{
+    await postAdmin('/api/admin/hope?id='+clienteAtual.id, tipo==='versiculo' ? { tipo, texto, referencia:ref } : { tipo, texto, titulo:ref });
+    $('cxTextoP').value=''; $('cxRefP').value=''; $('cxStatusP').textContent='guardado ✓ — já aparece para o paciente';
+    carregarCaixaCli();
+  }catch(e){ $('cxStatusP').textContent='erro: '+e.message; }
 }
 async function salvarPlanoCli(){
   $('spStatus').textContent='salvando…';

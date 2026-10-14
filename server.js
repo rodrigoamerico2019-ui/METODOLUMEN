@@ -52,6 +52,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
+         listHope, addHope, deleteHope, getHopeMedia, hopeTexto,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -2103,7 +2104,7 @@ Como usar: raciocine em profundidade. Cruze o que ela conta com estes sinais e c
 `PLANO PARA DIAS DIFÍCEIS DESTA PESSOA (montado com o terapeuta na sessão):
 ${plano}
 
-Como usar: se ela trouxer algo que corresponde a um dos SINAIS que ela mesma definiu, perceba e nomeie com delicadeza ("isso que você contou é um dos sinais que você conhece em você"). Antes de sugerir algo novo, lembre das estratégias DELA (o que a acalma, as pessoas e os lugares dela). Em desânimo profundo, traga o PORQUÊ dela com carinho, com as palavras dela. Em risco, siga o protocolo de risco e lembre que ela tem a rede de apoio e o botão "Estou mal agora" na aba Cuidado.` });
+Como usar: se ela trouxer algo que corresponde a um dos SINAIS que ela mesma definiu, perceba e nomeie com delicadeza ("isso que você contou é um dos sinais que você conhece em você"). Antes de sugerir algo novo, lembre das estratégias DELA (o que a acalma, as pessoas e os lugares dela). Em desânimo profundo, traga o PORQUÊ dela com carinho, com as palavras dela, e, se fizer sentido, um versículo ou uma lembrança da CAIXA DE ESPERANÇA dela (sem recitar a lista). Em risco, siga o protocolo de risco e lembre que ela tem a rede de apoio e o botão "Estou mal agora" na aba Cuidado.` });
   blocos.push({ type: 'text', text: 'COM QUEM VOCÊ FALA: sempre com a PRÓPRIA pessoa dona deste app, em segunda pessoa ("você"). Você nunca fala com terapeuta, mentor ou familiar aqui; nunca a chame de cliente ou paciente e nunca fale dela em terceira pessoa.' });
   if (prontuario) blocos.push({ type: 'text', text:
 `PRONTUÁRIO EVOLUTIVO DESTA PESSOA (a jornada dela com você até aqui — use como memória viva):
@@ -2145,7 +2146,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
       prontuario = (await getProntuario(req.user.uid).catch(() => null))?.prontuario || null;
       bussola = await getMapaBussola(req.user.uid).catch(() => null);
       retrato = await retratoPaciente(req.user.uid).catch(() => null);
-      plano = await planoDiasDificeisTexto(req.user.uid).catch(() => null);
+      plano = [await planoDiasDificeisTexto(req.user.uid).catch(() => ''), await hopeTexto(req.user.uid).catch(() => '')].filter(Boolean).join('\n\n') || null;
       // primeira mensagem de uma conversa nova → resgata o assunto real do último encontro
       if (messages.filter(m => m.role === 'user').length <= 1) {
         ultimo = await ultimoEncontro(req.user.uid).catch(() => null);
@@ -2394,6 +2395,59 @@ app.post('/api/admin/safety-plan', requireAdmin, soMentor, async (req, res) => {
     await registrarAuditoria({ orgId: req.orgId, userId: req.mentorUid, clientId: id, acao: 'plano_dias_dificeis_salvo', entidade: 'safety_plan', entidadeId: id }).catch(() => {});
     res.json({ ok: true, plano });
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+// ---- CAIXA DE ESPERANÇA ----
+const AUDIO_HOPE = express.raw({ type: ['audio/*', 'video/mp4', 'application/octet-stream'], limit: '6mb' });
+app.get('/api/me/hope', requireAuth, async (req, res) => {
+  try {
+    const [itens, extras] = await Promise.all([listHope(req.user.uid), getExtras(req.user.uid).catch(() => ({}))]);
+    res.json({ itens, vitorias: (extras.vitorias || []).slice(-12).reverse() });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/hope', requireAuth, async (req, res) => {
+  try { res.json(await addHope(req.user.uid, req.body || {}, 'paciente')); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/hope/audio', requireAuth, AUDIO_HOPE, async (req, res) => {
+  try { res.json(await addHope(req.user.uid, { tipo: 'audio', titulo: req.query.titulo, bytes: req.body, mime: req.headers['content-type'] }, 'paciente')); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.post('/api/me/hope/delete', requireAuth, async (req, res) => {
+  try { res.json(await deleteHope(req.user.uid, Number((req.body || {}).id))); }
+  catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/me/hope/media', requireAuth, async (req, res) => {
+  try {
+    const m = await getHopeMedia(req.user.uid, Number(req.query.id));
+    if (!m) return res.status(404).end();
+    res.set('Content-Type', m.mime || 'application/octet-stream'); res.set('Cache-Control', 'private, max-age=3600'); res.send(m.bytes);
+  } catch (e) { res.status(500).end(); }
+});
+// terapeuta: vê a caixa e pode guardar versículos e mensagens para o paciente
+app.get('/api/admin/hope', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const id = Number(req.query.id);
+    const [itens, extras] = await Promise.all([listHope(id), getExtras(id).catch(() => ({}))]);
+    res.json({ itens, vitorias: (extras.vitorias || []).slice(-12).reverse() });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/hope', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const b = req.body || {};
+    if (!['versiculo', 'mensagem'].includes(b.tipo)) return res.status(400).json({ error: 'O terapeuta pode guardar versículos e mensagens.' });
+    res.json(await addHope(Number(req.query.id), b, 'terapeuta'));
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/hope/media', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const m = await getHopeMedia(Number(req.query.id), Number(req.query.item));
+    if (!m) return res.status(404).end();
+    res.set('Content-Type', m.mime || 'application/octet-stream'); res.set('Cache-Control', 'private, max-age=3600'); res.send(m.bytes);
+  } catch (e) { res.status(500).end(); }
 });
 
 // ---- contatos ----
