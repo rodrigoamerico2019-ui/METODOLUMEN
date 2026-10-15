@@ -534,6 +534,27 @@ export async function initDb() {
       criado_em TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_hope_user ON hope_items (user_id, criado_em DESC);
+    -- LEITURA SEMANAL para a sessão (só o terapeuta vê): dores, sentimentos, feridas, padrões, perguntas
+    CREATE TABLE IF NOT EXISTS weekly_readings (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      org_id BIGINT,
+      motivo TEXT,                      -- semanal | vespera_sessao | manual
+      periodo_inicio TIMESTAMPTZ, periodo_fim TIMESTAMPTZ,
+      conteudo JSONB,
+      whatsapp_enviado BOOLEAN DEFAULT false,
+      criado_em TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_weekly_user ON weekly_readings (user_id, criado_em DESC);
+    -- PERGUNTA DO DIA da Lúmen (um tema por dia da semana, guiada pelo que ainda não apareceu)
+    CREATE TABLE IF NOT EXISTS daily_questions (
+      user_id INT REFERENCES users(id) ON DELETE CASCADE,
+      dia DATE NOT NULL,
+      tema TEXT, pergunta TEXT NOT NULL,
+      respondida_em TIMESTAMPTZ,
+      criado_em TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (user_id, dia)
+    );
     -- assinatura na tela do termo LGPD (imagem da assinatura + nome digitado + código de verificação)
     -- e-mail de CONTATO do terapeuta (pode repetir entre clínicas); users.email segue único (login técnico)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_contato TEXT;
@@ -2990,4 +3011,82 @@ export async function removerProfissional(orgId, mid, porUid) {
   await pool.query("UPDATE users SET password_hash='' WHERE id=$1", [m.user_id]);   // perde o acesso ao painel
   await registrarAuditoria({ orgId, userId: porUid, acao: 'profissional_removido', entidade: 'org_member', entidadeId: mid });
   return { ok: true };
+}
+
+// =========================================================
+//  PERGUNTA DO DIA + LEITURA SEMANAL PARA A SESSÃO
+// =========================================================
+const HOJE_SP = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+export async function getDailyQuestion(uid) {
+  if (!pool || !uid) return null;
+  const r = await pool.query(`SELECT tema, pergunta, respondida_em FROM daily_questions WHERE user_id=$1 AND dia=${HOJE_SP}`, [uid]);
+  return r.rows[0] || null;
+}
+export async function saveDailyQuestion(uid, tema, pergunta) {
+  if (!pool || !uid) return;
+  await pool.query(`INSERT INTO daily_questions (user_id, dia, tema, pergunta) VALUES ($1, ${HOJE_SP}, $2, $3)
+    ON CONFLICT (user_id, dia) DO NOTHING`, [uid, tema, pergunta]);
+}
+export async function markDailyAnswered(uid) {
+  if (!pool || !uid) return;
+  await pool.query(`UPDATE daily_questions SET respondida_em=now() WHERE user_id=$1 AND dia=${HOJE_SP} AND respondida_em IS NULL`, [uid]);
+}
+export async function recentDailyQuestions(uid, dias = 14) {
+  if (!pool || !uid) return [];
+  const r = await pool.query(`SELECT dia::text, tema, pergunta, respondida_em IS NOT NULL AS respondida FROM daily_questions
+    WHERE user_id=$1 AND dia > ${HOJE_SP} - $2::int ORDER BY dia DESC`, [uid, dias]);
+  return r.rows;
+}
+// tudo o que a pessoa viveu no app num período (para a leitura semanal)
+export async function dadosDoPeriodo(uid, desde) {
+  if (!pool || !uid) return null;
+  const q = (sql, p = []) => pool.query(sql, [uid, desde, ...p]).then(r => r.rows);
+  const [falas, relatorios, checkins, escalas, alertas, perguntas] = await Promise.all([
+    q(`SELECT content, analise, created_at FROM messages WHERE user_id=$1 AND role='user' AND created_at >= $2 ORDER BY created_at`),
+    q(`SELECT texto, analise, gravidade, criado_em FROM day_reports WHERE user_id=$1 AND criado_em >= $2 ORDER BY criado_em`),
+    q(`SELECT day::text, emocao, corpo, alma, espirito FROM checkins WHERE user_id=$1 AND day >= ($2::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date ORDER BY day`),
+    q(`SELECT scale_key, score, created_at FROM scale_responses WHERE user_id=$1 AND created_at >= $2 ORDER BY created_at`),
+    q(`SELECT origem, gravidade, motivo, trecho, criado_em FROM risk_alerts WHERE user_id=$1 AND criado_em >= $2 ORDER BY criado_em`),
+    q(`SELECT dia::text, tema, pergunta, respondida_em IS NOT NULL AS respondida FROM daily_questions WHERE user_id=$1 AND dia >= ($2::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date ORDER BY dia`)
+  ]);
+  return { falas, relatorios, checkins, escalas, alertas, perguntas };
+}
+export async function saveWeeklyReading(uid, { motivo, inicio, fim, conteudo, whatsapp }) {
+  if (!pool || !uid) return null;
+  const r = await pool.query(`INSERT INTO weekly_readings (user_id, org_id, motivo, periodo_inicio, periodo_fim, conteudo, whatsapp_enviado)
+    VALUES ($1,(SELECT org_id FROM users WHERE id=$1),$2,$3,$4,$5,$6) RETURNING id`, [uid, motivo, inicio, fim, JSON.stringify(conteudo), !!whatsapp]);
+  return r.rows[0].id;
+}
+export async function setWeeklyWhatsapp(id, ok) {
+  if (!pool || !id) return;
+  await pool.query('UPDATE weekly_readings SET whatsapp_enviado=$2 WHERE id=$1', [id, !!ok]);
+}
+export async function listWeeklyReadings(uid, limit = 12) {
+  if (!pool || !uid) return [];
+  const r = await pool.query('SELECT id, motivo, periodo_inicio, periodo_fim, conteudo, whatsapp_enviado, criado_em FROM weekly_readings WHERE user_id=$1 ORDER BY criado_em DESC LIMIT $2', [uid, limit]);
+  return r.rows;
+}
+export async function lastWeeklyReading(uid) {
+  const l = await listWeeklyReadings(uid, 1);
+  return l[0] || null;
+}
+// pacientes com terapeuta, clínica ativa e algum uso do app (para a leitura de domingo)
+export async function pacientesParaLeituraSemanal() {
+  if (!pool) return [];
+  const r = await pool.query(`SELECT u.id FROM users u JOIN organizations o ON o.id=u.org_id
+    WHERE u.role='paciente' AND o.status='ativa' AND u.password_hash <> ''
+      AND NOT EXISTS (SELECT 1 FROM weekly_readings w WHERE w.user_id=u.id AND w.motivo='semanal' AND w.criado_em > now() - interval '5 days')
+      AND (EXISTS (SELECT 1 FROM messages m WHERE m.user_id=u.id AND m.created_at > now() - interval '7 days')
+        OR EXISTS (SELECT 1 FROM day_reports d WHERE d.user_id=u.id AND d.criado_em > now() - interval '7 days')
+        OR EXISTS (SELECT 1 FROM checkins k WHERE k.user_id=u.id AND k.created_at > now() - interval '7 days'))`);
+  return r.rows.map(x => x.id);
+}
+// pacientes com sessão AGENDADA amanhã e sem leitura nas últimas 20h
+export async function pacientesComSessaoAmanha() {
+  if (!pool) return [];
+  const r = await pool.query(`SELECT DISTINCT a.user_id AS id FROM appointments a JOIN users u ON u.id=a.user_id JOIN organizations o ON o.id=u.org_id
+    WHERE a.status='agendada' AND o.status='ativa'
+      AND (a.quando AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date + 1
+      AND NOT EXISTS (SELECT 1 FROM weekly_readings w WHERE w.user_id=a.user_id AND w.criado_em > now() - interval '20 hours')`);
+  return r.rows.map(x => x.id);
 }

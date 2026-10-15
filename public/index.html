@@ -584,6 +584,10 @@
   .jt-ic svg { width:20px; height:20px; stroke:#1a1508; fill:none; stroke-width:1.8; }
   .jt1 { font-weight:700; font-size:15.5px; display:block; }
   .jt2 { font-size:12.5px; opacity:.82; margin-top:1px; display:block; }
+  .pg-tema { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-faint); margin-left:6px; }
+  .pg-txt { font-family:'Cormorant Garamond'; font-size:19px; line-height:1.45; color:var(--ink); margin:8px 0 12px; }
+  .pg-btn { background:var(--gold-grad); color:var(--on-gold); border:none; border-radius:99px; padding:9px 18px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+  .pg-feito { font-size:12.5px; color:var(--ink-dim); }
   .jor-card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:16px 17px; box-shadow:0 8px 24px -18px rgba(60,45,15,.4); }
   .jor-card.hide { display:none; }
   .jor-lab { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
@@ -855,6 +859,13 @@
         <span class="jt-ic"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg></span>
         <span><span class="jt1">Conversar com a Lúmen</span><span class="jt2">estou aqui quando você quiser — sem pressa</span></span>
       </button>
+
+      <!-- PERGUNTA DO DIA: a Lúmen puxa um tema por dia (vira conversa e material para a sessão) -->
+      <div class="jor-card hide" id="jorPergCard">
+        <div class="jor-lab">💬 Pergunta de hoje da Lúmen <span class="pg-tema" id="jorPergTema"></span></div>
+        <div class="pg-txt" id="jorPergTxt"></div>
+        <button class="pg-btn" id="jorPergBtn" type="button">Responder</button>
+      </div>
 
       <div class="jor-card jor-step hide" id="jorStepCard">
         <div class="jor-lab">🌱 <span id="jorStepLab">Seu passo de hoje</span></div>
@@ -1262,9 +1273,37 @@ function conferirPeriodo(){
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') conferirPeriodo(); });
 setInterval(conferirPeriodo, 60 * 1000);
 
+/* pergunta do dia: busca (a primeira do dia é gerada no servidor) e mostra na tela inicial */
+let perguntaHoje = null;
+function carregarPerguntaDoDia(){
+  if(!AUTH.token) return;
+  fetch(API_BASE + '/api/me/pergunta-do-dia', { headers: authHeaders() }).then(r => r.ok ? r.json() : null).then(d => {
+    const q = d && d.pergunta, card = document.getElementById('jorPergCard'); if(!card) return;
+    if(!q){ card.classList.add('hide'); return; }
+    perguntaHoje = q;
+    document.getElementById('jorPergTema').textContent = '· ' + (q.tema || '');
+    document.getElementById('jorPergTxt').textContent = q.pergunta;
+    const b = document.getElementById('jorPergBtn');
+    if(q.respondida_em){ b.outerHTML = '<div class="pg-feito" id="jorPergBtn">✓ Você já respondeu hoje. Obrigado por se abrir.</div>'; }
+    card.classList.remove('hide');
+  }).catch(() => {});
+}
+document.addEventListener('click', e => {
+  if(e.target && e.target.id === 'jorPergBtn' && e.target.tagName === 'BUTTON' && perguntaHoje){
+    const b = document.querySelector('.nav-btn[data-v=conversa]'); if(b) b.click();
+    const ultima = state.history.length ? state.history[state.history.length - 1] : null;
+    if(!ultima || ultima.content !== perguntaHoje.pergunta){
+      addBubble('lumen', perguntaHoje.pergunta);
+      state.history.push({ role:'assistant', content: perguntaHoje.pergunta });
+    }
+    const inp = document.getElementById('input'); if(inp) setTimeout(() => inp.focus(), 250);
+  }
+});
+
 async function renderJornada(){
   if(!AUTH.token) return;
   pintarSaudacaoTopo();
+  carregarPerguntaDoDia();
 
   // busca tudo em paralelo (tolerante a falhas)
   const get = p => fetch(API_BASE + p, { headers: authHeaders(), cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);

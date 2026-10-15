@@ -980,9 +980,13 @@ async function preparoSessao(userId){
     const goals=(goalsR&&goalsR.goals)||[]; const gAtivo=goals.filter(g=>g.status!=='concluido')[0];
     const gBloco = gAtivo?'<div class="csnap"><h4>🎯 Objetivo em foco</h4><p class="cli-line">'+escHtml(gAtivo.titulo)+' ('+(gAtivo.progresso||0)+'%)</p></div>':'';
     const evol = blocoEvolucaoFicha(pat.checkins);
+    let leituraPreparo = '';
+    try{ const w = await api('/api/admin/weekly?id='+userId); const u = (w.leituras||[])[0];
+      if(u) leituraPreparo = '<div class="csnap"><h4>🗓️ Leitura semanal · '+escHtml(u.quando)+'</h4>'+htmlLeitura(u.conteudo||{})+'</div>'; }catch(_){}
     modalAbrir('Preparo — '+escHtml(nome),
       '<div class="csnap"><h4>🌤️ Como chega (7 dias)</h4>'+esfHtml+(pat.streak>1?'<p class="cli-line">🌿 '+pat.streak+' dias de check-in</p>':'')+'</div>'+
       '<div class="csnap"><h4>📋 Tarefas combinadas</h4>'+tHtml+'</div>'+gBloco+evol+
+      leituraPreparo+
       '<button class="btn" style="margin-top:14px" onclick="modalFechar();abrirCliente('+userId+')">Abrir ficha completa →</button>', {wide:true});
   }catch(e){ modalAbrir('Preparo de sessão','<p class="muted">Erro: '+e.message+'</p>'); }
 }
@@ -1895,7 +1899,7 @@ async function salvarCadRapido(){
     carregarClientes();
   }catch(e){ $('crResult').innerHTML='<span style="color:var(--vermelho)">Erro: '+e.message+'</span>'; }
 }
-const CLI_TABS=[['visao','Visão geral'],['diario','🚦 Alertas e respostas'],['plano','🛡️ Dias difíceis'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
+const CLI_TABS=[['visao','Visão geral'],['diario','🚦 Alertas e respostas'],['semanal','🗓️ Leitura semanal'],['plano','🛡️ Dias difíceis'],['dados','Dados pessoais'],['saude','Saúde'],['medicamentos','Medicamentos'],['emocional','Emocional'],['espiritual','Espiritual'],['objetivos','Objetivos'],['sessoes','Sessões'],['acesso','Acesso do paciente'],['documentos','Documentos'],['relatorios','Relatórios'],['consentimentos','Consentimentos'],['auditoria','Auditoria']];
 async function abrirRespostas(id){ await abrirCliente(id); cliTab('diario'); }
 async function abrirCliente(id){
   try{ clienteAtual = await api('/api/admin/clients/full?id='+id); }catch(e){ aviso('Erro: '+e.message,'erro'); return; }
@@ -1913,6 +1917,7 @@ function cliTab(t){
   const body=$('cliTabBody');
   if(t==='visao') return renderCliVisao(body);
   if(t==='diario') return renderCliDiario(body);
+  if(t==='semanal') return renderCliSemanal(body);
   if(t==='plano') return renderCliPlano(body);
   if(t==='dados') return renderCliDados(body);
   if(t==='saude') return renderCliSaude(body);
@@ -1939,6 +1944,46 @@ const COMP_DESC = {
   cansei:'sofre, descansa e volta ao mesmo problema no dia seguinte, sem decidir mudar',
   insuportavel:'não suporta mais a vida que leva e está disposto(a) a enfrentar e mudar'
 };
+/* ===== LEITURA SEMANAL (material para a sessão) ===== */
+const MOTIVO_LEIT = { semanal:'semanal (domingo)', vespera_sessao:'véspera da sessão', manual:'gerada por você' };
+function htmlLeitura(c){
+  const L = (titulo, arr, fn) => (arr && arr.length) ? '<div style="margin-top:12px"><b>'+titulo+'</b><ul style="margin:6px 0 0 18px;line-height:1.6">'+arr.map(fn).join('')+'</ul></div>' : '';
+  const at = c.atividade || {};
+  return '<div style="line-height:1.6">'+
+    '<div class="muted" style="font-size:12px">'+(COR_TXT[c.classificacao]||'')+(c.risco&&c.risco!=='nenhum'?' · risco '+escHtml(c.risco):'')+(c.comprometimento&&c.comprometimento!=='indefinido'?' · '+escHtml(COMP_TXT[c.comprometimento]||c.comprometimento):'')+
+      ' · na semana: '+(at.falas||0)+' falas, '+(at.relatorios||0)+' relatórios, '+(at.checkins||0)+' check-ins, perguntas do dia respondidas '+(at.perguntas_respondidas||0)+'/'+(at.perguntas||0)+'</div>'+
+    '<p style="margin:10px 0 0">'+escHtml(c.resumo||'')+'</p>'+
+    (c.como_chega?'<p style="margin:8px 0 0"><b>Como chega:</b> '+escHtml(c.como_chega)+'</p>':'')+
+    (c.evolucao?'<p style="margin:8px 0 0"><b>Evolução:</b> '+escHtml(c.evolucao)+'</p>':'')+
+    L('💔 Dores que apareceram', c.dores, d=>'<li><b>'+escHtml(d.tema)+'</b>: '+escHtml(d.descricao||'')+((d.citacoes||[]).length?'<br><i class="muted">'+d.citacoes.map(x=>'“'+escHtml(x)+'”').join(' · ')+'</i>':'')+'</li>')+
+    L('🌡️ Sentimentos predominantes', c.sentimentos, x=>'<li>'+escHtml(x.nome)+(x.vezes?' <span class="muted">('+x.vezes+'×)</span>':'')+'</li>')+
+    L('🩹 Feridas e traumas em evidência', c.feridas_traumas, x=>'<li><b>'+escHtml(x.tema)+'</b>: '+escHtml(x.evidencia||'')+(x.citacao?'<br><i class="muted">“'+escHtml(x.citacao)+'”</i>':'')+'</li>')+
+    L('🔁 Padrões e crenças', c.padroes_crencas, x=>'<li>'+escHtml(x)+'</li>')+
+    L('🌱 Vitórias', c.vitorias, x=>'<li>'+escHtml(x)+'</li>')+
+    L('❓ Perguntas para a sessão', c.perguntas_sessao, x=>'<li>'+escHtml(x)+'</li>')+
+    L('🧭 Caminhos do Método', c.intervencoes, x=>'<li>'+escHtml(x)+'</li>')+
+    (c.base_biblica?'<p style="margin:10px 0 0"><b>📖 Base bíblica:</b> '+escHtml(c.base_biblica)+'</p>':'')+
+    L('⚠️ Atenção', c.atencao, x=>'<li>'+escHtml(x)+'</li>')+
+    L('🔎 Ainda não explorado (vira pergunta do dia)', c.lacunas, x=>'<li>'+escHtml(x)+'</li>')+
+    '<p class="subc" style="margin-top:12px">Sinais e hipóteses gerados por IA para apoio. O diagnóstico é seu.</p></div>';
+}
+async function renderCliSemanal(body){
+  const seq = cliBodySeq;
+  body.innerHTML='<p class="muted">carregando…</p>';
+  let d; try{ d = await api('/api/admin/weekly?id='+clienteAtual.id); }catch(e){ body.innerHTML='<p class="muted">'+escHtml(e.message)+'</p>'; return; }
+  if(seq !== cliBodySeq) return;
+  const l = d.leituras || [];
+  body.innerHTML =
+    '<p class="subc" style="margin-top:0">Material para a sessão: a IA junta a semana do paciente (conversas, perguntas do dia, relatórios, check-ins, escalas e alertas) e organiza dores, sentimentos, feridas e perguntas. Gerada todo <b>domingo à noite</b> e na <b>véspera de cada sessão agendada</b>.</p>'+
+    '<button class="btn" style="padding:10px 22px;margin-bottom:14px" onclick="gerarLeituraAgora()">Gerar agora</button> <span class="muted" id="lsStatus"></span>'+
+    (l.length ? l.map((x,i)=>'<details '+(i===0?'open':'')+' class="card" style="padding:14px 16px;margin:10px 0"><summary style="cursor:pointer"><b style="text-transform:capitalize">'+escHtml(x.quando)+'</b> <span class="muted">· '+escHtml(MOTIVO_LEIT[x.motivo]||x.motivo)+' · período '+escHtml(x.de||'')+' até '+escHtml(x.ate||'')+(x.whatsapp_enviado?' · WhatsApp ✓':'')+'</span></summary>'+htmlLeitura(x.conteudo||{})+'</details>').join('')
+      : '<p class="muted">Ainda não há leituras. Elas aparecem quando o paciente usa o app na semana. Você também pode gerar agora.</p>');
+}
+async function gerarLeituraAgora(){
+  $('lsStatus').textContent='gerando… (leva cerca de 1 minuto)';
+  try{ await postAdmin('/api/admin/weekly/gerar?id='+clienteAtual.id, {}); renderCliSemanal($('cliTabBody')); }
+  catch(e){ $('lsStatus').textContent=e.message; }
+}
 async function renderCliPlano(body){
   const seq = cliBodySeq;
   body.innerHTML='<p class="muted">carregando…</p>';

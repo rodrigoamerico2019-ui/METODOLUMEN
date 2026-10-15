@@ -53,7 +53,9 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
-         setAnaliseMensagem, falasAnalisadas, AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
+         setAnaliseMensagem, falasAnalisadas, getDailyQuestion, saveDailyQuestion, markDailyAnswered, recentDailyQuestions,
+         dadosDoPeriodo, saveWeeklyReading, setWeeklyWhatsapp, listWeeklyReadings, lastWeeklyReading,
+         pacientesParaLeituraSemanal, pacientesComSessaoAmanha, AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
          listConsents, addConsent, revokeConsent,
@@ -2239,7 +2241,10 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
         model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
         max_tokens: 1024,
         system: buildSystem(nome, prontuario, bussola, ultimo, retrato, plano),
-        messages: messages.map(m => ({ role: m.role, content: String(m.content || '') }))
+        // a conversa precisa começar pela pessoa: se abrir com a pergunta do dia (fala da Lúmen), indica o contexto
+        messages: (messages[0] && messages[0].role === 'assistant'
+          ? [{ role: 'user', content: '(Abri o app e vi a pergunta do dia que você me fez.)' }, ...messages] : messages)
+          .map(m => ({ role: m.role, content: String(m.content || '') }))
       })
     });
     const data = await r.json();
@@ -2256,6 +2261,7 @@ app.post('/api/chat', requireAuth, chatLimiter, async (req, res) => {
         const userMsgId = lastUser ? await saveMessage(uid, 'user', String(lastUser.content || ''), null).catch(() => null) : null;
         await saveMessage(uid, 'assistant', text, metaIA).catch(e => console.error('save assistant:', e.message));
         if (lastUser) await classificarFala(uid, userMsgId, String(lastUser.content || ''), messages, metaIA);
+        if (lastUser) await markDailyAnswered(uid).catch(() => {});
       })().catch(e => console.error('classificar fala:', e.message));
     }
 
@@ -2536,6 +2542,146 @@ app.post('/api/me/lgpd', requireAuth, async (req, res) => {
   } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
 });
 
+// =========================================================
+//  PERGUNTA DO DIA — a Lúmen puxa um tema por dia, priorizando o que ainda não apareceu
+// =========================================================
+const TEMAS_DIA = {
+  1: ['corpo', 'o corpo: sono, cansaço, tensão, onde o peso aparece fisicamente'],
+  2: ['emoções', 'as emoções: o que mais sentiu nesses dias, o que engoliu e não disse'],
+  3: ['relacionamentos', 'os relacionamentos: família, casamento, filhos, amizades'],
+  4: ['história e feridas', 'a história: uma lembrança que ainda dói, o pai, a mãe, perdas, traumas'],
+  5: ['crenças', 'as crenças: o que pensa de si quando erra, as frases que repete por dentro'],
+  6: ['fé', 'a fé: onde está Deus nisso tudo, oração, mágoas com Deus, perdão'],
+  0: ['vitórias e sessão', 'a semana: o que conquistou, o que mudou, e o que quer levar para a sessão']
+};
+function diaSemanaSP() {   // 0 = domingo … 6 = sábado, no horário de Brasília
+  const w = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(new Date());
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(w);
+}
+async function perguntaDoDia(uid, nome) {
+  const ja = await getDailyQuestion(uid).catch(() => null);
+  if (ja) return ja;
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const [tema, desc] = TEMAS_DIA[diaSemanaSP()] || TEMAS_DIA[1];
+  const [pront, ult, recentes, ultimo] = await Promise.all([
+    getProntuario(uid).catch(() => null), lastWeeklyReading(uid).catch(() => null),
+    recentDailyQuestions(uid, 14).catch(() => []), ultimoEncontro(uid).catch(() => null)
+  ]);
+  const lacunas = ult && ult.conteudo && Array.isArray(ult.conteudo.lacunas) ? ult.conteudo.lacunas : [];
+  const primeiro = String(nome || '').split(' ')[0];
+  const ctx = 'TEMA DE HOJE: ' + desc + '\n' +
+    (lacunas.length ? 'TEMAS QUE AINDA NÃO APARECERAM (prefira um deles, se combinar com o tema de hoje): ' + lacunas.join('; ') + '\n' : '') +
+    (recentes.length ? 'PERGUNTAS JÁ FEITAS (não repita): ' + recentes.map(r => r.pergunta).join(' | ') + '\n' : '') +
+    (ultimo && ultimo.falas ? 'O QUE ELA FALOU POR ÚLTIMO: ' + ultimo.falas.slice(-3).join(' / ') + '\n' : '') +
+    (pront && pront.prontuario ? 'MEMÓRIA DA CAMINHADA (só para entender):\n' + String(pront.prontuario).slice(0, 1500) : '');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 120,
+        system: `Você é a Lúmen, companheira de jornada no app da própria pessoa (${primeiro || 'a pessoa'}). Escreva UMA pergunta do dia sobre o tema indicado, para ela responder com calma no app. A pergunta deve ajudar a pessoa a se olhar por dentro e trazer material verdadeiro para a próxima sessão com o terapeuta: dores, sentimentos, lembranças, padrões. Seja acolhedora, concreta e pessoal (ligue ao que ela já viveu, se fizer sentido), em segunda pessoa ("você"), no máximo 30 palavras. Uma pergunta só, aberta, sem julgamento. PROIBIDO: clichês, travessão, citar que existe prontuário ou terapeuta lendo, perguntas de sim/não. Responda SÓ a pergunta.`,
+        messages: [{ role: 'user', content: ctx }] })
+    });
+    const d = await r.json();
+    const p = tirarCe((d.content || []).map(b => b.text || '').join(' ').trim().replace(/^["'“”]+|["'“”]+$/g, '').replace(/\s*[—–]\s*/g, ', '));
+    if (p.length < 8) return null;
+    await saveDailyQuestion(uid, tema, p);
+    return { tema, pergunta: p, respondida_em: null };
+  } catch (e) { console.error('pergunta do dia:', e.message); return null; }
+}
+app.get('/api/me/pergunta-do-dia', requireAuth, async (req, res) => {
+  try { res.json({ pergunta: await perguntaDoDia(req.user.uid, await nomeCadastro(req.user.uid, req.user.name)) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// =========================================================
+//  LEITURA SEMANAL PARA A SESSÃO (sinais e hipóteses — o diagnóstico é do terapeuta)
+// =========================================================
+const gerandoLeitura = new Set();
+async function gerarLeituraSemanal(uid, motivo = 'semanal') {
+  if (!process.env.ANTHROPIC_API_KEY || gerandoLeitura.has(uid)) return null;
+  gerandoLeitura.add(uid);
+  try {
+    const anterior = await lastWeeklyReading(uid).catch(() => null);
+    const fim = new Date();
+    let inicio = new Date(fim.getTime() - 7 * 86400000);
+    if (anterior && anterior.periodo_fim && new Date(anterior.periodo_fim) > inicio && motivo !== 'manual') inicio = new Date(anterior.periodo_fim);
+    const [nome, d, pront, plano, mapaTxt, t] = await Promise.all([
+      nomeCadastro(uid), dadosDoPeriodo(uid, inicio.toISOString()), getProntuario(uid).catch(() => null),
+      planoDiasDificeisTexto(uid).catch(() => ''), getMapaBussola(uid).catch(() => ''), terapeutaContato(uid).catch(() => null)
+    ]);
+    const temAtividade = d && (d.falas.length || d.relatorios.length || d.checkins.length || d.escalas.length || d.alertas.length);
+    if (!temAtividade) return null;
+    const q = x => String(x || '').replace(/\s+/g, ' ').slice(0, 600);
+    const bloco =
+      'FALAS DA PESSOA NA SEMANA (data · cor · frase):\n' + (d.falas.map(f => '- ' + quandoSP(f.created_at) + ' · ' + ((f.analise && f.analise.status) || '—') + ' · "' + q(f.content) + '"').join('\n') || '(nenhuma)') +
+      '\n\nRELATÓRIOS DO DIA:\n' + (d.relatorios.map(r => '- ' + quandoSP(r.criado_em) + ': "' + q(r.texto) + '"').join('\n') || '(nenhum)') +
+      '\n\nPERGUNTAS DO DIA FEITAS PELA LÚMEN:\n' + (d.perguntas.map(p => '- ' + p.dia + ' [' + p.tema + '] ' + p.pergunta + (p.respondida ? ' (respondeu)' : ' (não respondeu)')).join('\n') || '(nenhuma)') +
+      '\n\nCHECK-INS (0–10):\n' + (d.checkins.map(c => '- ' + c.day + ' ' + (c.emocao || '') + ' corpo ' + c.corpo + ' alma ' + c.alma + ' espírito ' + c.espirito).join('\n') || '(nenhum)') +
+      '\n\nESCALAS:\n' + (d.escalas.map(e => { const x = escalaByKey(e.scale_key), f = faixaPorChave(e.scale_key, Number(e.score)); return '- ' + (x ? x.titulo : e.scale_key) + ': ' + e.score + '/100 (' + (f ? f.rotulo : '') + ')'; }).join('\n') || '(nenhuma)') +
+      '\n\nALERTAS E PEDIDOS DE AJUDA:\n' + (d.alertas.map(a => '- ' + quandoSP(a.criado_em) + ' ' + a.gravidade + ' (' + a.origem + '): ' + q(a.motivo)).join('\n') || '(nenhum)') +
+      (plano ? '\n\nPLANO PARA DIAS DIFÍCEIS:\n' + plano : '') +
+      (mapaTxt ? '\n\nQUESTIONÁRIO INICIAL (resumo):\n' + String(mapaTxt).slice(0, 1500) : '') +
+      (pront && pront.prontuario ? '\n\nPRONTUÁRIO EVOLUTIVO:\n' + String(pront.prontuario).slice(0, 3000) : '') +
+      (anterior && anterior.conteudo ? '\n\nLEITURA DA SEMANA ANTERIOR (para comparar):\n' + q(anterior.conteudo.resumo) + ' | dores: ' + (anterior.conteudo.dores || []).map(x => x.tema).join(', ') + ' | cor: ' + (anterior.conteudo.classificacao || '') : '');
+    const sys = [{ type: 'text', text: `Você é supervisor clínico do Método Lúmen (inteligência emocional cristocêntrica: Corpo, Alma e Espírito). Monte a LEITURA SEMANAL de ${nome} para o TERAPEUTA usar na próxima sessão. Use a base do Método e a Bíblia (NVI). NUNCA dê diagnóstico nem nomeie transtornos: descreva sinais, hipóteses e o que precisa ser investigado. Cite as palavras da pessoa entre aspas como evidência. Seja concreto e útil.
+Responda SOMENTE um JSON válido:
+{"resumo":"3-4 frases da semana","como_chega":"como ela deve chegar à sessão","classificacao":"verde|amarelo|vermelho","risco":"nenhum|moderado|alto","comprometimento":"tanto_faz|cansei|insuportavel|indefinido","dores":[{"tema":"...","descricao":"...","citacoes":["frase dela"]}],"sentimentos":[{"nome":"...","vezes":0}],"feridas_traumas":[{"tema":"...","evidencia":"...","citacao":"frase dela ou null"}],"padroes_crencas":["..."],"evolucao":"comparação com a semana anterior: melhorou, piorou ou estacionou, e em quê","vitorias":["..."],"perguntas_sessao":["4 a 6 perguntas para a sessão"],"intervencoes":["técnicas/caminhos do Método para trabalhar"],"base_biblica":"Referência (NVI) — por quê","atencao":["pontos de atenção e risco"],"lacunas":["3 a 5 temas que ainda não apareceram e valem ser explorados nas perguntas do dia"]}
+Use listas vazias quando não houver dado. Seja enxuto: cada texto com no máximo 3 frases.` }];
+    if (KNOWLEDGE) sys.push({ type: 'text', text: 'BASE DE ESTUDO DO MÉTODO LÚMEN:\n' + KNOWLEDGE, cache_control: { type: 'ephemeral' } });
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 5000, system: sys,
+        messages: [{ role: 'user', content: 'PERÍODO: ' + quandoSP(inicio) + ' até ' + quandoSP(fim) + '\n\n' + bloco }] })
+    });
+    const resp = await r.json();
+    const txt = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) { console.error('leitura semanal: resposta sem JSON', resp.stop_reason || resp.error && resp.error.message); return null; }
+    const c = JSON.parse(m[0]);
+    c.atividade = { falas: d.falas.length, relatorios: d.relatorios.length, checkins: d.checkins.length, alertas: d.alertas.length,
+      perguntas: d.perguntas.length, perguntas_respondidas: d.perguntas.filter(p => p.respondida).length };
+    const id = await saveWeeklyReading(uid, { motivo, inicio, fim, conteudo: c });
+    // aviso curto no WhatsApp do terapeuta
+    if (t && t.phone) {
+      const cor = { verde: '🟢 VERDE', amarelo: '🟡 AMARELO', vermelho: '🔴 VERMELHO' }[c.classificacao] || '';
+      const msg = '🗓️ *Leitura semanal pronta*' + (motivo === 'vespera_sessao' ? ' (sessão amanhã)' : '') + '\n*' + nome + '* · ' + cor +
+        (c.risco && c.risco !== 'nenhum' ? ' · risco ' + c.risco : '') + '\n\n' + (c.resumo || '') +
+        ((c.dores || []).length ? '\n\n*Principais dores:* ' + c.dores.slice(0, 3).map(x => x.tema).join('; ') : '') +
+        ((c.perguntas_sessao || []).length ? '\n\n*Para a sessão:* ' + c.perguntas_sessao[0] : '') +
+        '\n\nLeitura completa no painel TRILUMEN, na ficha do paciente (aba Leitura semanal).\n_Sinais e hipóteses para apoio: o diagnóstico é do terapeuta._';
+      try { const ok = (await sendWhatsApp(t.phone, msg)).sent; await setWeeklyWhatsapp(id, ok); } catch (_) {}
+    }
+    return { id, conteudo: c };
+  } catch (e) { console.error('leitura semanal:', e.message); return null; }
+  finally { gerandoLeitura.delete(uid); }
+}
+app.get('/api/admin/weekly', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    res.json({ leituras: (await listWeeklyReadings(Number(req.query.id))).map(l => ({ ...l, quando: quandoSP(l.criado_em),
+      de: l.periodo_inicio ? quandoSP(l.periodo_inicio) : null, ate: l.periodo_fim ? quandoSP(l.periodo_fim) : null })) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.post('/api/admin/weekly/gerar', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const r = await gerarLeituraSemanal(Number(req.query.id), 'manual');
+    if (!r) return res.status(400).json({ error: 'Não há atividade do paciente no app nos últimos 7 dias para montar a leitura.' });
+    res.json({ ok: true, id: r.id });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// agenda: domingo 19h–23h (semanal) e todo dia 18h–22h (véspera de sessão agendada)
+async function rodarLeiturasSemanais() {
+  if (!dbReady || !process.env.ANTHROPIC_API_KEY) return;
+  try {
+    const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+    if (hora >= 18 && hora < 22) for (const uid of await pacientesComSessaoAmanha()) await gerarLeituraSemanal(uid, 'vespera_sessao');
+    if (diaSemanaSP() === 0 && hora >= 19 && hora < 23) for (const uid of await pacientesParaLeituraSemanal()) await gerarLeituraSemanal(uid, 'semanal');
+  } catch (e) { console.error('leituras semanais:', e.message); }
+}
+setInterval(rodarLeiturasSemanais, 30 * 60 * 1000);
+setTimeout(rodarLeiturasSemanais, 90 * 1000);
+
 // ---- contatos ----
 app.get('/api/me/emergency', requireAuth, async (req, res) => {
   try { const c = await emergencyContact(req.user.uid); res.json({ nome: c?.emergency_name || '', telefone: c?.emergency_phone || '' }); }
@@ -2742,6 +2888,19 @@ const LEMBRETES = [
     title: '🕊️ Momento com Deus', body: 'Antes do dia terminar: já teve seu momento com o Pai hoje? Alguns minutos em oração realinham tudo.' }
 ];
 
+async function enviarPerguntasDoDia() {
+  for (const p of await usersForReminders()) {
+    try {
+      if (await reminderSent(p.id, 'pergunta')) continue;
+      if (!(await orgAtiva(await patientOrg(p.id)))) continue;
+      const nomeCad = await nomeCadastro(p.id, p.name);
+      const q = await perguntaDoDia(p.id, nomeCad);
+      if (!q || q.respondida_em) continue;
+      const n = await sendPushToUser(p.id, { title: '💬 A Lúmen quer te perguntar', body: q.pergunta, tag: 'pergunta', url: '/' });
+      if (n > 0) await markReminderSent(p.id, 'pergunta');
+    } catch (e) { console.error('pergunta do dia push:', e.message); }
+  }
+}
 async function enviarToquesManha() {
   const pacientes = await usersForReminders();
   for (const p of pacientes) {
@@ -2763,6 +2922,7 @@ async function rodarLembretes() {
     const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
     // TOQUE DA MANHÃ (9h–11h): mensagem personalizada ligada ao plano, tarefas, metas e conversas de cada paciente
     if (hora >= 9 && hora < 11) await enviarToquesManha();
+    if (hora >= 12 && hora < 14) await enviarPerguntasDoDia();
     const ativos = LEMBRETES.filter(l => hora >= l.deHora && hora < l.ateHora);
     if (!ativos.length) return;
     const pacientes = await usersForReminders();
