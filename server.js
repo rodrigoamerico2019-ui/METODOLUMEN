@@ -2175,7 +2175,7 @@ async function classificarFala(uid, msgId, fala, historico, metaIA) {
         headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
           model: process.env.PRONTUARIO_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 400, temperature: 0,
-          system: `Você classifica, para o TERAPEUTA, a última fala de um paciente num app de acompanhamento emocional cristão. Não é diagnóstico: são sinais.
+          system: `Você classifica, para o TERAPEUTA, a última fala de um paciente num app de acompanhamento emocional cristão. Não é diagnóstico: são sinais. NUNCA nomeie transtornos (depressão, ansiedade generalizada, burnout etc.), nem como "possível"; descreva o que a fala mostra.
 COR: verde = estável, acolhido, sem sinais de alerta · amarelo = sofrimento relevante, dor ativa, padrão repetitivo · vermelho = crise, desesperança, piora importante ou qualquer risco (nunca verde se houver risco).
 RISCO: NENHUM | MODERADO (sofrimento intenso, ideias vagas de "sumir" sem plano) | ALTO (ideação suicida, autolesão, plano, risco a outra pessoa ou criança). ALVO: si | outro | nenhum.
 COMPROMETIMENTO: tanto_faz (acomodação, "não está tão ruim") | cansei (sofre, descansa e volta ao mesmo problema sem decidir mudar) | insuportavel (não aguenta mais e quer mudar) | indefinido (a fala não mostra).
