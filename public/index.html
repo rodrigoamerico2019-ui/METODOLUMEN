@@ -737,7 +737,8 @@
 
     <div class="ag-err hide" id="agErr"></div>
     <div class="ag-foot">Acesso exclusivo para pacientes e mentorados · Desenvolvido por <b>Grupo LUMEN</b><br>
-      <a href="/instalar.html" style="color:var(--gold-soft);text-decoration:none">📲 Instalar o app no celular</a></div>
+      <a href="/instalar.html" style="color:var(--gold-soft);text-decoration:none" id="agInstalar">📲 Instalar o app no celular</a></div>
+    <div class="ag-err hide" id="agChrome" style="text-align:center"></div>
   </div>
 
   <!-- ============ 1º ACESSO: troca da senha provisória criada pelo terapeuta ============ -->
@@ -3296,6 +3297,25 @@ function esferasEmblema(e){
 }
 
 /* na abertura: se o servidor tem contas, exige login; senão segue como antes */
+/* Android fora do Chrome: instalar por aqui gera app bloqueado pelo Play Protect → leva ao Chrome */
+(function(){
+  function navegadorAndroidNaoChrome(){
+    const ua = navigator.userAgent || '';
+    if(!/android/i.test(ua)) return false;
+    const outros = /SamsungBrowser|OPR\/|Opera|EdgA|Edg\/|Firefox|YaBrowser|MiuiBrowser|XiaoMi|UCBrowser|HuaweiBrowser|HeyTapBrowser|Vivaldi|DuckDuckGo|Instagram|FBAN|FBAV|WhatsApp|; wv\)/i;
+    return !/Chrome\//.test(ua) || outros.test(ua);
+  }
+  function linkAbrirNoChrome(caminho){
+    return 'intent://' + location.host + caminho + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' +
+      encodeURIComponent('https://play.google.com/store/apps/details?id=com.android.chrome') + ';end';
+  }
+  const instalado = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if(instalado || !navegadorAndroidNaoChrome()) return;
+  const el = document.getElementById('agChrome'); if(!el) return;
+  el.innerHTML = 'Para instalar o app, use o <b>Google Chrome</b>. Por outro navegador o Android bloqueia a instalação. <a href="' + linkAbrirNoChrome('/instalar.html') + '" style="color:var(--gold-2)">Abrir no Chrome</a>';
+  el.classList.remove('hide');
+})();
+
 /* abertura: mostra o logo por ~1,8 s e some suavemente */
 (function(){
   const sp = document.getElementById('splash'); if(!sp) return;

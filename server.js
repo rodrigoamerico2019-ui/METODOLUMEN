@@ -884,7 +884,7 @@ app.post('/api/admin/clients/access/send', ...clin, async (req, res) => {
     const primeiro = String(c.nome || '').trim().split(' ')[0] || 'você';
     const clinica = c.clinica || 'Instituto Américo';
     const corpo = `Seu acesso ao nosso app de acompanhamento está pronto. 📲\n\n` +
-      `1) Instale o app: ${link}\n2) Entre com:\n👤 Usuário: ${usuario}\n🔑 Senha provisória: ${senha}\n\n` +
+      `1) Instale o app pelo Google Chrome (no Android, não use outro navegador): ${link}\n2) Entre com:\n👤 Usuário: ${usuario}\n🔑 Senha provisória: ${senha}\n\n` +
       `No primeiro acesso você cria a sua própria senha e responde algumas perguntas rápidas para começarmos bem.`;
     const disp = canaisEnvio();
     const resultados = [];
@@ -897,7 +897,7 @@ app.post('/api/admin/clients/access/send', ...clin, async (req, res) => {
           if (!r.sent) throw new Error(r.detail || 'o provedor não confirmou o envio');
         } else if (canal === 'sms') {
           if (!c.celular) throw new Error('paciente sem celular cadastrado');
-          const r = await sendSms(c.celular, `${clinica}: Olá, ${primeiro}! Instale o app: ${link} | Usuário: ${usuario} | Senha provisória: ${senha}`);
+          const r = await sendSms(c.celular, `${clinica}: Olá, ${primeiro}! Instale o app pelo Google Chrome: ${link} | Usuário: ${usuario} | Senha provisória: ${senha}`);
           if (!r.sent) throw new Error(r.detail || 'o provedor não confirmou o envio');
         } else if (canal === 'email') {
           if (!c.email) throw new Error('paciente sem e-mail cadastrado');

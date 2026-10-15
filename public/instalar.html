@@ -38,14 +38,25 @@
   <h1>Instituto Américo</h1>
   <div class="tag">um lugar de novos começos, sempre com você</div>
 
+  <!-- Android fora do Chrome (Samsung Internet etc.): o app gerado por esses navegadores é bloqueado pelo Play Protect -->
+  <div class="card aviso-chrome" id="avisoChrome" style="display:none">
+    <h2>⚠️ Instale pelo Google Chrome</h2>
+    <p style="color:var(--dim);font-size:13.5px;line-height:1.6;margin-bottom:12px">Você está usando outro navegador (como o Samsung Internet). Instalado por ele, o app é <b>bloqueado pelo Google Play Protect</b> (“criado para uma versão mais antiga do Android”). Pelo Chrome, o app é instalado na versão atual, sem aviso.</p>
+    <a class="cta" id="btnChrome" href="#">Abrir no Google Chrome</a>
+    <p class="hint" style="margin-top:8px">Se não abrir, copie o endereço abaixo e cole no Chrome:</p>
+    <p style="font-size:13px;word-break:break-all;color:var(--gold2)" id="enderecoApp"></p>
+    <p class="hint" style="margin-top:10px">Já instalou e apareceu “App de risco bloqueado”? Toque em <b>Entendi</b>, remova o ícone antigo e instale de novo pelo Chrome.</p>
+  </div>
+
   <a class="cta" id="btnInstalar" href="#">📲 Instalar o app</a>
   <div class="status" id="status"></div>
   <div class="hint">Depois de instalar, o ícone do Instituto Américo aparece na tela do seu celular.</div>
   <p style="margin-top:14px"><a class="cta ghost" href="/">Abrir sem instalar →</a></p>
 
   <div class="card" id="cardAndroid">
-    <h2>🤖 No Android (Chrome)</h2>
+    <h2>🤖 No Android (use o Google Chrome)</h2>
     <ol>
+      <li>Abra esta página no <b>Google Chrome</b>. Não instale pelo Samsung Internet nem por outro navegador: o Android bloqueia o app.</li>
       <li>Toque no botão <b>“📲 Instalar o app”</b> acima.</li>
       <li>Se não aparecer, toque no menu <b>⋮</b> (canto superior) → <b>“Instalar aplicativo”</b> ou <b>“Adicionar à tela inicial”</b>.</li>
       <li>Confirme. Pronto — o ícone do Instituto Américo fica na sua tela.</li>
@@ -76,6 +87,22 @@
   const st = document.getElementById('status');
   const jaInstalado = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if(jaInstalado){ st.textContent = '✓ App já instalado neste aparelho.'; btn.style.display='none'; }
+  function navegadorAndroidNaoChrome(){
+    const ua = navigator.userAgent || '';
+    if(!/android/i.test(ua)) return false;
+    const outros = /SamsungBrowser|OPR\/|Opera|EdgA|Edg\/|Firefox|YaBrowser|MiuiBrowser|XiaoMi|UCBrowser|HuaweiBrowser|HeyTapBrowser|Vivaldi|DuckDuckGo|Instagram|FBAN|FBAV|WhatsApp|; wv\)/i;
+    return !/Chrome\//.test(ua) || outros.test(ua);
+  }
+  function linkAbrirNoChrome(caminho){
+    return 'intent://' + location.host + caminho + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' +
+      encodeURIComponent('https://play.google.com/store/apps/details?id=com.android.chrome') + ';end';
+  }
+  if(!jaInstalado && navegadorAndroidNaoChrome()){
+    document.getElementById('avisoChrome').style.display = '';
+    document.getElementById('btnChrome').href = linkAbrirNoChrome('/instalar.html');
+    document.getElementById('enderecoApp').textContent = location.origin + '/instalar.html';
+    btn.style.display = 'none';
+  }
 
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); dp = e; st.textContent = 'Toque em “Instalar o app” para adicionar à sua tela.'; });
   window.addEventListener('appinstalled', ()=>{ st.textContent = '✓ Instalado! Abra pelo ícone na sua tela.'; });

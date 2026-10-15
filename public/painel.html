@@ -2587,7 +2587,7 @@ async function salvarLoginPaciente(){
     const d=await postAdmin('/api/admin/clients/login?id='+clienteAtual.id,{username,password});
     const primeiro=String(clienteAtual.basico&&clienteAtual.basico.name||'').split(' ')[0];
     const msg='Olá, '+primeiro+'! Seu acesso ao app de acompanhamento está pronto.\n\n'+
-      '📲 Instale o app: '+(d.app||acAppLink)+'\n'+
+      '📲 Instale o app pelo Google Chrome (no Android, não use outro navegador): '+(d.app||acAppLink)+'\n'+
       '👤 Usuário: '+d.usuario+'\n🔑 Senha provisória: '+password+'\n\n'+
       'No primeiro acesso você vai criar a sua própria senha e responder algumas perguntas rápidas para começarmos bem.';
     const fone=String((clienteAtual.basico&&clienteAtual.basico.phone)||'').replace(/\D/g,'');
