@@ -188,14 +188,17 @@ const emAtualizacao = new Set();
 async function updateProntuario(uid) {
   if (!uid || !dbReady || emAtualizacao.has(uid)) return;
   const novas = await messagesSinceProfile(uid);
-  if (novas.length < 4) return; // pouca coisa nova; espera acumular
+  const pAtual = await getProntuario(uid).catch(() => null);
+  const desde = pAtual && pAtual.updated_at ? new Date(pAtual.updated_at).getTime() : 0;
+  const relNovos = (await myDayReports(uid, 10).catch(() => [])).filter(r => new Date(r.criado_em).getTime() > desde).reverse();
+  if (novas.length + relNovos.length * 3 < 4) return; // pouca coisa nova; espera acumular
   emAtualizacao.add(uid);
   try {
     const atual = (await getProntuario(uid))?.prontuario || '(prontuário ainda vazio — primeira consolidação)';
     const trechos = novas.map(m => {
       const meta = m.meta ? ` [${m.meta.emocao || ''}/${m.meta.status || ''}]` : '';
       return `${new Date(m.created_at).toLocaleDateString('pt-BR')} ${m.role === 'user' ? 'PACIENTE' : 'LÚMEN'}${meta}: ${String(m.content).replace(/##META\{[\s\S]*?\}##\s*/, '').slice(0, 500)}`;
-    }).join('\n');
+    }).join('\n') + (relNovos.length ? '\n\nRELATÓRIOS DO DIA QUE ELA ESCREVEU:\n' + relNovos.map(r => new Date(r.criado_em).toLocaleDateString('pt-BR') + ' RELATÓRIO: ' + String(r.texto || '').slice(0, 800)).join('\n') : '');
     // escalas de acompanhamento mais recentes (0–100) para a IA ler no contexto
     let blocoEscalas = '';
     try {
@@ -1063,9 +1066,10 @@ PROIBIDO: "de onde paramos", "na última conversa", "retomando", clichês, trave
 // para a IA cruzar o que a pessoa DIZ com o que ela VIVE e raciocinar com profundidade.
 async function retratoPaciente(uid) {
   if (!uid || !dbReady) return null;
-  const [serie, escalas, plano, extras, audios] = await Promise.all([
+  const [serie, escalas, plano, extras, audios, relDia, leitura] = await Promise.all([
     checkinSeries(uid, 21).catch(() => []), latestScales(uid).catch(() => []), getActionPlan(uid).catch(() => null),
-    getExtras(uid).catch(() => ({})), listAudios(uid).catch(() => [])
+    getExtras(uid).catch(() => ({})), listAudios(uid).catch(() => []),
+    myDayReports(uid, 3).catch(() => []), lastWeeklyReading(uid).catch(() => null)
   ]);
   const linhas = [];
   if (serie.length) {
@@ -1092,6 +1096,22 @@ async function retratoPaciente(uid) {
   if (vit.length) linhas.push('VITÓRIAS RECENTES: ' + vit.join('; ') + '.');
   const au = (audios || []).filter(a => a.resumo && a.resumo.resumo).slice(0, 2).map(a => a.resumo.resumo);
   if (au.length) linhas.push('O QUE ELA DISSE EM ÁUDIO: ' + au.join(' | '));
+  // o que ela escreveu no "Relatório do meu dia" (só o texto dela, nunca a pré-análise do terapeuta)
+  const rd = (relDia || []).map(r => quandoSP(r.criado_em) + ': ' + String(r.texto || '').replace(/\s+/g, ' ').slice(0, 400));
+  if (rd.length) linhas.push('O QUE ELA ESCREVEU NO RELATÓRIO DO DIA:\n- ' + rd.join('\n- '));
+  // fios da última leitura semanal: para aprofundar com delicadeza, nunca para recitar
+  const c = leitura && leitura.conteudo;
+  if (c && (Date.now() - new Date(leitura.criado_em).getTime()) < 21 * 864e5) {
+    const t = (arr, f) => (Array.isArray(arr) ? arr : []).map(f).filter(Boolean).slice(0, 4).join('; ');
+    const fios = [
+      t(c.dores, d => d && d.tema) && 'dores em aberto: ' + t(c.dores, d => d && d.tema),
+      t(c.feridas_traumas, x => x && x.tema) && 'feridas em evidência: ' + t(c.feridas_traumas, x => x && x.tema),
+      t(c.padroes_crencas, x => x) && 'padrões e crenças: ' + t(c.padroes_crencas, x => x),
+      t(c.vitorias, x => x) && 'vitórias: ' + t(c.vitorias, x => x),
+      t(c.lacunas, x => x) && 'ainda não explorado: ' + t(c.lacunas, x => x)
+    ].filter(Boolean);
+    if (fios.length) linhas.push('FIOS DA SEMANA (leitura que a Lúmen fez da semana dela; aprofunde UM fio por vez, quando a conversa abrir espaço, sem pressa e sem citar que existe leitura):\n- ' + fios.join('\n- '));
+  }
   return linhas.join('\n');
 }
 app.get('/api/me/greeting', requireAuth, async (req, res) => {
