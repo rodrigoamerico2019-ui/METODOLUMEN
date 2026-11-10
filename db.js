@@ -1089,6 +1089,19 @@ export async function terapeutaDoPaciente(pid) {
   const r = await pool.query('SELECT terapeuta_id FROM users WHERE id=$1', [pid]);
   return r.rows[0] ? r.rows[0].terapeuta_id : null;
 }
+// PRESENÇA: o app do paciente avisa que está aberto (a cada ~45 s); "online" = sinal nos últimos 2 min
+export async function marcarOnline(uid) {
+  if (!pool || !uid) return;
+  await pool.query("UPDATE users SET last_seen_at=now() WHERE id=$1 AND role='paciente'", [uid]);
+}
+export async function onlineAgora(orgId = null, terapeutaId = null) {
+  if (!pool) return [];
+  const r = await pool.query(`SELECT id, name, last_seen_at FROM users
+    WHERE role='paciente' AND last_seen_at > now() - interval '2 minutes'
+      AND ($1::bigint IS NULL OR org_id=$1) AND ($2::int IS NULL OR terapeuta_id IS NULL OR terapeuta_id=$2)
+    ORDER BY name`, [orgId, terapeutaId]);
+  return r.rows;
+}
 export async function listUsers(orgId = null, terapeutaId = null) {
   if (!pool) return [];
   const r = await pool.query(`

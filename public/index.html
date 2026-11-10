@@ -2434,6 +2434,13 @@ function quandoAgora(d){
 }
 function pintarQuandoRelatorio(){ const el=document.getElementById('rdQuando'); if(el) el.textContent = quandoAgora(); }
 setInterval(pintarQuandoRelatorio, 30 * 1000); pintarQuandoRelatorio();
+/* presença: enquanto o app está aberto na tela, avisa o servidor (o terapeuta vê "online agora") */
+function pingOnline(){
+  try{ if(!AUTH.token || document.visibilityState !== 'visible') return;
+    fetch(API_BASE + '/api/me/ping', { method:'POST', headers: authHeaders() }).catch(() => {}); }catch(_){}
+}
+setInterval(pingOnline, 45 * 1000); setTimeout(pingOnline, 1500);
+document.addEventListener('visibilitychange', pingOnline);
 function escTxt(t){ return String(t||'').split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
 function carregarRelatoriosDia(){
   if(!AUTH.token) return;

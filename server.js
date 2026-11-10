@@ -49,7 +49,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          statusAcessoCliente, criarAcessoCliente, checarAcessoToken, ativarAcessoCliente, revogarAcessoCliente,
          definirLoginPaciente, contaPaciente, trocarSenhaPaciente, contatoAcessoPaciente, usuarioDisponivel,
          orgAtiva, excluirOrganizacao, terapeutaDoPaciente, nomeDoPaciente,
-         saveDayReport, setDayReportAnalysis, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
+         saveDayReport, setDayReportAnalysis, marcarOnline, onlineAgora, myDayReports, dayReportsForTherapist, setClassificacao, getClassificacao,
          terapeutaContato, salvarAlerta, alertaRecente, listAlertas, getTelefoneMentor, setTelefoneMentor, setEmergencyContact,
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
@@ -2608,6 +2608,15 @@ async function perguntaDoDia(uid, nome) {
     return { tema, pergunta: p, respondida_em: null };
   } catch (e) { console.error('pergunta do dia:', e.message); return null; }
 }
+// presença em tempo real: o app avisa que está aberto; o painel do terapeuta consulta quem está online
+app.post('/api/me/ping', requireAuth, async (req, res) => {
+  try { await marcarOnline(req.user?.uid); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+app.get('/api/admin/online', requireAdmin, soMentor, async (req, res) => {
+  try { res.json({ online: await onlineAgora(req.orgId, req.mentorUid || null) }); }
+  catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
 app.get('/api/me/pergunta-do-dia', requireAuth, async (req, res) => {
   try { res.json({ pergunta: await perguntaDoDia(req.user.uid, await nomeCadastro(req.user.uid, req.user.name)) }); }
   catch (e) { res.status(500).json({ error: String(e.message || e) }); }

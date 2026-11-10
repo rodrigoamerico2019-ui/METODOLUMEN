@@ -1198,10 +1198,46 @@ async function boot(){
     const [ov, us] = await Promise.all([ api('/api/admin/overview'), api('/api/admin/users') ]);
     pacientes = us.pacientes;
     nav('prioridades'); renderGeral(ov);
+    vigiarOnline();
   }catch(e){
     $('keyErr').textContent = 'Erro ao carregar: ' + e.message;
     $('gate').classList.remove('hide'); $('shell').classList.remove('on');
   }
+}
+
+/* ===== ONLINE AGORA: quem está com o app aberto, com aviso na hora ===== */
+let _onlineIds = null, _onlineTimer = null;
+function bipOnline(){ try{ const c=new (window.AudioContext||window.webkitAudioContext)(); const o=c.createOscillator(), g=c.createGain();
+  o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.12,c.currentTime); g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.5);
+  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+0.5); }catch(_){} }
+function pedirNotificacao(){ try{ if('Notification' in window && Notification.permission==='default') Notification.requestPermission(); }catch(_){} }
+document.addEventListener('click', pedirNotificacao, { once:true });
+async function vigiarOnline(){
+  if(IS_SUPER) return;
+  clearTimeout(_onlineTimer);
+  try{
+    const d = await api('/api/admin/online'); const lista = d.online || [];
+    const ids = new Set(lista.map(x=>String(x.id)));
+    if(_onlineIds){
+      const novos = lista.filter(x=>!_onlineIds.has(String(x.id)));
+      novos.forEach(x=>{
+        const nm = x.name || 'Paciente';
+        aviso('🟢 '+nm+' acabou de abrir o app', 'ok'); bipOnline();
+        try{ if('Notification' in window && Notification.permission==='granted'){
+          const nt = new Notification('🟢 '+nm+' está online', { body:'Acabou de abrir o app do Instituto Américo.', icon:'/ia-icon-192.png', tag:'online-'+x.id });
+          nt.onclick = () => { window.focus(); abrirCliente(x.id); nt.close(); }; } }catch(_){}
+      });
+    }
+    _onlineIds = ids;
+    let el = $('onlinePill');
+    if(!el){ el=document.createElement('div'); el.id='onlinePill';
+      el.style.cssText='position:fixed;right:16px;bottom:16px;z-index:900;background:var(--panel,#fff);border:1px solid var(--line,#ddd);border-radius:14px;padding:10px 14px;box-shadow:0 6px 20px rgba(0,0,0,.18);font-size:13px;max-width:260px';
+      document.body.appendChild(el); }
+    el.innerHTML = lista.length
+      ? '<b>🟢 Online agora ('+lista.length+')</b>'+lista.map(x=>'<div style="margin-top:6px;cursor:pointer;text-decoration:underline" onclick="abrirCliente('+Number(x.id)+')">'+escHtml(x.name||'Paciente')+'</div>').join('')
+      : '<span class="muted">⚪ Nenhum paciente online agora</span>';
+  }catch(_){}
+  _onlineTimer = setTimeout(vigiarOnline, 20000);
 }
 
 /* ===== MARCA PRÓPRIA (nome + logo da clínica/profissional) ===== */
