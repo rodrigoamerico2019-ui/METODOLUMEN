@@ -1320,6 +1320,9 @@ async function abrirMinhaClinica(boasVindas){
     logoBox+
     '<p class="subc" style="margin:2px 0 8px">💡 Para ficar bem alinhada: PNG com fundo transparente, formato <b>horizontal</b> (cerca de <b>360×90&nbsp;px</b>) ou uma logo quadrada de até <b>200&nbsp;px</b>. Máx. 2&nbsp;MB.</p>'+
     '<input type="file" id="mkLogo" accept="image/png,image/jpeg,image/webp" style="margin-bottom:12px"/>'+
+    '<div class="section-title" style="font-size:14px;margin-top:6px">🧾 Quem assina os recibos</div>'+
+    '<div class="dp-grid"><div class="dp-half"><label>Nome completo do responsável</label><input id="mkRecNome"/></div>'+
+    '<div class="dp-half"><label>CPF</label><input id="mkRecCpf" inputmode="numeric" placeholder="000.000.000-00"/></div></div>'+
     '<div><button class="btn" style="padding:10px 24px" onclick="salvarMarca()">Salvar</button> <span class="muted" id="mkStatus"></span></div>'+
     '<hr style="margin:22px 0 16px;border:none;border-top:1px solid var(--line)"/>'+
     '<div class="section-title" style="font-size:14px">👥 Profissionais da clínica</div>'+
@@ -1346,12 +1349,14 @@ async function abrirMinhaClinica(boasVindas){
   modalAbrir('Minha clínica', html, {wide:true});
   $('mkNome').value=b.marca_nome||'';
   $('mkSub').value=b.marca_subtitulo||'';
+  $('mkRecNome').value=b.recibo_nome||'';
+  $('mkRecCpf').value=(b.recibo_cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
   api('/api/mentor/whatsapp').then(w=>{ if($('mkWhats')) $('mkWhats').value=(w&&w.phone)||''; }).catch(()=>{});
 }
 async function salvarMarca(){
   $('mkStatus').textContent='salvando…';
   try{
-    await postAdmin('/api/admin/branding', { marca_nome:$('mkNome').value.trim(), marca_subtitulo:$('mkSub').value.trim() });
+    await postAdmin('/api/admin/branding', { marca_nome:$('mkNome').value.trim(), marca_subtitulo:$('mkSub').value.trim(), recibo_nome:$('mkRecNome').value.trim(), recibo_cpf:$('mkRecCpf').value.trim() });
     const f=($('mkLogo').files||[])[0];
     if(f){
       if(f.size>2*1048576){ $('mkStatus').textContent='A logo passa de 2 MB.'; return; }

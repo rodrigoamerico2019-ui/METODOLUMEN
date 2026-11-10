@@ -53,6 +53,8 @@ export async function initDb() {
     -- marca própria da clínica/profissional (white-label): nome de exibição + subtítulo
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS marca_nome TEXT;
     ALTER TABLE organizations ADD COLUMN IF NOT EXISTS marca_subtitulo TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS recibo_nome TEXT;
+    ALTER TABLE organizations ADD COLUMN IF NOT EXISTS recibo_cpf TEXT;
     -- logo da clínica (blob em tabela separada p/ não pesar no orgById)
     CREATE TABLE IF NOT EXISTS org_branding (
       org_id BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
@@ -1005,10 +1007,16 @@ export async function orgById(orgId) {
 export async function getBranding(orgId) {
   const o = await orgById(orgId);
   if (!o) return null;
-  return { nome: o.nome, marca_nome: o.marca_nome || '', marca_subtitulo: o.marca_subtitulo || '', tem_logo: !!o.tem_logo };
+  return { nome: o.nome, marca_nome: o.marca_nome || '', marca_subtitulo: o.marca_subtitulo || '', tem_logo: !!o.tem_logo,
+    recibo_nome: o.recibo_nome || '', recibo_cpf: o.recibo_cpf || '' };
 }
-export async function setBranding(orgId, { marca_nome, marca_subtitulo } = {}, uid) {
+export async function setBranding(orgId, { marca_nome, marca_subtitulo, recibo_nome, recibo_cpf } = {}, uid) {
   if (!pool || !orgId) throw new Error('organização inválida');
+  if (recibo_nome !== undefined || recibo_cpf !== undefined) {
+    const cpf = String(recibo_cpf || '').replace(/\D/g, '');
+    if (cpf && cpf.length !== 11) throw new Error('CPF do responsável deve ter 11 dígitos.');
+    await pool.query('UPDATE organizations SET recibo_nome=$2, recibo_cpf=$3 WHERE id=$1', [orgId, String(recibo_nome || '').trim() || null, cpf || null]);
+  }
   await pool.query('UPDATE organizations SET marca_nome=$2, marca_subtitulo=$3 WHERE id=$1',
     [orgId, (marca_nome || '').trim() || null, (marca_subtitulo || '').trim() || null]);
   await registrarAuditoria({ orgId, userId: uid, acao: 'marca_atualizada', entidade: 'organization', entidadeId: orgId, dados: { marca_nome: (marca_nome || '').trim() } });
@@ -1705,7 +1713,8 @@ export async function reciboData(receivableId, orgId) {
   const referente = rc.descricao || (rc.competencia ? ('Mensalidade ' + rc.competencia) : 'Atendimento psicológico');
   return {
     numero: 'REC-' + String(rc.id).padStart(5, '0'),
-    emitente: { nome: (org && (org.marca_nome || org.nome)) || 'TriLumen', subtitulo: (org && org.marca_subtitulo) || '' },
+    emitente: { nome: (org && (org.marca_nome || org.nome)) || 'TriLumen', subtitulo: (org && org.marca_subtitulo) || '',
+      assinante: (org && org.recibo_nome) || '', cpf: (org && org.recibo_cpf) || '' },
     pagador: { nome: rc.paciente || '—' },
     valor: Number(rc.valor),
     referente,

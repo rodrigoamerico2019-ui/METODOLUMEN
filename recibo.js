@@ -4,6 +4,12 @@
 //  terapeuta (carnê-leão). Leve, sem Chromium.
 // =========================================================
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const LOGO = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public', 'logo-instituto.png');
+const cpfFmt = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d; };
+const dtCurto = d => d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
 
 const OURO = '#B8912F', TINTA = '#1E1B16', FRACO = '#6B6355', LINHA = '#E0D8C6';
 const M = 56;
@@ -55,14 +61,16 @@ export function buildReciboPdf(d) {
     doc.on('error', reject);
     const L = doc.page.width - M * 2;
 
-    // ---- cabeçalho: emitente (marca) + nº ----
-    doc.fillColor(OURO).font('Helvetica-Bold').fontSize(18).text(txt(d.emitente?.nome) || 'TriLumen', M, M, { width: L * 0.7 });
-    if (txt(d.emitente?.subtitulo)) doc.fillColor(FRACO).font('Helvetica').fontSize(9.5).text(txt(d.emitente.subtitulo), { width: L * 0.7 });
+    // ---- cabeçalho: logo do Instituto Américo + emitente (marca) + nº ----
+    const LG = 72; let tx = M;
+    try { if (fs.existsSync(LOGO)) { doc.image(LOGO, M, M - 8, { width: LG, height: LG }); tx = M + LG + 14; } } catch (_) {}
+    doc.fillColor(OURO).font('Helvetica-Bold').fontSize(18).text(txt(d.emitente?.nome) || 'TriLumen', tx, M + 8, { width: L * 0.7 - (tx - M) });
+    if (txt(d.emitente?.subtitulo)) doc.fillColor(FRACO).font('Helvetica').fontSize(9.5).text(txt(d.emitente.subtitulo), { width: L * 0.7 - (tx - M) });
     doc.font('Helvetica-Bold').fontSize(11).fillColor(TINTA).text('RECIBO', M + L * 0.7, M, { width: L * 0.3, align: 'right' });
     doc.font('Helvetica').fontSize(9).fillColor(FRACO).text('Nº ' + (d.numero || ''), { width: L * 0.3, align: 'right' });
 
     // ---- caixa do valor ----
-    const boxY = M + 62;
+    const boxY = M + 84;
     doc.roundedRect(M, boxY, L, 46, 8).fillAndStroke('#FBF6E9', LINHA);
     doc.fillColor(FRACO).font('Helvetica').fontSize(8.5).text('VALOR', M + 16, boxY + 9, { characterSpacing: 1.5 });
     doc.fillColor(TINTA).font('Helvetica-Bold').fontSize(22).text(moeda(d.valor), M + 12, boxY + 18, { width: L - 24 });
@@ -78,6 +86,8 @@ export function buildReciboPdf(d) {
     doc.font('Helvetica').text('referente a ', { continued: true }).font('Helvetica-Bold').text(txt(d.referente) || 'atendimento psicológico', { continued: true })
       .font('Helvetica').text('.');
     doc.moveDown(0.5);
+    doc.font('Helvetica').text('Data do pagamento: ', { continued: true }).font('Helvetica-Bold').text(dtCurto(d.data) || '—');
+    doc.moveDown(0.5);
     doc.fillColor(FRACO).font('Helvetica-Oblique').fontSize(10)
       .text('Para maior clareza, firmo o presente recibo, dando plena e total quitação do valor acima.');
 
@@ -87,12 +97,18 @@ export function buildReciboPdf(d) {
       .text((txt(d.cidade) ? txt(d.cidade) + ', ' : '') + dtLongo(d.data), M, y, { width: L, align: 'right' });
     const sy = y + 60;
     doc.moveTo(M + L * 0.32, sy).lineTo(M + L, sy).strokeColor(LINHA).lineWidth(1).stroke();
-    doc.fillColor(TINTA).font('Helvetica-Bold').fontSize(11).text(txt(d.emitente?.nome) || 'TriLumen', M + L * 0.32, sy + 6, { width: L * 0.68, align: 'center' });
-    if (txt(d.emitente?.subtitulo)) doc.fillColor(FRACO).font('Helvetica').fontSize(9).text(txt(d.emitente.subtitulo), { width: L * 0.68, align: 'center' });
+    if (txt(d.emitente?.assinante)) {
+      doc.fillColor(TINTA).font('Helvetica-Bold').fontSize(11).text(txt(d.emitente.assinante), M + L * 0.32, sy + 6, { width: L * 0.68, align: 'center' });
+      if (txt(d.emitente?.cpf)) doc.font('Helvetica').fontSize(10).text('CPF ' + cpfFmt(d.emitente.cpf), { width: L * 0.68, align: 'center' });
+      doc.fillColor(FRACO).font('Helvetica').fontSize(9).text(txt(d.emitente?.nome) || 'TriLumen', { width: L * 0.68, align: 'center' });
+    } else {
+      doc.fillColor(TINTA).font('Helvetica-Bold').fontSize(11).text(txt(d.emitente?.nome) || 'TriLumen', M + L * 0.32, sy + 6, { width: L * 0.68, align: 'center' });
+      if (txt(d.emitente?.subtitulo)) doc.fillColor(FRACO).font('Helvetica').fontSize(9).text(txt(d.emitente.subtitulo), { width: L * 0.68, align: 'center' });
+    }
 
     // ---- rodapé (acima da margem inferior, sem estourar p/ 2ª página) ----
     doc.font('Helvetica').fontSize(7.5).fillColor(FRACO)
-      .text((txt(d.emitente?.nome) || 'TriLumen') + ' · ' + (d.numero || '') + ' · emitido pela plataforma TriLumen',
+      .text((txt(d.emitente?.nome) || 'TriLumen') + ' · ' + (d.numero || '') + ' · emitido pela plataforma Instituto Américo',
         M, doc.page.height - M - 16, { width: L, align: 'center', lineBreak: false });
 
     doc.end();
