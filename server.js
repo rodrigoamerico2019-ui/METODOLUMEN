@@ -54,7 +54,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          listSupportContacts, saveSupportContacts, contatosDeRisco, getSafetyPlan, saveSafetyPlan, planoDiasDificeisTexto,
          listHope, addHope, deleteHope, getHopeMedia, hopeTexto, lgpdAssinado, assinarLGPD,
          setAnaliseMensagem, falasAnalisadas, getDailyQuestion, saveDailyQuestion, markDailyAnswered, recentDailyQuestions,
-         dadosDoPeriodo, saveWeeklyReading, setWeeklyWhatsapp, listWeeklyReadings, lastWeeklyReading,
+         dadosDoPeriodo, saveWeeklyReading, setWeeklyWhatsapp, listWeeklyReadings, lastWeeklyReading, getWeeklyReading, setWeeklyContent,
          pacientesParaLeituraSemanal, pacientesComSessaoAmanha, AREAS_PROF, listProfissionais, addProfissional, updateProfissional, acessoProfissional, removerProfissional,
          sharedForClient, concluirTarefaCliente, setWhatsOptout,
          listDocuments, addDocument, getDocument, deleteDocument,
@@ -63,6 +63,7 @@ import { initDb, dbReady, register, login, requireAuth, saveMessage, recentHisto
          reportParaEnvio, registrarEntrega, listDeliveries, deliveriesByClient } from './db.js';
 import { buildReportPdf } from './relatorio.js';
 import { buildReciboPdf } from './recibo.js';
+import { buildLeituraPdf } from './leitura-pdf.js';
 import { blocoAbertura } from './abertura.js';
 import { ESCALAS, catalogoEscalas, escalaByKey, pontuar, faixaPorChave } from './escalas.js';
 import { catalogoMapa, processarMapa, MAPA } from './mapa.js';
@@ -2654,12 +2655,13 @@ async function gerarLeituraSemanal(uid, motivo = 'semanal') {
       (anterior && anterior.conteudo ? '\n\nLEITURA DA SEMANA ANTERIOR (para comparar):\n' + q(anterior.conteudo.resumo) + ' | dores: ' + (anterior.conteudo.dores || []).map(x => x.tema).join(', ') + ' | cor: ' + (anterior.conteudo.classificacao || '') : '');
     const sys = [{ type: 'text', text: `Você é supervisor clínico do Método Lúmen (inteligência emocional cristocêntrica: Corpo, Alma e Espírito). Monte a LEITURA SEMANAL de ${nome} para o TERAPEUTA usar na próxima sessão. Use a base do Método e a Bíblia (NVI). NUNCA dê diagnóstico nem nomeie transtornos: descreva sinais, hipóteses e o que precisa ser investigado. Cite as palavras da pessoa entre aspas como evidência. Seja concreto e útil.
 Responda SOMENTE um JSON válido:
-{"resumo":"3-4 frases da semana","como_chega":"como ela deve chegar à sessão","classificacao":"verde|amarelo|vermelho","risco":"nenhum|moderado|alto","comprometimento":"tanto_faz|cansei|insuportavel|indefinido","dores":[{"tema":"...","descricao":"...","citacoes":["frase dela"]}],"sentimentos":[{"nome":"...","vezes":0}],"feridas_traumas":[{"tema":"...","evidencia":"...","citacao":"frase dela ou null"}],"padroes_crencas":["..."],"evolucao":"comparação com a semana anterior: melhorou, piorou ou estacionou, e em quê","vitorias":["..."],"perguntas_sessao":["4 a 6 perguntas para a sessão"],"intervencoes":["técnicas/caminhos do Método para trabalhar"],"base_biblica":"Referência (NVI) — por quê","atencao":["pontos de atenção e risco"],"lacunas":["3 a 5 temas que ainda não apareceram e valem ser explorados nas perguntas do dia"]}
+{"resumo":"3-4 frases da semana","como_chega":"como ela deve chegar à sessão","classificacao":"verde|amarelo|vermelho","risco":"nenhum|moderado|alto","comprometimento":"tanto_faz|cansei|insuportavel|indefinido","dores":[{"tema":"...","descricao":"...","citacoes":["frase dela"]}],"sentimentos":[{"nome":"...","vezes":0}],"feridas_traumas":[{"tema":"...","evidencia":"...","citacao":"frase dela ou null"}],"padroes_crencas":["..."],"evolucao":"comparação com a semana anterior: melhorou, piorou ou estacionou, e em quê","vitorias":["..."],"perguntas_sessao":["4 a 6 perguntas para a sessão"],"intervencoes":["técnicas/caminhos do Método para trabalhar"],"base_biblica":"Referência (NVI) — por quê","atencao":["pontos de atenção e risco"],"lacunas":["3 a 5 temas que ainda não apareceram e valem ser explorados nas perguntas do dia"],"tarefas_semana":[{"titulo":"tarefa curta","area":"corpo|alma|espirito","como":"o passo concreto, simples e possível","frequencia":"quando/quantas vezes","por_que":"ligação com o que ela trouxe"}],"direcionamento":{"foco_sessao":"o tema central da próxima sessão","objetivo":"o que a sessão deve alcançar","passos":["3 a 5 passos do roteiro da sessão, em ordem"],"evitar":["o que evitar nesta fase"],"proximas_semanas":"rumo do processo nas próximas 2-4 semanas"}}
+TAREFAS: 3 a 5 tarefas práticas para o paciente fazer ao longo da semana, equilibrando corpo, alma e espírito, pequenas o bastante para serem cumpridas e ligadas às dores dela. Em risco alto, a primeira tarefa é de segurança (rede de apoio, plano para dias difíceis).
 Use listas vazias quando não houver dado. Seja enxuto: cada texto com no máximo 3 frases.` }];
     if (KNOWLEDGE) sys.push({ type: 'text', text: 'BASE DE ESTUDO DO MÉTODO LÚMEN:\n' + KNOWLEDGE, cache_control: { type: 'ephemeral' } });
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 5000, system: sys,
+      body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 7000, system: sys,
         messages: [{ role: 'user', content: 'PERÍODO: ' + quandoSP(inicio) + ' até ' + quandoSP(fim) + '\n\n' + bloco }] })
     });
     const resp = await r.json();
@@ -2690,6 +2692,48 @@ app.get('/api/admin/weekly', requireAdmin, soMentor, async (req, res) => {
     res.json({ leituras: (await listWeeklyReadings(Number(req.query.id))).map(l => ({ ...l, quando: quandoSP(l.criado_em),
       de: l.periodo_inicio ? quandoSP(l.periodo_inicio) : null, ate: l.periodo_fim ? quandoSP(l.periodo_fim) : null })) });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+// leituras antigas (antes das tarefas): completa tarefas + direcionamento a partir da própria leitura
+async function completarDirecionamento(uid, l) {
+  const c = l.conteudo || {};
+  if (Array.isArray(c.tarefas_semana) && c.tarefas_semana.length && c.direcionamento) return c;
+  if (!process.env.ANTHROPIC_API_KEY) return c;
+  const [nome, pront] = await Promise.all([nomeCadastro(uid), getProntuario(uid).catch(() => null)]);
+  const sys = [{ type: 'text', text: `Você é supervisor clínico do Método Lúmen (Corpo, Alma e Espírito, base bíblica NVI). A partir da LEITURA SEMANAL de ${nome}, indique TAREFAS para o paciente na semana e o DIRECIONAMENTO da próxima sessão para o terapeuta. Nunca nomeie transtornos. Seja concreto.
+Responda SOMENTE um JSON: {"tarefas_semana":[{"titulo":"tarefa curta","area":"corpo|alma|espirito","como":"o passo concreto, simples e possível","frequencia":"quando/quantas vezes","por_que":"ligação com o que ela trouxe"}],"direcionamento":{"foco_sessao":"o tema central da próxima sessão","objetivo":"o que a sessão deve alcançar","passos":["3 a 5 passos do roteiro da sessão, em ordem"],"evitar":["o que evitar nesta fase"],"proximas_semanas":"rumo do processo nas próximas 2-4 semanas"}}
+TAREFAS: 3 a 5, práticas, pequenas e ligadas às dores dela; em risco alto, a primeira é de segurança.` }];
+  if (KNOWLEDGE) sys.push({ type: 'text', text: 'BASE DE ESTUDO DO MÉTODO LÚMEN:\n' + KNOWLEDGE, cache_control: { type: 'ephemeral' } });
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: process.env.ANALISE_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 2500, system: sys,
+      messages: [{ role: 'user', content: 'LEITURA SEMANAL:\n' + JSON.stringify(c).slice(0, 12000) + (pront && pront.prontuario ? '\n\nPRONTUÁRIO EVOLUTIVO:\n' + String(pront.prontuario).slice(0, 2500) : '') }] })
+  });
+  const resp = await r.json();
+  const m = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('').match(/\{[\s\S]*\}/);
+  if (!m) return c;
+  const x = JSON.parse(m[0]);
+  const novo = { ...c, tarefas_semana: x.tarefas_semana || [], direcionamento: x.direcionamento || {} };
+  await setWeeklyContent(l.id, novo);
+  return novo;
+}
+const MOTIVO_LEITURA = { semanal: 'semanal de domingo', vespera_sessao: 'véspera da sessão', manual: 'gerada pelo terapeuta' };
+app.get('/api/admin/weekly/pdf', requireAdmin, soMentor, async (req, res) => {
+  try {
+    if (!(await guardPaciente(req, res))) return;
+    const uid = Number(req.query.id);
+    const l = await getWeeklyReading(uid, Number(req.query.leitura));
+    if (!l) return res.status(404).json({ error: 'leitura não encontrada' });
+    const c = await completarDirecionamento(uid, l).catch(e => { console.error('direcionamento:', e.message); return l.conteudo || {}; });
+    const [nome, t] = await Promise.all([nomeCadastro(uid), terapeutaContato(uid).catch(() => null)]);
+    const dia = d => d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '';
+    const pdf = await buildLeituraPdf({ paciente: nome, terapeuta: t && t.name, clinica: t && t.clinica,
+      periodo: dia(l.periodo_inicio) + ' a ' + dia(l.periodo_fim), gerada: quandoSP(l.criado_em), motivo: MOTIVO_LEITURA[l.motivo] || l.motivo, c });
+    const arq = 'leitura-semanal-' + String(nome || 'paciente').normalize('NFD').replace(/[^\w]+/g, '-').toLowerCase() + '-' + dia(l.criado_em).replace(/\//g, '-') + '.pdf';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="' + arq + '"');
+    res.send(pdf);
+  } catch (e) { console.error('leitura pdf:', e); res.status(400).json({ error: String(e.message || e) }); }
 });
 app.post('/api/admin/weekly/gerar', requireAdmin, soMentor, async (req, res) => {
   try {

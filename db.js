@@ -3088,6 +3088,15 @@ export async function listWeeklyReadings(uid, limit = 12) {
   const r = await pool.query('SELECT id, motivo, periodo_inicio, periodo_fim, conteudo, whatsapp_enviado, criado_em FROM weekly_readings WHERE user_id=$1 ORDER BY criado_em DESC LIMIT $2', [uid, limit]);
   return r.rows;
 }
+export async function getWeeklyReading(uid, id) {
+  if (!pool || !uid || !id) return null;
+  const r = await pool.query('SELECT id, motivo, periodo_inicio, periodo_fim, conteudo, criado_em FROM weekly_readings WHERE id=$1 AND user_id=$2', [id, uid]);
+  return r.rows[0] || null;
+}
+export async function setWeeklyContent(id, conteudo) {
+  if (!pool || !id) return;
+  await pool.query('UPDATE weekly_readings SET conteudo=$2 WHERE id=$1', [id, JSON.stringify(conteudo)]);
+}
 export async function lastWeeklyReading(uid) {
   const l = await listWeeklyReadings(uid, 1);
   return l[0] || null;

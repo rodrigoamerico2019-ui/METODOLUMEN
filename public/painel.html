@@ -2004,6 +2004,8 @@ function htmlLeitura(c){
     L('❓ Perguntas para a sessão', c.perguntas_sessao, x=>'<li>'+escHtml(x)+'</li>')+
     L('🧭 Caminhos do Método', c.intervencoes, x=>'<li>'+escHtml(x)+'</li>')+
     (c.base_biblica?'<p style="margin:10px 0 0"><b>📖 Base bíblica:</b> '+escHtml(c.base_biblica)+'</p>':'')+
+    (c.direcionamento && (c.direcionamento.foco_sessao||c.direcionamento.objetivo) ? '<div style="margin-top:12px"><b>🎯 Direcionamento:</b> '+escHtml(c.direcionamento.foco_sessao||'')+(c.direcionamento.objetivo?' <span class="muted">· objetivo: '+escHtml(c.direcionamento.objetivo)+'</span>':'')+'</div>' : '')+
+    L('📝 Tarefas indicadas para a semana', c.tarefas_semana, x=>'<li><b>'+escHtml(x.titulo||'')+'</b>'+(x.como?': '+escHtml(x.como):'')+(x.frequencia?' <span class="muted">('+escHtml(x.frequencia)+')</span>':'')+'</li>')+
     L('⚠️ Atenção', c.atencao, x=>'<li>'+escHtml(x)+'</li>')+
     L('🔎 Ainda não explorado (vira pergunta do dia)', c.lacunas, x=>'<li>'+escHtml(x)+'</li>')+
     '<p class="subc" style="margin-top:12px">Sinais e hipóteses gerados por IA para apoio. O diagnóstico é seu.</p></div>';
@@ -2017,9 +2019,12 @@ async function renderCliSemanal(body){
   body.innerHTML =
     '<p class="subc" style="margin-top:0">Material para a sessão: a IA junta a semana do paciente (conversas, perguntas do dia, relatórios, check-ins, escalas e alertas) e organiza dores, sentimentos, feridas e perguntas. Gerada todo <b>domingo à noite</b> e na <b>véspera de cada sessão agendada</b>.</p>'+
     '<button class="btn" style="padding:10px 22px;margin-bottom:14px" onclick="gerarLeituraAgora()">Gerar agora</button> <span class="muted" id="lsStatus"></span>'+
-    (l.length ? l.map((x,i)=>'<details '+(i===0?'open':'')+' class="card" style="padding:14px 16px;margin:10px 0"><summary style="cursor:pointer"><b style="text-transform:capitalize">'+escHtml(x.quando)+'</b> <span class="muted">· '+escHtml(MOTIVO_LEIT[x.motivo]||x.motivo)+' · período '+escHtml(x.de||'')+' até '+escHtml(x.ate||'')+(x.whatsapp_enviado?' · WhatsApp ✓':'')+'</span></summary>'+htmlLeitura(x.conteudo||{})+'</details>').join('')
+    (l.length ? l.map((x,i)=>'<details '+(i===0?'open':'')+' class="card" style="padding:14px 16px;margin:10px 0"><summary style="cursor:pointer"><b style="text-transform:capitalize">'+escHtml(x.quando)+'</b> <span class="muted">· '+escHtml(MOTIVO_LEIT[x.motivo]||x.motivo)+' · período '+escHtml(x.de||'')+' até '+escHtml(x.ate||'')+(x.whatsapp_enviado?' · WhatsApp ✓':'')+'</span></summary>'+'<div style="margin:10px 0 4px;display:flex;gap:8px;flex-wrap:wrap"><button class="tbtn" onclick="verLeituraPdf('+x.id+')">📄 Relatório em PDF</button><button class="tbtn" onclick="baixarLeituraPdf('+x.id+')">⬇️ Baixar PDF</button><span class="muted" style="font-size:12px;align-self:center">com tarefas e direcionamento</span></div>'+htmlLeitura(x.conteudo||{})+'</details>').join('')
       : '<p class="muted">Ainda não há leituras. Elas aparecem quando o paciente usa o app na semana. Você também pode gerar agora.</p>');
 }
+function leituraPdfUrl(lid, baixar){ return '/api/admin/weekly/pdf?id='+clienteAtual.id+'&leitura='+lid+(baixar?'&download=1':'')+'&'+mediaQS(); }
+function verLeituraPdf(lid){ aviso('Montando o PDF… (a primeira vez de uma leitura antiga leva ~30 s)'); modalArquivo('Leitura semanal', leituraPdfUrl(lid,false)); }
+function baixarLeituraPdf(lid){ aviso('Preparando o download…'); baixarArquivo(leituraPdfUrl(lid,true)); }
 async function gerarLeituraAgora(){
   $('lsStatus').textContent='gerando… (leva cerca de 1 minuto)';
   try{ await postAdmin('/api/admin/weekly/gerar?id='+clienteAtual.id, {}); renderCliSemanal($('cliTabBody')); }
